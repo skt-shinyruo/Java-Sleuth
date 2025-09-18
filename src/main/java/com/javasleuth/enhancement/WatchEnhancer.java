@@ -1,0 +1,230 @@
+package com.javasleuth.enhancement;
+
+import org.objectweb.asm.*;
+import org.objectweb.asm.commons.AdviceAdapter;
+import java.util.Set;
+import java.util.HashSet;
+
+public class WatchEnhancer implements ClassEnhancer {
+    private final String targetClassName;
+    private final String targetMethodName;
+    private final String targetMethodDesc;
+    private final boolean captureParameters;
+    private final boolean captureReturn;
+    private final boolean captureException;
+    private final String watchId;
+
+    public WatchEnhancer(String className, String methodName, String methodDesc,
+                        boolean captureParams, boolean captureReturn, boolean captureException, String watchId) {
+        this.targetClassName = className;
+        this.targetMethodName = methodName;
+        this.targetMethodDesc = methodDesc;
+        this.captureParameters = captureParams;
+        this.captureReturn = captureReturn;
+        this.captureException = captureException;
+        this.watchId = watchId;
+    }
+
+    @Override
+    public ClassVisitor createClassVisitor(ClassVisitor delegate, String className) {
+        return new WatchClassVisitor(delegate, className);
+    }
+
+    @Override
+    public String getDescription() {
+        return "Watch enhancer for " + targetClassName + "." + targetMethodName;
+    }
+
+    private class WatchClassVisitor extends ClassVisitor {
+        private final String className;
+
+        public WatchClassVisitor(ClassVisitor delegate, String className) {
+            super(Opcodes.ASM9, delegate);
+            this.className = className;
+        }
+
+        @Override
+        public MethodVisitor visitMethod(int access, String name, String descriptor,
+                                       String signature, String[] exceptions) {
+            MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+
+            if (shouldEnhanceMethod(name, descriptor)) {
+                return new WatchMethodVisitor(mv, access, name, descriptor);
+            }
+
+            return mv;
+        }
+
+        private boolean shouldEnhanceMethod(String methodName, String methodDesc) {
+            if ("*".equals(targetMethodName)) {
+                return true;
+            }
+            if (targetMethodDesc == null || "*".equals(targetMethodDesc)) {
+                return targetMethodName.equals(methodName);
+            }
+            return targetMethodName.equals(methodName) && targetMethodDesc.equals(methodDesc);
+        }
+    }
+
+    private class WatchMethodVisitor extends AdviceAdapter {
+        private final String methodName;
+        private final String methodDesc;
+        private int startTimeVar;
+        private int exceptionVar;
+
+        public WatchMethodVisitor(MethodVisitor mv, int access, String methodName, String methodDesc) {
+            super(Opcodes.ASM9, mv, access, methodName, methodDesc);
+            this.methodName = methodName;
+            this.methodDesc = methodDesc;
+        }
+
+        @Override
+        protected void onMethodEnter() {
+            // Store start time
+            startTimeVar = newLocal(Type.LONG_TYPE);
+            mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
+            mv.visitVarInsn(LSTORE, startTimeVar);
+
+            if (captureParameters) {
+                // Call interceptor for method entry
+                generateMethodEntryCall();
+            }
+        }
+
+        @Override
+        protected void onMethodExit(int opcode) {
+            if (opcode != ATHROW) {
+                if (captureReturn) {
+                    generateMethodExitCall(false);
+                }
+            }
+        }
+
+        @Override
+        public void visitMaxs(int maxStack, int maxLocals) {
+            if (captureException) {
+                // Add try-catch block for exception capture
+                Label startLabel = new Label();
+                Label endLabel = new Label();
+                Label handlerLabel = new Label();
+
+                mv.visitTryCatchBlock(startLabel, endLabel, handlerLabel, "java/lang/Throwable");
+
+                mv.visitLabel(startLabel);
+                super.visitMaxs(maxStack + 10, maxLocals + 5);
+                mv.visitLabel(endLabel);
+
+                mv.visitLabel(handlerLabel);
+                exceptionVar = newLocal(Type.getType(Throwable.class));
+                mv.visitVarInsn(ASTORE, exceptionVar);
+                generateMethodExitCall(true);
+                mv.visitVarInsn(ALOAD, exceptionVar);
+                mv.visitInsn(ATHROW);
+            } else {
+                super.visitMaxs(maxStack + 10, maxLocals + 5);
+            }
+        }
+
+        private void generateMethodEntryCall() {
+            // Push watch ID
+            mv.visitLdcInsn(watchId);
+
+            // Push class name
+            mv.visitLdcInsn(targetClassName);
+
+            // Push method name
+            mv.visitLdcInsn(methodName);
+
+            // Push method descriptor
+            mv.visitLdcInsn(methodDesc);
+
+            // Push parameters array
+            generateParametersArray();
+
+            // Push start time
+            mv.visitVarInsn(LLOAD, startTimeVar);
+
+            // Call WatchInterceptor.onMethodEntry
+            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/monitor/WatchInterceptor",
+                "onMethodEntry", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/Object;J)V", false);
+        }
+
+        private void generateMethodExitCall(boolean isException) {
+            // Push watch ID
+            mv.visitLdcInsn(watchId);
+
+            // Push class name
+            mv.visitLdcInsn(targetClassName);
+
+            // Push method name
+            mv.visitLdcInsn(methodName);
+
+            // Push method descriptor
+            mv.visitLdcInsn(methodDesc);
+
+            if (isException) {
+                // Push exception
+                mv.visitVarInsn(ALOAD, exceptionVar);
+            } else {
+                // Push return value (if any)
+                Type returnType = Type.getReturnType(methodDesc);
+                if (returnType.getSort() == Type.VOID) {
+                    mv.visitInsn(ACONST_NULL);
+                } else {
+                    generateReturnValueBoxing(returnType);
+                }
+            }
+
+            // Push start time
+            mv.visitVarInsn(LLOAD, startTimeVar);
+
+            // Calculate duration
+            mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
+            mv.visitVarInsn(LLOAD, startTimeVar);
+            mv.visitInsn(LSUB);
+
+            if (isException) {
+                // Call WatchInterceptor.onMethodException
+                mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/monitor/WatchInterceptor",
+                    "onMethodException", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;JJ)V", false);
+            } else {
+                // Call WatchInterceptor.onMethodExit
+                mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/monitor/WatchInterceptor",
+                    "onMethodExit", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;JJ)V", false);
+            }
+        }
+
+        private void generateParametersArray() {
+            Type[] argumentTypes = Type.getArgumentTypes(methodDesc);
+
+            // Create array
+            push(argumentTypes.length);
+            mv.visitTypeInsn(ANEWARRAY, "java/lang/Object");
+
+            // Fill array with parameters
+            int paramIndex = (methodAccess & ACC_STATIC) == 0 ? 1 : 0; // Skip 'this' if not static
+
+            for (int i = 0; i < argumentTypes.length; i++) {
+                mv.visitInsn(DUP);
+                push(i);
+
+                Type argType = argumentTypes[i];
+                mv.visitVarInsn(argType.getOpcode(ILOAD), paramIndex);
+
+                // Box primitive types
+                if (argType.getSort() != Type.OBJECT && argType.getSort() != Type.ARRAY) {
+                    box(argType);
+                }
+
+                mv.visitInsn(AASTORE);
+                paramIndex += argType.getSize();
+            }
+        }
+
+        private void generateReturnValueBoxing(Type returnType) {
+            if (returnType.getSort() != Type.OBJECT && returnType.getSort() != Type.ARRAY) {
+                box(returnType);
+            }
+        }
+    }
+}

@@ -1,0 +1,353 @@
+package com.javasleuth.command.impl;
+
+import com.javasleuth.command.Command;
+import org.benf.cfr.reader.api.CfrDriver;
+import org.benf.cfr.reader.api.OutputSinkFactory;
+import org.benf.cfr.reader.api.SinkReturns;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.instrument.Instrumentation;
+import java.util.*;
+import java.util.regex.Pattern;
+
+public class JadCommand implements Command {
+    private final Instrumentation instrumentation;
+
+    public JadCommand(Instrumentation instrumentation) {
+        this.instrumentation = instrumentation;
+    }
+
+    @Override
+    public String execute(String[] args) throws Exception {
+        if (args.length < 2 || "--help".equals(args[1])) {
+            return getHelpText();
+        }
+
+        String className = args[1];
+
+        // Parse additional options
+        boolean showLineNumbers = false;
+        boolean verbose = false;
+        String methodFilter = null;
+
+        for (int i = 2; i < args.length; i++) {
+            String arg = args[i];
+            if ("--lines".equals(arg) || "-l".equals(arg)) {
+                showLineNumbers = true;
+            } else if ("--verbose".equals(arg) || "-v".equals(arg)) {
+                verbose = true;
+            } else if (arg.startsWith("--method=")) {
+                methodFilter = arg.substring(9);
+            } else if (arg.startsWith("-m=")) {
+                methodFilter = arg.substring(3);
+            }
+        }
+
+        return decompileClass(className, showLineNumbers, verbose, methodFilter);
+    }
+
+    private String decompileClass(String className, boolean showLineNumbers, boolean verbose, String methodFilter) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== Java Decompilation ===\n");
+        sb.append("Class: ").append(className).append("\n");
+
+        try {
+            // Find the class
+            Class<?> targetClass = findClass(className);
+            if (targetClass == null) {
+                return "Class not found: " + className + "\n" +
+                       "Use 'sc " + className + "' to search for available classes";
+            }
+
+            sb.append("Found: ").append(targetClass.getName()).append("\n");
+            sb.append("ClassLoader: ").append(targetClass.getClassLoader()).append("\n\n");
+
+            // Get bytecode
+            byte[] bytecode = getClassBytecode(targetClass);
+            if (bytecode == null) {
+                return "Unable to retrieve bytecode for class: " + className;
+            }
+
+            // Decompile using CFR
+            String decompiled = decompileWithCfr(targetClass.getName(), bytecode, showLineNumbers, verbose);
+
+            // Apply method filter if specified
+            if (methodFilter != null) {
+                decompiled = filterMethods(decompiled, methodFilter);
+                sb.append("Method filter: ").append(methodFilter).append("\n");
+            }
+
+            sb.append("Decompiled source:\n");
+            sb.append("=" .repeat(50)).append("\n");
+            sb.append(decompiled);
+            sb.append("\n").append("=".repeat(50)).append("\n");
+
+        } catch (Exception e) {
+            sb.append("Error decompiling class: ").append(e.getMessage()).append("\n");
+            sb.append("Possible causes:\n");
+            sb.append("- Class not found in current classloader\n");
+            sb.append("- Bytecode not accessible\n");
+            sb.append("- CFR decompiler error\n");
+            if (verbose) {
+                sb.append("Stack trace:\n");
+                for (StackTraceElement element : e.getStackTrace()) {
+                    sb.append("  ").append(element.toString()).append("\n");
+                }
+            }
+        }
+
+        return sb.toString();
+    }
+
+    private Class<?> findClass(String className) {
+        try {
+            // Try direct class loading first
+            return Class.forName(className);
+        } catch (ClassNotFoundException e) {
+            // Search through loaded classes
+            Class<?>[] loadedClasses = instrumentation.getAllLoadedClasses();
+
+            for (Class<?> clazz : loadedClasses) {
+                String clazzName = clazz.getName();
+
+                // Exact match
+                if (clazzName.equals(className)) {
+                    return clazz;
+                }
+
+                // Simple name match (for inner classes)
+                if (clazzName.endsWith("." + className) || clazzName.endsWith("$" + className)) {
+                    return clazz;
+                }
+
+                // Partial match if the input contains wildcards
+                if (className.contains("*")) {
+                    String regex = className.replace("*", ".*").replace("?", ".?");
+                    if (Pattern.matches(regex, clazzName)) {
+                        return clazz;
+                    }
+                }
+            }
+
+            return null;
+        }
+    }
+
+    private byte[] getClassBytecode(Class<?> clazz) {
+        try {
+            String className = clazz.getName();
+            String classFile = className.replace('.', '/') + ".class";
+
+            ClassLoader classLoader = clazz.getClassLoader();
+            if (classLoader == null) {
+                classLoader = ClassLoader.getSystemClassLoader();
+            }
+
+            InputStream is = classLoader.getResourceAsStream(classFile);
+            if (is == null) {
+                return null;
+            }
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+
+            while ((bytesRead = is.read(buffer)) != -1) {
+                baos.write(buffer, 0, bytesRead);
+            }
+
+            is.close();
+            return baos.toByteArray();
+
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private String decompileWithCfr(String className, byte[] bytecode, boolean showLineNumbers, boolean verbose) {
+        try {
+            Map<String, String> options = new HashMap<>();
+            options.put("showversion", "false");
+            options.put("hideutf", "false");
+            options.put("trackbytecodeloc", showLineNumbers ? "true" : "false");
+            options.put("comments", verbose ? "true" : "false");
+            options.put("forcetopsort", "true");
+            options.put("forloopaggcapture", "true");
+
+            StringBuilder output = new StringBuilder();
+
+            OutputSinkFactory mySink = new OutputSinkFactory() {
+                @Override
+                public List<SinkClass> getSupportedSinks(SinkType sinkType, Collection<SinkClass> collection) {
+                    return Arrays.asList(SinkClass.STRING, SinkClass.DECOMPILED, SinkClass.DECOMPILED_MULTIVER);
+                }
+
+                @Override
+                public <T> Sink<T> getSink(SinkType sinkType, SinkClass sinkClass) {
+                    return new Sink<T>() {
+                        @Override
+                        public void write(T sinkable) {
+                            if (sinkType == SinkType.JAVA && sinkable instanceof SinkReturns.Decompiled) {
+                                output.append(((SinkReturns.Decompiled) sinkable).getJava());
+                            }
+                        }
+                    };
+                }
+            };
+
+            CfrDriver driver = new CfrDriver.Builder()
+                .withOptions(options)
+                .withOutputSink(mySink)
+                .build();
+
+            // Create a temporary class source
+            Map<String, byte[]> classFiles = new HashMap<>();
+            classFiles.put(className, bytecode);
+
+            driver.analyse(Arrays.asList(className));
+
+            String result = output.toString();
+            if (result.isEmpty()) {
+                return "// CFR decompiler failed to produce output\n// Class: " + className;
+            }
+
+            return result;
+
+        } catch (Exception e) {
+            return "// CFR decompiler error: " + e.getMessage() + "\n" +
+                   "// Class: " + className + "\n" +
+                   "// Try using a different decompiler or check class accessibility";
+        }
+    }
+
+    private String filterMethods(String decompiled, String methodFilter) {
+        if (methodFilter == null || methodFilter.trim().isEmpty()) {
+            return decompiled;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        String[] lines = decompiled.split("\n");
+        boolean inTargetMethod = false;
+        int braceCount = 0;
+        Pattern methodPattern = Pattern.compile(".*\\b" + methodFilter.replace("*", ".*") + "\\b.*", Pattern.CASE_INSENSITIVE);
+
+        // Add class declaration and imports
+        for (String line : lines) {
+            if (line.trim().startsWith("package ") ||
+                line.trim().startsWith("import ") ||
+                line.trim().startsWith("//") ||
+                line.contains("class ") && line.contains("{")) {
+                sb.append(line).append("\n");
+                if (line.contains("class ") && line.contains("{")) {
+                    sb.append("\n");
+                }
+            }
+        }
+
+        // Find and include matching methods
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].trim();
+
+            if (!inTargetMethod) {
+                // Check if this line starts a method that matches our filter
+                if (isMethodDeclaration(line) && methodPattern.matcher(line).matches()) {
+                    inTargetMethod = true;
+                    braceCount = 0;
+                    sb.append("    ").append(lines[i]).append("\n");
+
+                    // Count braces in the method declaration line
+                    for (char c : line.toCharArray()) {
+                        if (c == '{') braceCount++;
+                        if (c == '}') braceCount--;
+                    }
+                }
+            } else {
+                // We're inside a matching method
+                sb.append("    ").append(lines[i]).append("\n");
+
+                // Count braces to determine when method ends
+                for (char c : line.toCharArray()) {
+                    if (c == '{') braceCount++;
+                    if (c == '}') braceCount--;
+                }
+
+                if (braceCount <= 0) {
+                    inTargetMethod = false;
+                    sb.append("\n");
+                }
+            }
+        }
+
+        // Close class
+        sb.append("}\n");
+
+        return sb.toString();
+    }
+
+    private boolean isMethodDeclaration(String line) {
+        line = line.trim();
+
+        // Skip non-method lines
+        if (line.startsWith("//") || line.startsWith("/*") ||
+            line.startsWith("@") || line.isEmpty() ||
+            line.startsWith("class ") || line.startsWith("interface ") ||
+            line.startsWith("enum ") || line.equals("{") || line.equals("}")) {
+            return false;
+        }
+
+        // Look for method patterns: modifiers + returnType + methodName + (parameters)
+        return line.contains("(") && line.contains(")") &&
+               (line.contains("public ") || line.contains("private ") ||
+                line.contains("protected ") || line.contains("static ") ||
+                line.matches(".*\\w+\\s*\\(.*\\).*"));
+    }
+
+    private String getHelpText() {
+        return "=== Java Decompiler (JAD) Command Help ===\n" +
+               "Decompile Java classes to readable source code using CFR decompiler\n\n" +
+               "Usage:\n" +
+               "  jad <classname> [options]       Decompile specified class\n" +
+               "  jad --help                      Show this help message\n\n" +
+               "Options:\n" +
+               "  --lines, -l                     Show line numbers in decompiled code\n" +
+               "  --verbose, -v                   Include comments and verbose output\n" +
+               "  --method=<pattern>, -m=<pattern> Filter to show only matching methods\n\n" +
+               "Examples:\n" +
+               "  jad java.lang.String            Decompile String class\n" +
+               "  jad com.example.MyClass --lines Decompile with line numbers\n" +
+               "  jad MyClass --method=toString   Show only toString method\n" +
+               "  jad *.Service --method=*init*   Find and decompile Service classes, show init methods\n\n" +
+               "Class Name Formats:\n" +
+               "- Fully qualified: com.example.MyClass\n" +
+               "- Simple name: MyClass (searches loaded classes)\n" +
+               "- Inner classes: com.example.Outer$Inner\n" +
+               "- Wildcards: com.example.* (finds first match)\n\n" +
+               "Method Filtering:\n" +
+               "- Exact name: --method=toString\n" +
+               "- Pattern: --method=*init* (matches constructor, initialize, etc.)\n" +
+               "- Case insensitive matching\n\n" +
+               "Decompiler Features:\n" +
+               "- Uses CFR (Class File Reader) decompiler\n" +
+               "- Handles modern Java features (lambdas, streams, etc.)\n" +
+               "- Shows original structure and logic flow\n" +
+               "- Preserves generic type information\n" +
+               "- Includes debugging information when available\n\n" +
+               "Limitations:\n" +
+               "- Requires class to be loaded in current JVM\n" +
+               "- Some obfuscated code may not decompile cleanly\n" +
+               "- Original variable names may not be preserved\n" +
+               "- Comments from source code are not included\n\n" +
+               "Tips:\n" +
+               "- Use 'sc <pattern>' first to find the exact class name\n" +
+               "- Use --verbose for more detailed output\n" +
+               "- Method filtering helps focus on specific functionality\n" +
+               "- Line numbers help correlate with stack traces\n";
+    }
+
+    @Override
+    public String getDescription() {
+        return "Decompile Java classes to readable source code";
+    }
+}

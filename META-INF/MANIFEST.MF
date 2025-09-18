@@ -1,0 +1,8 @@
+Manifest-Version: 1.0
+Created-By: Maven Archiver 3.6.0
+Build-Jdk-Spec: 11
+Agent-Class: com.javasleuth.agent.SleuthAgent
+Can-Redefine-Classes: true
+Can-Retransform-Classes: true
+Premain-Class: com.javasleuth.agent.SleuthAgent
+
