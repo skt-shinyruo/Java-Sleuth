@@ -2,9 +2,11 @@
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/SysEnvCommand.java
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/launcher/SleuthLauncher.java
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/RetransformCommand.java
+/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/ProfilerCommand.java
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/DashboardCommand.java
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/MemoryCommand.java
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/ThreadCommand.java
+/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/MonitorCommand.java
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/data/WatchResult.java
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/VmOptionCommand.java
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/JvmCommand.java
@@ -30,6 +32,7 @@
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/JadCommand.java
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/agent/SleuthAgent.java
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/data/TraceResult.java
+/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/StackCommand.java
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/TraceCommand.java
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/util/JvmUtils.java
 /home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/enhancement/ClassEnhancer.java

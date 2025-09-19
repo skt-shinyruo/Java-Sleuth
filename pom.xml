@@ -58,6 +58,10 @@
             <version>0.152</version>
         </dependency>
 
+        <!-- Async Profiler for performance profiling (optional) -->
+        <!-- Note: async-profiler requires native libraries and specific setup -->
+        <!-- For now, we'll implement a basic profiler that can be extended later -->
+
         <!-- JUnit for testing -->
         <dependency>
             <groupId>junit</groupId>

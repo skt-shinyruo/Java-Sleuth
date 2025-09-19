@@ -1,0 +1,195 @@
+package com.javasleuth.command.impl;
+
+import com.javasleuth.command.Command;
+import com.javasleuth.monitoring.MetricsCollector;
+import com.javasleuth.util.PerformanceOptimizer;
+import com.javasleuth.config.ProductionConfig;
+
+import java.lang.instrument.Instrumentation;
+import java.lang.management.*;
+import java.util.Map;
+import java.util.List;
+
+public class StatusCommand implements Command {
+    private final Instrumentation instrumentation;
+    private final MetricsCollector metricsCollector;
+
+    public StatusCommand(Instrumentation instrumentation, MetricsCollector metricsCollector) {
+        this.instrumentation = instrumentation;
+        this.metricsCollector = metricsCollector;
+    }
+
+    @Override
+    public String execute(String[] args) throws Exception {
+        StringBuilder status = new StringBuilder();
+
+        status.append("=== JAVA-SLEUTH AGENT STATUS ===\n");
+
+        // Agent status
+        status.append("\n-- Agent Information --\n");
+        status.append("Status: ACTIVE ✓\n");
+        status.append("Agent Version: 1.0.0\n");
+        status.append("Redefine Classes: ").append(instrumentation.isRedefineClassesSupported() ? "Supported" : "Not Supported").append("\n");
+        status.append("Retransform Classes: ").append(instrumentation.isRetransformClassesSupported() ? "Supported" : "Not Supported").append("\n");
+        status.append("Native Method Prefix: ").append(instrumentation.isNativeMethodPrefixSupported() ? "Supported" : "Not Supported").append("\n");
+
+        // System information
+        RuntimeMXBean runtimeBean = ManagementFactory.getRuntimeMXBean();
+        status.append("\n-- JVM Information --\n");
+        status.append("JVM Name: ").append(runtimeBean.getVmName()).append("\n");
+        status.append("JVM Version: ").append(runtimeBean.getVmVersion()).append("\n");
+        status.append("JVM Vendor: ").append(runtimeBean.getVmVendor()).append("\n");
+        status.append("Start Time: ").append(new java.util.Date(runtimeBean.getStartTime())).append("\n");
+        status.append("Uptime: ").append(formatDuration(runtimeBean.getUptime())).append("\n");
+
+        // Memory status
+        MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
+        status.append("\n-- Memory Status --\n");
+        status.append("Heap: ").append(formatMemoryUsage(memoryBean.getHeapMemoryUsage())).append("\n");
+        status.append("Non-Heap: ").append(formatMemoryUsage(memoryBean.getNonHeapMemoryUsage())).append("\n");
+
+        // Thread information
+        ThreadMXBean threadBean = ManagementFactory.getThreadMXBean();
+        status.append("\n-- Thread Information --\n");
+        status.append("Live Threads: ").append(threadBean.getThreadCount()).append("\n");
+        status.append("Peak Threads: ").append(threadBean.getPeakThreadCount()).append("\n");
+        status.append("Daemon Threads: ").append(threadBean.getDaemonThreadCount()).append("\n");
+        status.append("Total Started: ").append(threadBean.getTotalStartedThreadCount()).append("\n");
+
+        // Class loading information
+        status.append("\n-- Class Loading --\n");
+        status.append("Loaded Classes: ").append(instrumentation.getAllLoadedClasses().length).append("\n");
+
+        // Performance metrics
+        PerformanceOptimizer perfOpt = PerformanceOptimizer.getInstance();
+        Map<String, Object> perfMetrics = perfOpt.getPerformanceMetrics();
+        status.append("\n-- Performance Metrics --\n");
+        status.append("Cache Hit Ratio: ").append(perfMetrics.get("cacheHitRatio")).append("%\n");
+        status.append("Total Operations: ").append(perfMetrics.get("totalOperations")).append("\n");
+        status.append("Slow Operations: ").append(perfMetrics.get("slowOperations")).append("\n");
+        status.append("Active Threads: ").append(perfMetrics.get("activeThreads")).append("\n");
+        status.append("Thread Pool Size: ").append(perfMetrics.get("poolSize")).append("\n");
+
+        // Application metrics summary
+        status.append("\n-- Application Metrics --\n");
+        status.append("Total Commands: ").append(metricsCollector.getTotalCommands()).append("\n");
+        status.append("Total Sessions: ").append(metricsCollector.getTotalSessions()).append("\n");
+        status.append("Active Sessions: ").append(metricsCollector.getActiveSessions()).append("\n");
+        status.append("Active Connections: ").append(metricsCollector.getActiveConnections()).append("\n");
+        status.append("Error Rate: ").append(String.format("%.1f%%", metricsCollector.getErrorRate())).append("\n");
+        status.append("Most Executed Command: ").append(metricsCollector.getMostExecutedCommand()).append("\n");
+        status.append("Slowest Command: ").append(metricsCollector.getSlowestCommand()).append("\n");
+
+        // Configuration status
+        ProductionConfig config = ProductionConfig.getInstance();
+        status.append("\n-- Configuration Status --\n");
+        status.append("Server Port: ").append(config.getServerPort()).append("\n");
+        status.append("Max Connections: ").append(config.getMaxConnections()).append("\n");
+        status.append("Cache TTL: ").append(config.getCacheTTL()).append("ms\n");
+        status.append("Input Validation: ").append(config.isInputValidationEnabled() ? "ENABLED" : "DISABLED").append("\n");
+        status.append("Audit Logging: ").append(config.isAuditLoggingEnabled() ? "ENABLED" : "DISABLED").append("\n");
+        status.append("Metrics Collection: ").append(config.isMetricsEnabled() ? "ENABLED" : "DISABLED").append("\n");
+        status.append("JMX Monitoring: ").append(config.isJmxEnabled() ? "ENABLED" : "DISABLED").append("\n");
+
+        // Garbage Collection status
+        List<GarbageCollectorMXBean> gcBeans = ManagementFactory.getGarbageCollectorMXBeans();
+        if (!gcBeans.isEmpty()) {
+            status.append("\n-- Garbage Collection --\n");
+            for (GarbageCollectorMXBean gcBean : gcBeans) {
+                status.append(gcBean.getName()).append(": ")
+                    .append(gcBean.getCollectionCount()).append(" collections, ")
+                    .append(gcBean.getCollectionTime()).append("ms total\n");
+            }
+        }
+
+        // System load information
+        try {
+            OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
+            status.append("\n-- System Load --\n");
+            status.append("Available Processors: ").append(osBean.getAvailableProcessors()).append("\n");
+            status.append("System Load Average: ").append(osBean.getSystemLoadAverage()).append("\n");
+
+            if (osBean instanceof com.sun.management.OperatingSystemMXBean) {
+                com.sun.management.OperatingSystemMXBean sunOsBean =
+                    (com.sun.management.OperatingSystemMXBean) osBean;
+                status.append("Process CPU Load: ").append(String.format("%.1f%%", sunOsBean.getProcessCpuLoad() * 100)).append("\n");
+                status.append("System CPU Load: ").append(String.format("%.1f%%", sunOsBean.getSystemCpuLoad() * 100)).append("\n");
+                status.append("Physical Memory: ").append(formatBytes(sunOsBean.getTotalPhysicalMemorySize())).append("\n");
+                status.append("Free Physical Memory: ").append(formatBytes(sunOsBean.getFreePhysicalMemorySize())).append("\n");
+            }
+        } catch (Exception e) {
+            // Some JVMs don't support these operations
+        }
+
+        // Operational status
+        status.append("\n-- Operational Status --\n");
+        boolean isHealthy = metricsCollector.isHealthy();
+        status.append("Health Check: ").append(isHealthy ? "PASS ✅" : "FAIL ❌").append("\n");
+        status.append("Ready for Production: ").append(isHealthy ? "YES ✅" : "NO ❌").append("\n");
+
+        if (!isHealthy) {
+            status.append("\n-- Health Issues --\n");
+            if (metricsCollector.getHeapUsagePercent() > 85) {
+                status.append("⚠️ High memory usage detected\n");
+            }
+            if (metricsCollector.getErrorRate() > 10) {
+                status.append("⚠️ High error rate detected\n");
+            }
+        }
+
+        return status.toString();
+    }
+
+    @Override
+    public String getDescription() {
+        return "Display comprehensive agent and system status with performance metrics";
+    }
+
+    @Override
+    public String getUsage() {
+        return "status";
+    }
+
+    private String formatDuration(long durationMs) {
+        if (durationMs < 1000) {
+            return durationMs + "ms";
+        } else if (durationMs < 60000) {
+            return String.format("%.1fs", durationMs / 1000.0);
+        } else if (durationMs < 3600000) {
+            long minutes = durationMs / 60000;
+            long seconds = (durationMs % 60000) / 1000;
+            return minutes + "m " + seconds + "s";
+        } else {
+            long hours = durationMs / 3600000;
+            long minutes = (durationMs % 3600000) / 60000;
+            return hours + "h " + minutes + "m";
+        }
+    }
+
+    private String formatMemoryUsage(java.lang.management.MemoryUsage usage) {
+        long used = usage.getUsed();
+        long max = usage.getMax();
+
+        String usedStr = formatBytes(used);
+        String maxStr = max == -1 ? "unlimited" : formatBytes(max);
+
+        if (max > 0) {
+            double percent = (double) used / max * 100;
+            return String.format("%s / %s (%.1f%%)", usedStr, maxStr, percent);
+        } else {
+            return String.format("%s / %s", usedStr, maxStr);
+        }
+    }
+
+    private String formatBytes(long bytes) {
+        if (bytes < 1024) {
+            return bytes + " B";
+        } else if (bytes < 1024 * 1024) {
+            return String.format("%.1f KB", bytes / 1024.0);
+        } else if (bytes < 1024 * 1024 * 1024) {
+            return String.format("%.1f MB", bytes / (1024.0 * 1024));
+        } else {
+            return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
+        }
+    }
+}
