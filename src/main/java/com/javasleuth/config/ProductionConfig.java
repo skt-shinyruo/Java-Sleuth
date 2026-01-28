@@ -7,6 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ProductionConfig {
     private static final String CONFIG_FILE = "sleuth.properties";
     private static final String DEFAULT_CONFIG = "/sleuth-default.properties";
+    private static final String CONFIG_FILE_PROPERTY = "sleuth.config.file";
 
     private final Properties properties;
     private final ConcurrentHashMap<String, String> runtimeConfig;
@@ -36,8 +37,11 @@ public class ProductionConfig {
                 defaultStream.close();
             }
 
-            // Then load external configuration file
-            File configFile = new File(CONFIG_FILE);
+            // Then load external configuration file (explicit path > default filename)
+            String explicitConfigPath = System.getProperty(CONFIG_FILE_PROPERTY);
+            File configFile = explicitConfigPath != null && !explicitConfigPath.trim().isEmpty()
+                ? new File(explicitConfigPath)
+                : new File(CONFIG_FILE);
             if (configFile.exists()) {
                 try (FileInputStream fileStream = new FileInputStream(configFile)) {
                     properties.load(fileStream);
@@ -63,6 +67,7 @@ public class ProductionConfig {
 
     private void setDefaults() {
         // Server configuration
+        properties.setProperty("server.bind.address", "127.0.0.1");
         properties.setProperty("server.port", "3658");
         properties.setProperty("server.max.connections", "10");
         properties.setProperty("server.connection.timeout", "30000");
@@ -79,6 +84,29 @@ public class ProductionConfig {
         properties.setProperty("security.audit.logging", "true");
         properties.setProperty("security.max.command.length", "1000");
         properties.setProperty("security.allowed.commands", "*");
+        properties.setProperty("security.authorization.enabled", "true");
+        properties.setProperty("security.anonymous.viewer", "true");
+        properties.setProperty("security.mode", "off");
+        properties.setProperty("security.hmac.secret", "");
+        properties.setProperty("security.hmac.timestamp.window.ms", "30000");
+        properties.setProperty("security.hmac.nonce.cache.size", "10000");
+
+        // Protocol configuration
+        properties.setProperty("protocol.mode", "legacy");
+        properties.setProperty("protocol.streaming.enabled", "true");
+        properties.setProperty("protocol.frame.max.payload", "4096");
+        properties.setProperty("protocol.handshake.enabled", "true");
+
+        // Plugin configuration
+        properties.setProperty("plugins.directory", "plugins");
+        properties.setProperty("plugins.conflict.strategy", "prefer-builtin");
+
+        // Monitoring queue configuration
+        properties.setProperty("monitoring.watch.queue.capacity", "1000");
+        properties.setProperty("monitoring.watch.drop.on.full", "true");
+        properties.setProperty("monitoring.trace.queue.capacity", "2000");
+        properties.setProperty("monitoring.trace.drop.on.full", "true");
+        properties.setProperty("monitoring.trace.sample.rate", "1.0");
 
         // Monitoring configuration
         properties.setProperty("monitoring.metrics.enabled", "true");
@@ -95,6 +123,10 @@ public class ProductionConfig {
     }
 
     // Server configuration
+    public String getServerBindAddress() {
+        return getString("server.bind.address", "127.0.0.1");
+    }
+
     public int getServerPort() {
         return getInt("server.port", 3658);
     }
@@ -137,12 +169,92 @@ public class ProductionConfig {
         return getBoolean("security.audit.logging", true);
     }
 
+    public boolean isAuthorizationEnabled() {
+        return getBoolean("security.authorization.enabled", true);
+    }
+
+    public boolean isAnonymousViewerEnabled() {
+        return getBoolean("security.anonymous.viewer", true);
+    }
+
     public int getMaxCommandLength() {
         return getInt("security.max.command.length", 1000);
     }
 
     public String getAllowedCommands() {
         return getString("security.allowed.commands", "*");
+    }
+
+    public String getSecurityHmacSecret() {
+        return getString("security.hmac.secret", "");
+    }
+
+    public long getSecurityHmacTimestampWindowMs() {
+        return getLong("security.hmac.timestamp.window.ms", 30000);
+    }
+
+    public int getSecurityHmacNonceCacheSize() {
+        return getInt("security.hmac.nonce.cache.size", 10000);
+    }
+
+    // Protocol configuration
+    public String getProtocolMode() {
+        return getString("protocol.mode", "legacy");
+    }
+
+    public boolean isFramedProtocolEnabled() {
+        return "framed".equalsIgnoreCase(getProtocolMode());
+    }
+
+    public boolean isBinaryProtocolEnabled() {
+        return "binary".equalsIgnoreCase(getProtocolMode());
+    }
+
+    public boolean isStreamingEnabled() {
+        return getBoolean("protocol.streaming.enabled", true);
+    }
+
+    public int getFrameMaxPayload() {
+        return getInt("protocol.frame.max.payload", 4096);
+    }
+
+    public boolean isHandshakeEnabled() {
+        return getBoolean("protocol.handshake.enabled", true);
+    }
+
+    // Security mode configuration
+    public String getSecurityMode() {
+        return getString("security.mode", "off");
+    }
+
+    // Plugin configuration
+    public String getPluginDirectory() {
+        return getString("plugins.directory", "plugins");
+    }
+
+    public String getPluginConflictStrategy() {
+        return getString("plugins.conflict.strategy", "prefer-builtin");
+    }
+
+    // Monitoring queue configuration
+    public int getWatchQueueCapacity() {
+        return getInt("monitoring.watch.queue.capacity", 1000);
+    }
+
+    public boolean isWatchDropOnFull() {
+        return getBoolean("monitoring.watch.drop.on.full", true);
+    }
+
+    public int getTraceQueueCapacity() {
+        return getInt("monitoring.trace.queue.capacity", 2000);
+    }
+
+    public boolean isTraceDropOnFull() {
+        return getBoolean("monitoring.trace.drop.on.full", true);
+    }
+
+    public double getTraceSampleRate() {
+        return getDouble("monitoring.trace.sample.rate", 1.0);
     }
 
     // Monitoring configuration
@@ -181,6 +293,10 @@ public class ProductionConfig {
         if (runtimeValue != null) {
             return runtimeValue;
         }
+        String sysProp = System.getProperty("sleuth." + key);
+        if (sysProp != null) {
+            return sysProp;
+        }
         return properties.getProperty(key, defaultValue);
     }
 
@@ -195,6 +311,14 @@ public class ProductionConfig {
     public long getLong(String key, long defaultValue) {
         try {
             return Long.parseLong(getString(key, String.valueOf(defaultValue)));
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    public double getDouble(String key, double defaultValue) {
+        try {
+            return Double.parseDouble(getString(key, String.valueOf(defaultValue)));
         } catch (NumberFormatException e) {
             return defaultValue;
         }

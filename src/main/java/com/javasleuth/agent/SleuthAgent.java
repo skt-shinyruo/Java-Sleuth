@@ -21,6 +21,8 @@ public class SleuthAgent {
         System.out.println("Java-Sleuth agent attached successfully");
 
         try {
+            applyAgentArgs(agentArgs);
+
             // Initialize the class file transformer
             transformer = new SleuthClassFileTransformer();
             inst.addTransformer(transformer, true);
@@ -66,5 +68,37 @@ public class SleuthAgent {
         }
         ATTACHED.set(false);
         System.out.println("Java-Sleuth agent shutdown");
+    }
+
+    private static void applyAgentArgs(String agentArgs) {
+        if (agentArgs == null || agentArgs.trim().isEmpty()) {
+            return;
+        }
+
+        String[] pairs = agentArgs.split(";");
+        for (String pair : pairs) {
+            if (pair == null) {
+                continue;
+            }
+            String trimmed = pair.trim();
+            if (trimmed.isEmpty() || !trimmed.contains("=")) {
+                continue;
+            }
+
+            String[] kv = trimmed.split("=", 2);
+            String key = kv[0].trim();
+            String value = kv.length > 1 ? kv[1].trim() : "";
+            if (key.isEmpty() || value.isEmpty()) {
+                continue;
+            }
+
+            if ("configFile".equalsIgnoreCase(key)) {
+                System.setProperty("sleuth.config.file", value);
+            } else if (key.startsWith("sleuth.")) {
+                System.setProperty(key, value);
+            } else {
+                System.setProperty("sleuth." + key, value);
+            }
+        }
     }
 }

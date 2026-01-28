@@ -182,7 +182,6 @@ public class HealthCommand implements Command {
         return "Display comprehensive system health status with recommendations";
     }
 
-    @Override
     public String getUsage() {
         return "health";
     }

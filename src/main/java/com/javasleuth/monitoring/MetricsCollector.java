@@ -17,6 +17,12 @@ public class MetricsCollector implements MetricsCollectorMBean {
     private final AtomicLong serverStartTime = new AtomicLong(0);
     private final AtomicInteger activeConnections = new AtomicInteger(0);
 
+    // Protocol / plugin observability
+    private final AtomicLong handshakeCount = new AtomicLong(0);
+    private final AtomicLong binaryUpgradeCount = new AtomicLong(0);
+    private final AtomicLong pluginProviderCount = new AtomicLong(0);
+    private final AtomicLong pluginCommandCount = new AtomicLong(0);
+
     private final ConcurrentHashMap<String, AtomicLong> commandCounts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicLong> commandDurations = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicLong> errorCounts = new ConcurrentHashMap<>();
@@ -169,6 +175,22 @@ public class MetricsCollector implements MetricsCollectorMBean {
         errorCounts.computeIfAbsent(errorType, k -> new AtomicLong(0)).incrementAndGet();
     }
 
+    public void recordHandshake() {
+        handshakeCount.incrementAndGet();
+    }
+
+    public void recordBinaryUpgrade() {
+        binaryUpgradeCount.incrementAndGet();
+    }
+
+    public void recordPluginProviderLoaded() {
+        pluginProviderCount.incrementAndGet();
+    }
+
+    public void recordPluginCommandRegistered() {
+        pluginCommandCount.incrementAndGet();
+    }
+
     public String getHealthStatus() {
         MemoryUsage heapMemory = memoryBean.getHeapMemoryUsage();
         double heapUsedPercent = (double) heapMemory.getUsed() / heapMemory.getMax() * 100;
@@ -198,6 +220,10 @@ public class MetricsCollector implements MetricsCollectorMBean {
         metrics.append("Total Sessions: ").append(totalSessions.get()).append("\n");
         metrics.append("Active Sessions: ").append(activeSessions.size()).append("\n");
         metrics.append("Total Errors: ").append(totalErrors.get()).append("\n");
+        metrics.append("Handshakes: ").append(handshakeCount.get()).append("\n");
+        metrics.append("Binary Upgrades: ").append(binaryUpgradeCount.get()).append("\n");
+        metrics.append("Plugin Providers Loaded: ").append(pluginProviderCount.get()).append("\n");
+        metrics.append("Plugin Commands Registered: ").append(pluginCommandCount.get()).append("\n");
 
         // Memory metrics
         metrics.append("\n-- Memory Usage --\n");
@@ -332,6 +358,10 @@ public class MetricsCollector implements MetricsCollectorMBean {
         metricsMap.put("activeSessions", getActiveSessions());
         metricsMap.put("totalErrors", getTotalErrors());
         metricsMap.put("errorRate", getErrorRate());
+        metricsMap.put("handshakes", handshakeCount.get());
+        metricsMap.put("binaryUpgrades", binaryUpgradeCount.get());
+        metricsMap.put("pluginProvidersLoaded", pluginProviderCount.get());
+        metricsMap.put("pluginCommandsRegistered", pluginCommandCount.get());
         metricsMap.put("activeConnections", getActiveConnections());
         metricsMap.put("threadCount", getThreadCount());
         metricsMap.put("heapUsagePercent", getHeapUsagePercent());
@@ -376,6 +406,22 @@ public class MetricsCollector implements MetricsCollectorMBean {
     @Override
     public long getTotalErrors() {
         return totalErrors.get();
+    }
+
+    public long getHandshakeCount() {
+        return handshakeCount.get();
+    }
+
+    public long getBinaryUpgradeCount() {
+        return binaryUpgradeCount.get();
+    }
+
+    public long getPluginProviderCount() {
+        return pluginProviderCount.get();
+    }
+
+    public long getPluginCommandCount() {
+        return pluginCommandCount.get();
     }
 
     @Override

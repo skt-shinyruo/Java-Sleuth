@@ -1,13 +1,18 @@
 package com.javasleuth.monitor;
 
 import com.javasleuth.data.WatchResult;
+import com.javasleuth.config.ProductionConfig;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class WatchInterceptor {
     private static final ConcurrentHashMap<String, BlockingQueue<WatchResult>> watchQueues = new ConcurrentHashMap<>();
     private static volatile boolean enabled = false;
+    private static final ProductionConfig config = ProductionConfig.getInstance();
+    private static final AtomicLong publishedEvents = new AtomicLong(0);
+    private static final AtomicLong droppedEvents = new AtomicLong(0);
+    private static final AtomicLong evictedEvents = new AtomicLong(0);
 
     public static void registerWatch(String watchId, BlockingQueue<WatchResult> queue) {
         watchQueues.put(watchId, queue);
@@ -43,7 +48,7 @@ public class WatchInterceptor {
             result.setThreadName(Thread.currentThread().getName());
             result.setThreadId(Thread.currentThread().getId());
 
-            queue.offer(result);
+            offerWithPolicy(queue, result);
         } catch (Exception e) {
             // Silently ignore to avoid affecting the monitored application
         }
@@ -69,7 +74,7 @@ public class WatchInterceptor {
             result.setThreadName(Thread.currentThread().getName());
             result.setThreadId(Thread.currentThread().getId());
 
-            queue.offer(result);
+            offerWithPolicy(queue, result);
         } catch (Exception e) {
             // Silently ignore to avoid affecting the monitored application
         }
@@ -95,9 +100,32 @@ public class WatchInterceptor {
             result.setThreadName(Thread.currentThread().getName());
             result.setThreadId(Thread.currentThread().getId());
 
-            queue.offer(result);
+            offerWithPolicy(queue, result);
         } catch (Exception e) {
             // Silently ignore to avoid affecting the monitored application
+        }
+    }
+
+    private static void offerWithPolicy(BlockingQueue<WatchResult> queue, WatchResult result) {
+        boolean offered = queue.offer(result);
+        if (offered) {
+            publishedEvents.incrementAndGet();
+            return;
+        }
+
+        if (config.isWatchDropOnFull()) {
+            droppedEvents.incrementAndGet();
+            return;
+        }
+
+        // Drop oldest and try again
+        queue.poll();
+        evictedEvents.incrementAndGet();
+        boolean offered2 = queue.offer(result);
+        if (offered2) {
+            publishedEvents.incrementAndGet();
+        } else {
+            droppedEvents.incrementAndGet();
         }
     }
 
@@ -107,5 +135,17 @@ public class WatchInterceptor {
 
     public static int getActiveWatchCount() {
         return watchQueues.size();
+    }
+
+    public static long getPublishedEventCount() {
+        return publishedEvents.get();
+    }
+
+    public static long getDroppedEventCount() {
+        return droppedEvents.get();
+    }
+
+    public static long getEvictedEventCount() {
+        return evictedEvents.get();
     }
 }

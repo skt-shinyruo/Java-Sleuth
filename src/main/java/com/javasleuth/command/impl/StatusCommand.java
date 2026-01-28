@@ -1,6 +1,9 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
+import com.javasleuth.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.monitor.TraceInterceptor;
+import com.javasleuth.monitor.WatchInterceptor;
 import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.util.PerformanceOptimizer;
 import com.javasleuth.config.ProductionConfig;
@@ -13,10 +16,12 @@ import java.util.List;
 public class StatusCommand implements Command {
     private final Instrumentation instrumentation;
     private final MetricsCollector metricsCollector;
+    private final SleuthClassFileTransformer transformer;
 
-    public StatusCommand(Instrumentation instrumentation, MetricsCollector metricsCollector) {
+    public StatusCommand(Instrumentation instrumentation, MetricsCollector metricsCollector, SleuthClassFileTransformer transformer) {
         this.instrumentation = instrumentation;
         this.metricsCollector = metricsCollector;
+        this.transformer = transformer;
     }
 
     @Override
@@ -32,6 +37,11 @@ public class StatusCommand implements Command {
         status.append("Redefine Classes: ").append(instrumentation.isRedefineClassesSupported() ? "Supported" : "Not Supported").append("\n");
         status.append("Retransform Classes: ").append(instrumentation.isRetransformClassesSupported() ? "Supported" : "Not Supported").append("\n");
         status.append("Native Method Prefix: ").append(instrumentation.isNativeMethodPrefixSupported() ? "Supported" : "Not Supported").append("\n");
+        if (transformer != null) {
+            status.append("Active Enhancers: ").append(transformer.getActiveEnhancersCount()).append("\n");
+            status.append("Transformations: ").append(transformer.getTransformationCount()).append("\n");
+            status.append("Enhancement Failures: ").append(transformer.getEnhancementFailureCount()).append("\n");
+        }
 
         // System information
         RuntimeMXBean runtimeBean = ManagementFactory.getRuntimeMXBean();
@@ -79,15 +89,36 @@ public class StatusCommand implements Command {
         status.append("Error Rate: ").append(String.format("%.1f%%", metricsCollector.getErrorRate())).append("\n");
         status.append("Most Executed Command: ").append(metricsCollector.getMostExecutedCommand()).append("\n");
         status.append("Slowest Command: ").append(metricsCollector.getSlowestCommand()).append("\n");
+        status.append("Handshakes: ").append(metricsCollector.getHandshakeCount()).append("\n");
+        status.append("Binary Upgrades: ").append(metricsCollector.getBinaryUpgradeCount()).append("\n");
+        status.append("Plugin Providers Loaded: ").append(metricsCollector.getPluginProviderCount()).append("\n");
+        status.append("Plugin Commands Registered: ").append(metricsCollector.getPluginCommandCount()).append("\n");
+
+        // Watch/Trace observability
+        status.append("\n-- Watch/Trace Observability --\n");
+        status.append("Active Watches: ").append(WatchInterceptor.getActiveWatchCount()).append("\n");
+        status.append("Watch Published: ").append(WatchInterceptor.getPublishedEventCount()).append("\n");
+        status.append("Watch Dropped: ").append(WatchInterceptor.getDroppedEventCount()).append("\n");
+        status.append("Watch Evicted: ").append(WatchInterceptor.getEvictedEventCount()).append("\n");
+        status.append("Active Traces: ").append(TraceInterceptor.getActiveTraceCount()).append("\n");
+        status.append("Trace Published: ").append(TraceInterceptor.getPublishedEventCount()).append("\n");
+        status.append("Trace Dropped: ").append(TraceInterceptor.getDroppedEventCount()).append("\n");
+        status.append("Trace Evicted: ").append(TraceInterceptor.getEvictedEventCount()).append("\n");
+        status.append("Trace Sampled Out: ").append(TraceInterceptor.getSampledOutEventCount()).append("\n");
 
         // Configuration status
         ProductionConfig config = ProductionConfig.getInstance();
         status.append("\n-- Configuration Status --\n");
+        status.append("Bind Address: ").append(config.getServerBindAddress()).append("\n");
         status.append("Server Port: ").append(config.getServerPort()).append("\n");
         status.append("Max Connections: ").append(config.getMaxConnections()).append("\n");
         status.append("Cache TTL: ").append(config.getCacheTTL()).append("ms\n");
+        status.append("Protocol Mode: ").append(config.getProtocolMode()).append("\n");
+        status.append("Handshake Enabled: ").append(config.isHandshakeEnabled()).append("\n");
+        status.append("Security Mode: ").append(config.getSecurityMode()).append("\n");
         status.append("Input Validation: ").append(config.isInputValidationEnabled() ? "ENABLED" : "DISABLED").append("\n");
         status.append("Audit Logging: ").append(config.isAuditLoggingEnabled() ? "ENABLED" : "DISABLED").append("\n");
+        status.append("Authorization: ").append(config.isAuthorizationEnabled() ? "ENABLED" : "DISABLED").append("\n");
         status.append("Metrics Collection: ").append(config.isMetricsEnabled() ? "ENABLED" : "DISABLED").append("\n");
         status.append("JMX Monitoring: ").append(config.isJmxEnabled() ? "ENABLED" : "DISABLED").append("\n");
 
@@ -145,7 +176,6 @@ public class StatusCommand implements Command {
         return "Display comprehensive agent and system status with performance metrics";
     }
 
-    @Override
     public String getUsage() {
         return "status";
     }

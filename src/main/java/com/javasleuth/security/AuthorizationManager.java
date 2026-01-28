@@ -1,6 +1,7 @@
 package com.javasleuth.security;
 
 import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.command.CommandMeta;
 import com.javasleuth.security.AuthenticationManager.UserRole;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -116,9 +117,75 @@ public class AuthorizationManager {
     }
 
     /**
+     * Register/refresh command permissions dynamically (e.g. plugin commands).
+     * Merges with existing permissions using a "most restrictive wins" strategy.
+     */
+    public void registerOrUpdatePermission(String commandName, CommandMeta meta) {
+        if (commandName == null || meta == null) {
+            return;
+        }
+        registerOrUpdatePermission(
+            commandName,
+            meta.getRequiredRole(),
+            meta.isRequiresAudit(),
+            meta.getMaxExecutionsPerMinute(),
+            meta.isDangerous()
+        );
+    }
+
+    public void registerOrUpdatePermission(String commandName,
+                                           UserRole minimumRole,
+                                           boolean requiresAudit,
+                                           int maxExecutionsPerMinute,
+                                           boolean dangerous) {
+        if (commandName == null || commandName.trim().isEmpty() || minimumRole == null) {
+            return;
+        }
+        String key = commandName.toLowerCase();
+        int safeRateLimit = maxExecutionsPerMinute > 0 ? maxExecutionsPerMinute : 60;
+
+        UserRole effectiveRole = minimumRole;
+        if (dangerous && effectiveRole.getLevel() < UserRole.ADMIN.getLevel()) {
+            effectiveRole = UserRole.ADMIN;
+        }
+        final UserRole finalRole = effectiveRole;
+        final boolean finalAudit = requiresAudit;
+        final boolean finalDangerous = dangerous;
+        final int finalRateLimit = safeRateLimit;
+
+        commandPermissions.compute(key, (k, existing) -> {
+            if (existing == null) {
+                return new CommandPermission(finalRole, finalAudit, finalRateLimit, finalDangerous);
+            }
+
+            UserRole mergedRole = existing.minimumRole;
+            if (finalRole.getLevel() > existing.minimumRole.getLevel()) {
+                mergedRole = finalRole;
+            }
+
+            boolean mergedAudit = existing.requiresAudit || finalAudit;
+            boolean mergedDangerous = existing.dangerous || finalDangerous;
+
+            int mergedRate;
+            if (existing.maxExecutionsPerMinute <= 0) {
+                mergedRate = finalRateLimit;
+            } else if (finalRateLimit <= 0) {
+                mergedRate = existing.maxExecutionsPerMinute;
+            } else {
+                mergedRate = Math.min(existing.maxExecutionsPerMinute, finalRateLimit);
+            }
+
+            return new CommandPermission(mergedRole, mergedAudit, mergedRate, mergedDangerous);
+        });
+    }
+
+    /**
      * Check if user has permission to execute command
      */
     public AuthorizationResult authorize(String sessionId, String command, String[] args) {
+        if (!config.isAuthorizationEnabled()) {
+            return AuthorizationResult.allowed();
+        }
         // Validate session first
         AuthenticationManager.SessionValidationResult sessionResult = authManager.validateSession(sessionId);
         if (!sessionResult.isValid()) {

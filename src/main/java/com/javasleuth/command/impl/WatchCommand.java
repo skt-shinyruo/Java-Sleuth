@@ -1,6 +1,10 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
+import com.javasleuth.command.StreamCommand;
+import com.javasleuth.command.StreamSink;
+import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.enhancement.ClassEnhancer;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.enhancement.WatchEnhancer;
 import com.javasleuth.monitor.WatchInterceptor;
@@ -12,20 +16,36 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
 
-public class WatchCommand implements Command {
+public class WatchCommand implements StreamCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
+    private final ProductionConfig config;
     private final ConcurrentHashMap<String, WatchSession> activeSessions = new ConcurrentHashMap<>();
 
     public WatchCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
+        this.config = ProductionConfig.getInstance();
     }
 
     @Override
     public String execute(String[] args) throws Exception {
+        return runWatch(args, null);
+    }
+
+    @Override
+    public void executeStream(String[] args, StreamSink sink) throws Exception {
+        runWatch(args, sink);
+    }
+
+    private String runWatch(String[] args, StreamSink sink) throws Exception {
         if (args.length < 3) {
-            return getHelp();
+            String help = getHelp();
+            if (sink != null) {
+                sink.error(help);
+                return "";
+            }
+            return help;
         }
 
         String classPattern = args[1];
@@ -68,12 +88,12 @@ public class WatchCommand implements Command {
         }
 
         return startWatching(classPattern, methodPattern, captureParams, captureReturn,
-                           captureException, maxCount, timeoutSeconds);
+                           captureException, maxCount, timeoutSeconds, sink);
     }
 
     private String startWatching(String classPattern, String methodPattern,
                                boolean captureParams, boolean captureReturn, boolean captureException,
-                               int maxCount, long timeoutSeconds) throws Exception {
+                               int maxCount, long timeoutSeconds, StreamSink sink) throws Exception {
 
         // Find matching classes
         Class<?>[] loadedClasses = instrumentation.getAllLoadedClasses();
@@ -91,7 +111,7 @@ public class WatchCommand implements Command {
         }
 
         String watchId = UUID.randomUUID().toString();
-        BlockingQueue<WatchResult> resultQueue = new LinkedBlockingQueue<>();
+        BlockingQueue<WatchResult> resultQueue = new LinkedBlockingQueue<>(config.getWatchQueueCapacity());
 
         // Register the watch
         WatchInterceptor.registerWatch(watchId, resultQueue);
@@ -106,7 +126,7 @@ public class WatchCommand implements Command {
         instrumentation.retransformClasses(targetClass);
 
         // Create watch session
-        WatchSession session = new WatchSession(watchId, targetClassName, methodPattern, resultQueue);
+        WatchSession session = new WatchSession(watchId, targetClassName, methodPattern, resultQueue, enhancer);
         activeSessions.put(watchId, session);
 
         StringBuilder result = new StringBuilder();
@@ -120,6 +140,11 @@ public class WatchCommand implements Command {
         result.append("Max events: ").append(maxCount).append(", Timeout: ").append(timeoutSeconds).append("s\n");
         result.append("Press Ctrl+C to stop watching\n\n");
 
+        if (sink != null) {
+            sink.send(result.toString().trim());
+            result.setLength(0);
+        }
+
         // Collect results
         int eventCount = 0;
         long startTime = System.currentTimeMillis();
@@ -129,24 +154,24 @@ public class WatchCommand implements Command {
             while (eventCount < maxCount) {
                 long remainingTime = timeoutMs - (System.currentTimeMillis() - startTime);
                 if (remainingTime <= 0) {
-                    result.append("\nWatch timeout reached\n");
+                    appendOrSend(result, sink, "\nWatch timeout reached");
                     break;
                 }
 
                 WatchResult watchResult = resultQueue.poll(Math.min(remainingTime, 1000), TimeUnit.MILLISECONDS);
                 if (watchResult != null) {
-                    result.append(formatWatchResult(watchResult, ++eventCount)).append("\n");
+                    appendOrSend(result, sink, formatWatchResult(watchResult, ++eventCount));
                 } else {
                     // Check if we should continue (no results for 1 second)
                     if (System.currentTimeMillis() - startTime > timeoutMs) {
-                        result.append("\nWatch timeout reached\n");
+                        appendOrSend(result, sink, "\nWatch timeout reached");
                         break;
                     }
                 }
             }
 
             if (eventCount >= maxCount) {
-                result.append("\nMaximum event count reached\n");
+                appendOrSend(result, sink, "\nMaximum event count reached");
             }
 
         } finally {
@@ -154,7 +179,12 @@ public class WatchCommand implements Command {
             stopWatch(watchId);
         }
 
-        result.append("Watch completed. Total events: ").append(eventCount);
+        String summary = "Watch completed. Total events: " + eventCount;
+        if (sink != null) {
+            sink.close(summary);
+            return "";
+        }
+        result.append(summary);
         return result.toString();
     }
 
@@ -163,7 +193,7 @@ public class WatchCommand implements Command {
         if (session != null) {
             try {
                 // Remove enhancer
-                transformer.removeEnhancer(session.getClassName());
+                transformer.removeEnhancer(session.getClassName(), session.getEnhancer());
 
                 // Retransform class back to original
                 Class<?> targetClass = Class.forName(session.getClassName());
@@ -184,6 +214,14 @@ public class WatchCommand implements Command {
         sb.append(String.format("%s ", java.time.LocalTime.now().toString()));
         sb.append(result.toString());
         return sb.toString();
+    }
+
+    private void appendOrSend(StringBuilder result, StreamSink sink, String text) {
+        if (sink != null) {
+            sink.send(text);
+        } else {
+            result.append(text).append("\n");
+        }
     }
 
     private boolean matchesPattern(String className, String pattern) {
@@ -221,17 +259,20 @@ public class WatchCommand implements Command {
         private final String className;
         private final String methodPattern;
         private final BlockingQueue<WatchResult> resultQueue;
+        private final ClassEnhancer enhancer;
 
-        public WatchSession(String watchId, String className, String methodPattern, BlockingQueue<WatchResult> resultQueue) {
+        public WatchSession(String watchId, String className, String methodPattern, BlockingQueue<WatchResult> resultQueue, ClassEnhancer enhancer) {
             this.watchId = watchId;
             this.className = className;
             this.methodPattern = methodPattern;
             this.resultQueue = resultQueue;
+            this.enhancer = enhancer;
         }
 
         public String getWatchId() { return watchId; }
         public String getClassName() { return className; }
         public String getMethodPattern() { return methodPattern; }
         public BlockingQueue<WatchResult> getResultQueue() { return resultQueue; }
+        public ClassEnhancer getEnhancer() { return enhancer; }
     }
 }

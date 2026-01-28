@@ -1,6 +1,10 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
+import com.javasleuth.command.StreamCommand;
+import com.javasleuth.command.StreamSink;
+import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.enhancement.ClassEnhancer;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.enhancement.TraceEnhancer;
 import com.javasleuth.monitor.TraceInterceptor;
@@ -12,20 +16,36 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
 
-public class TraceCommand implements Command {
+public class TraceCommand implements StreamCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
+    private final ProductionConfig config;
     private final ConcurrentHashMap<String, TraceSession> activeSessions = new ConcurrentHashMap<>();
 
     public TraceCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
+        this.config = ProductionConfig.getInstance();
     }
 
     @Override
     public String execute(String[] args) throws Exception {
+        return runTrace(args, null);
+    }
+
+    @Override
+    public void executeStream(String[] args, StreamSink sink) throws Exception {
+        runTrace(args, sink);
+    }
+
+    private String runTrace(String[] args, StreamSink sink) throws Exception {
         if (args.length < 3) {
-            return getHelp();
+            String help = getHelp();
+            if (sink != null) {
+                sink.error(help);
+                return "";
+            }
+            return help;
         }
 
         String classPattern = args[1];
@@ -62,11 +82,11 @@ public class TraceCommand implements Command {
             }
         }
 
-        return startTracing(classPattern, methodPattern, maxDepth, maxCount, timeoutSeconds);
+        return startTracing(classPattern, methodPattern, maxDepth, maxCount, timeoutSeconds, sink);
     }
 
     private String startTracing(String classPattern, String methodPattern,
-                              int maxDepth, int maxCount, long timeoutSeconds) throws Exception {
+                              int maxDepth, int maxCount, long timeoutSeconds, StreamSink sink) throws Exception {
 
         // Find matching classes
         Class<?>[] loadedClasses = instrumentation.getAllLoadedClasses();
@@ -84,7 +104,7 @@ public class TraceCommand implements Command {
         }
 
         String traceId = UUID.randomUUID().toString();
-        BlockingQueue<TraceResult> resultQueue = new LinkedBlockingQueue<>();
+        BlockingQueue<TraceResult> resultQueue = new LinkedBlockingQueue<>(config.getTraceQueueCapacity());
 
         // Register the trace
         TraceInterceptor.registerTrace(traceId, resultQueue);
@@ -98,7 +118,7 @@ public class TraceCommand implements Command {
         instrumentation.retransformClasses(targetClass);
 
         // Create trace session
-        TraceSession session = new TraceSession(traceId, targetClassName, methodPattern, resultQueue);
+        TraceSession session = new TraceSession(traceId, targetClassName, methodPattern, resultQueue, enhancer);
         activeSessions.put(traceId, session);
 
         StringBuilder result = new StringBuilder();
@@ -107,6 +127,11 @@ public class TraceCommand implements Command {
         result.append("Max depth: ").append(maxDepth).append(", Max events: ").append(maxCount);
         result.append(", Timeout: ").append(timeoutSeconds).append("s\n");
         result.append("Press Ctrl+C to stop tracing\n\n");
+
+        if (sink != null) {
+            sink.send(result.toString().trim());
+            result.setLength(0);
+        }
 
         // Collect results
         int eventCount = 0;
@@ -117,26 +142,26 @@ public class TraceCommand implements Command {
             while (eventCount < maxCount) {
                 long remainingTime = timeoutMs - (System.currentTimeMillis() - startTime);
                 if (remainingTime <= 0) {
-                    result.append("\nTrace timeout reached\n");
+                    appendOrSend(result, sink, "\nTrace timeout reached");
                     break;
                 }
 
                 TraceResult traceResult = resultQueue.poll(Math.min(remainingTime, 1000), TimeUnit.MILLISECONDS);
                 if (traceResult != null) {
                     if (traceResult.getDepth() <= maxDepth) {
-                        result.append(formatTraceResult(traceResult, ++eventCount)).append("\n");
+                        appendOrSend(result, sink, formatTraceResult(traceResult, ++eventCount));
                     }
                 } else {
                     // Check if we should continue (no results for 1 second)
                     if (System.currentTimeMillis() - startTime > timeoutMs) {
-                        result.append("\nTrace timeout reached\n");
+                        appendOrSend(result, sink, "\nTrace timeout reached");
                         break;
                     }
                 }
             }
 
             if (eventCount >= maxCount) {
-                result.append("\nMaximum event count reached\n");
+                appendOrSend(result, sink, "\nMaximum event count reached");
             }
 
         } finally {
@@ -144,7 +169,12 @@ public class TraceCommand implements Command {
             stopTrace(traceId);
         }
 
-        result.append("Trace completed. Total events: ").append(eventCount);
+        String summary = "Trace completed. Total events: " + eventCount;
+        if (sink != null) {
+            sink.close(summary);
+            return "";
+        }
+        result.append(summary);
         return result.toString();
     }
 
@@ -153,7 +183,7 @@ public class TraceCommand implements Command {
         if (session != null) {
             try {
                 // Remove enhancer
-                transformer.removeEnhancer(session.getClassName());
+                transformer.removeEnhancer(session.getClassName(), session.getEnhancer());
 
                 // Retransform class back to original
                 Class<?> targetClass = Class.forName(session.getClassName());
@@ -174,6 +204,14 @@ public class TraceCommand implements Command {
         sb.append(String.format("%s ", java.time.LocalTime.now().toString()));
         sb.append(result.toString());
         return sb.toString();
+    }
+
+    private void appendOrSend(StringBuilder result, StreamSink sink, String text) {
+        if (sink != null) {
+            sink.send(text);
+        } else {
+            result.append(text).append("\n");
+        }
     }
 
     private boolean matchesPattern(String className, String pattern) {
@@ -209,17 +247,20 @@ public class TraceCommand implements Command {
         private final String className;
         private final String methodPattern;
         private final BlockingQueue<TraceResult> resultQueue;
+        private final ClassEnhancer enhancer;
 
-        public TraceSession(String traceId, String className, String methodPattern, BlockingQueue<TraceResult> resultQueue) {
+        public TraceSession(String traceId, String className, String methodPattern, BlockingQueue<TraceResult> resultQueue, ClassEnhancer enhancer) {
             this.traceId = traceId;
             this.className = className;
             this.methodPattern = methodPattern;
             this.resultQueue = resultQueue;
+            this.enhancer = enhancer;
         }
 
         public String getTraceId() { return traceId; }
         public String getClassName() { return className; }
         public String getMethodPattern() { return methodPattern; }
         public BlockingQueue<TraceResult> getResultQueue() { return resultQueue; }
+        public ClassEnhancer getEnhancer() { return enhancer; }
     }
 }

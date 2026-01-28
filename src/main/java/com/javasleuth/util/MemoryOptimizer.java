@@ -1,7 +1,6 @@
 package com.javasleuth.util;
 
 import com.javasleuth.config.ProductionConfig;
-import com.javasleuth.monitoring.MetricsCollector;
 import java.lang.management.*;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Executors;
@@ -15,7 +14,6 @@ import javax.management.*;
 public class MemoryOptimizer implements MemoryOptimizerMBean {
     private static MemoryOptimizer instance;
     private final ProductionConfig config;
-    private final MetricsCollector metricsCollector;
     private final MemoryMXBean memoryBean;
     private final ScheduledExecutorService memoryMonitor;
 
@@ -31,7 +29,6 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
 
     private MemoryOptimizer() {
         this.config = ProductionConfig.getInstance();
-        this.metricsCollector = MetricsCollector.getInstance();
         this.memoryBean = ManagementFactory.getMemoryMXBean();
 
         // Create memory monitoring thread
@@ -434,18 +431,4 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
         System.out.println("Memory optimizer shutdown complete");
     }
 
-    // JMX MBean interface
-    public interface MemoryOptimizerMBean {
-        double getHeapUsagePercent();
-        long getHeapUsedBytes();
-        long getHeapMaxBytes();
-        long getNonHeapUsedBytes();
-        boolean isAutoGcEnabled();
-        void setAutoGcEnabled(boolean enabled);
-        long getGcCooldownMs();
-        void setGcCooldownMs(long cooldownMs);
-        void forceGarbageCollection();
-        void clearAllCaches();
-        String getMemoryHealth();
-    }
 }

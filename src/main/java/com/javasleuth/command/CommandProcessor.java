@@ -1,24 +1,39 @@
 package com.javasleuth.command;
 
-import com.javasleuth.command.impl.*;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
-import com.javasleuth.util.PerformanceOptimizer;
 import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.security.AuditLogger;
+import com.javasleuth.security.AuthenticationManager;
+import com.javasleuth.security.AuthorizationManager;
 import com.javasleuth.security.InputValidator;
+import com.javasleuth.security.RequestSecurityManager;
+import com.javasleuth.util.PerformanceOptimizer;
+import com.javasleuth.command.protocol.BinaryFrame;
+import com.javasleuth.command.protocol.BinaryFrameCodec;
+import com.javasleuth.command.protocol.Frame;
+import com.javasleuth.command.protocol.FrameCodec;
 import java.io.*;
 import java.lang.instrument.Instrumentation;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.concurrent.*;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class CommandProcessor {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
-    private final ConcurrentHashMap<String, Command> commands;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicLong commandCounter = new AtomicLong(0);
     private final ExecutorService clientExecutor;
@@ -26,15 +41,23 @@ public class CommandProcessor {
     private final ProductionConfig config;
     private final AuditLogger auditLogger;
     private final InputValidator inputValidator;
+    private final AuthenticationManager authenticationManager;
+    private final AuthorizationManager authorizationManager;
+    private final RequestSecurityManager requestSecurityManager;
+    private final CommandRegistry registry;
+    private final CommandPipeline pipeline;
+    private final ConcurrentHashMap<String, String> sessionByClient = new ConcurrentHashMap<>();
     private ServerSocket serverSocket;
 
     public CommandProcessor(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
-        this.commands = new ConcurrentHashMap<>();
         this.config = ProductionConfig.getInstance();
         this.auditLogger = AuditLogger.getInstance();
         this.inputValidator = new InputValidator();
+        this.authenticationManager = AuthenticationManager.getInstance();
+        this.authorizationManager = AuthorizationManager.getInstance();
+        this.requestSecurityManager = RequestSecurityManager.getInstance();
 
         this.clientExecutor = new ThreadPoolExecutor(
             config.getThreadPoolCoreSize(),
@@ -49,51 +72,10 @@ public class CommandProcessor {
             new ThreadPoolExecutor.CallerRunsPolicy()
         );
         this.metricsCollector = new MetricsCollector();
-        initializeCommands();
+        this.registry = new CommandRegistry(instrumentation, transformer, metricsCollector, config, auditLogger);
+        this.pipeline = new CommandPipeline(inputValidator, authorizationManager, config);
 
-        auditLogger.logSystemEvent("COMMAND_PROCESSOR_INIT", "Command processor initialized with " + commands.size() + " commands");
-    }
-
-    private void initializeCommands() {
-        // Existing commands
-        commands.put("dashboard", new DashboardCommand(instrumentation));
-        commands.put("thread", new ThreadCommand(instrumentation));
-        commands.put("sc", new SearchClassCommand(instrumentation));
-        commands.put("sm", new SearchMethodCommand(instrumentation));
-        commands.put("watch", new WatchCommand(instrumentation, transformer));
-        commands.put("trace", new TraceCommand(instrumentation, transformer));
-        commands.put("redefine", new RedefineCommand(instrumentation));
-        commands.put("mc", new MemoryCompilerCommand());
-        commands.put("retransform", new RetransformCommand(instrumentation));
-
-        // Phase 1 - Critical Performance Commands
-        commands.put("profiler", new ProfilerCommand(instrumentation));
-        commands.put("monitor", new MonitorCommand(instrumentation, transformer));
-        commands.put("stack", new StackCommand(instrumentation));
-
-        // Phase 4 - High Priority Commands
-        commands.put("jvm", new JvmCommand(instrumentation));
-        commands.put("sysprop", new SysPropCommand(instrumentation));
-        commands.put("sysenv", new SysEnvCommand(instrumentation));
-        commands.put("vmoption", new VmOptionCommand(instrumentation));
-        commands.put("memory", new MemoryCommand(instrumentation));
-        commands.put("heapdump", new HeapDumpCommand(instrumentation));
-
-        // Phase 5 - Critical Production Commands
-        commands.put("jad", new JadCommand(instrumentation));
-        commands.put("classloader", new ClassLoaderCommand(instrumentation));
-        commands.put("mbean", new MBeanCommand(instrumentation));
-
-        // System commands
-        commands.put("help", new HelpCommand(commands));
-        commands.put("quit", new QuitCommand());
-
-        // Production monitoring commands
-        commands.put("health", new HealthCommand(metricsCollector));
-        commands.put("metrics", new MetricsCommand(metricsCollector));
-        commands.put("status", new StatusCommand(instrumentation, metricsCollector));
-        commands.put("config", new ConfigCommand(config));
-        commands.put("audit", new AuditCommand(auditLogger));
+        auditLogger.logSystemEvent("COMMAND_PROCESSOR_INIT", "Command processor initialized with " + registry.getCommandMap().size() + " commands");
     }
 
     public void start() {
@@ -104,11 +86,19 @@ public class CommandProcessor {
 
         try {
             int port = config.getServerPort();
-            serverSocket = new ServerSocket(port);
+            serverSocket = new ServerSocket();
+            String bindAddress = config.getServerBindAddress();
+            serverSocket.bind(new InetSocketAddress(bindAddress, port));
             serverSocket.setSoTimeout(config.getSocketTimeout());
-            System.out.println("🚀 Java-Sleuth listening on port " + port);
+            System.out.println("🚀 Java-Sleuth listening on " + bindAddress + ":" + port);
             metricsCollector.recordServerStartup();
             auditLogger.logSystemEvent("SERVER_START", "Server started on port " + port);
+
+            if (!isLoopbackBind(bindAddress) && "off".equalsIgnoreCase(config.getSecurityMode())) {
+                System.err.println("⚠️ SECURITY WARNING: security.mode=off with non-loopback bind address may expose plaintext auth");
+                auditLogger.logSystemEvent("SECURITY_WARNING",
+                    "security.mode=off with bind=" + bindAddress + " may expose plaintext auth; consider security.mode=hmac or bind to 127.0.0.1");
+            }
 
             // Add shutdown hook for graceful termination
             addShutdownHook();
@@ -157,9 +147,19 @@ public class CommandProcessor {
         long sessionStart = System.currentTimeMillis();
         String clientId = "client-" + commandCounter.incrementAndGet();
         String clientInfo = clientSocket.getRemoteSocketAddress().toString();
+        String sessionId = null;
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-             PrintWriter writer = new PrintWriter(clientSocket.getOutputStream(), true)) {
+        AuthenticationManager.AuthenticationResult sessionResult =
+            authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, clientInfo);
+        if (sessionResult.isSuccess()) {
+            sessionId = sessionResult.getSessionId();
+            sessionByClient.put(clientId, sessionId);
+        }
+
+        boolean pendingBinaryUpgrade = false;
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8));
+             PrintWriter writer = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8), true)) {
 
             writer.println("Welcome to Java-Sleuth! Type 'help' for available commands.");
             metricsCollector.recordSessionStart(clientId);
@@ -172,63 +172,146 @@ public class CommandProcessor {
                     continue;
                 }
 
-                long commandStart = System.currentTimeMillis();
-                String[] parts = line.split("\\s+");
-                String commandName = parts[0].toLowerCase();
-
-                // Enhanced input validation and security
-                InputValidator.ValidationResult validation = inputValidator.validateCommand(clientId, clientInfo, commandName, parts);
-                if (!validation.isValid()) {
-                    writer.println("Security validation failed: " + validation.getMessage());
-                    metricsCollector.recordError("validation_failed");
+                if (config.isHandshakeEnabled() && line.toUpperCase().startsWith("HELLO")) {
+                    String selected = handleHello(line, writer);
+                    pendingBinaryUpgrade = "binary".equalsIgnoreCase(selected);
                     continue;
                 }
 
-                Command command = commands.get(commandName);
-                if (command != null) {
-                    boolean success = false;
-                    try {
-                        metricsCollector.recordCommandStart(commandName);
-
-                        // Use caching for appropriate commands (not for dynamic data)
-                        String cacheKey = shouldCache(commandName) ? commandName + ":" + String.join(":", parts) : null;
-                        String result;
-
-                        if (cacheKey != null) {
-                            result = PerformanceOptimizer.getCachedResult(cacheKey, () -> {
-                                try {
-                                    return command.execute(parts);
-                                } catch (Exception e) {
-                                    throw new RuntimeException(e);
-                                }
-                            });
-                        } else {
-                            result = command.execute(parts);
-                        }
-
-                        // Sanitize output for security
-                        InputValidator.ValidationResult outputValidation = inputValidator.sanitizeOutput(result);
-                        String sanitizedResult = outputValidation.getSanitizedOutput() != null ? outputValidation.getSanitizedOutput() : result;
-
-                        writer.println(sanitizedResult);
-                        long duration = System.currentTimeMillis() - commandStart;
-                        metricsCollector.recordCommandComplete(commandName, duration);
-                        success = true;
-
-                        // Log successful command execution
-                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, true);
-
-                        if ("quit".equals(commandName)) {
-                            break;
-                        }
-                    } catch (Exception e) {
-                        writer.println("Error executing command: " + e.getMessage());
-                        metricsCollector.recordError("command_execution");
-                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
+                if (pendingBinaryUpgrade) {
+                    if ("UPGRADE BINARY".equalsIgnoreCase(line)) {
+                        writer.println("OK");
+                        writer.flush();
+                        metricsCollector.recordBinaryUpgrade();
+                        handleBinaryClient(
+                            new DataInputStream(clientSocket.getInputStream()),
+                            new DataOutputStream(clientSocket.getOutputStream()),
+                            clientId,
+                            clientInfo,
+                            sessionId
+                        );
+                        break;
+                    } else {
+                        sendError(writer, false, "Handshake pending. Send: UPGRADE BINARY");
+                        continue;
                     }
+                }
+
+                long commandStart = System.currentTimeMillis();
+                final boolean framedRequested;
+                final boolean streamRequested;
+                final String raw;
+                if (line.startsWith("CMD ")) {
+                    framedRequested = true;
+                    streamRequested = false;
+                    raw = line.substring(4);
+                } else if (line.startsWith("STREAM ")) {
+                    framedRequested = true;
+                    streamRequested = true;
+                    raw = line.substring(7);
                 } else {
-                    writer.println("Unknown command: " + commandName + ". Type 'help' for available commands.");
+                    framedRequested = false;
+                    streamRequested = false;
+                    raw = line;
+                }
+
+                String verifySessionId = sessionByClient.getOrDefault(clientId, sessionId);
+                RequestSecurityManager.VerificationResult verified = requestSecurityManager.verifyAndExtract(verifySessionId, raw);
+                if (!verified.isOk()) {
+                    sendError(writer, framedRequested, verified.getError());
+                    metricsCollector.recordError("security_verify");
+                    continue;
+                }
+
+                String[] parts = CommandParser.parse(verified.getCommand());
+                if (parts.length == 0) {
+                    continue;
+                }
+
+                String commandName = parts[0].toLowerCase();
+                CommandRegistry.Entry entry = registry.getEntry(commandName);
+                if (entry == null) {
+                    sendError(writer, framedRequested, "Unknown command: " + commandName + ". Type 'help' for available commands.");
                     metricsCollector.recordError("unknown_command");
+                    continue;
+                }
+
+                String currentSessionId = sessionByClient.getOrDefault(clientId, sessionId);
+                if (currentSessionId == null && !"auth".equals(commandName)) {
+                    sendError(writer, framedRequested, "Authentication required. Use: auth <user> <password>");
+                    metricsCollector.recordError("unauthorized");
+                    continue;
+                }
+                CommandContext context = new CommandContext(clientId, clientInfo, currentSessionId, framedRequested, streamRequested);
+                CommandContextHolder.set(context);
+
+                try {
+                    metricsCollector.recordCommandStart(commandName);
+                    if (streamRequested && config.isStreamingEnabled() && entry.getMeta().isStreamable()
+                        && entry.getCommand() instanceof StreamCommand) {
+                        String precheck = pipeline.validateAndAuthorize(commandName, parts, context);
+                        if (precheck != null) {
+                            sendError(writer, framedRequested, precheck);
+                            auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
+                            continue;
+                        }
+                        StreamCommand streamCommand = (StreamCommand) entry.getCommand();
+                        StreamSink sink = new StreamSink() {
+                            @Override
+                            public void send(String data) {
+                                sendData(writer, framedRequested, data);
+                            }
+
+                            @Override
+                            public void close(String summary) {
+                                if (summary != null && !summary.isEmpty()) {
+                                    sendData(writer, framedRequested, summary);
+                                }
+                                if (framedRequested) {
+                                    FrameCodec.writeFrame(writer, Frame.end(), config.getFrameMaxPayload());
+                                }
+                            }
+
+                            @Override
+                            public void error(String message) {
+                                sendError(writer, framedRequested, message);
+                            }
+                        };
+
+                        streamCommand.executeStream(parts, sink);
+                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, true);
+                    } else {
+                        CommandPipeline.Result result = pipeline.execute(entry, parts, context);
+                        if (result.isSuccess()) {
+                            sendData(writer, framedRequested, result.getOutput());
+                            if (framedRequested) {
+                                FrameCodec.writeFrame(writer, Frame.end(), config.getFrameMaxPayload());
+                            }
+                            auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, true);
+                        } else {
+                            sendError(writer, framedRequested, result.getError());
+                            auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
+                        }
+                    }
+
+                    long duration = System.currentTimeMillis() - commandStart;
+                    metricsCollector.recordCommandComplete(commandName, duration);
+
+                    if ("quit".equals(commandName)) {
+                        break;
+                    }
+                } catch (Exception e) {
+                    sendError(writer, framedRequested, "Error executing command: " + e.getMessage());
+                    metricsCollector.recordError("command_execution");
+                    auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
+                } finally {
+                    if (context.getSessionId() != null && !context.getSessionId().equals(currentSessionId)) {
+                        if (currentSessionId != null) {
+                            authenticationManager.logout(currentSessionId);
+                        }
+                        sessionByClient.put(clientId, context.getSessionId());
+                    }
+                    CommandContextHolder.clear();
                 }
             }
         } catch (IOException e) {
@@ -241,31 +324,291 @@ public class CommandProcessor {
                 metricsCollector.recordSessionEnd(clientId, sessionDuration);
                 auditLogger.logConnectionEvent(clientId, clientInfo, "DISCONNECT");
                 metricsCollector.recordClientDisconnection();
+                String activeSession = sessionByClient.remove(clientId);
+                if (activeSession != null) {
+                    authenticationManager.logout(activeSession);
+                }
             } catch (IOException e) {
                 // Ignore close errors
             }
         }
     }
 
-    private boolean shouldCache(String commandName) {
-        // Cache static information but not dynamic data
-        switch (commandName.toLowerCase()) {
-            case "help":
-            case "sc": // Search class
-            case "sm": // Search method
-            case "jad": // Decompile
-            case "classloader":
-                return true;
-            case "dashboard":
-            case "thread":
-            case "memory":
-            case "jvm":
-            case "health":
-            case "metrics":
-            case "status":
-                return false; // Dynamic data shouldn't be cached
-            default:
-                return false;
+    private void handleBinaryClient(DataInputStream in,
+                                    DataOutputStream out,
+                                    String clientId,
+                                    String clientInfo,
+                                    String baseSessionId) throws IOException {
+        int maxPayloadBytes = config.getFrameMaxPayload();
+
+        while (running.get()) {
+            BinaryFrame frame;
+            try {
+                frame = BinaryFrameCodec.readFrame(in, maxPayloadBytes);
+            } catch (IOException e) {
+                metricsCollector.recordError("protocol_binary_decode");
+                throw e;
+            }
+
+            if (frame == null) {
+                break;
+            }
+
+            if (frame.getType() == BinaryFrame.Type.PING) {
+                BinaryFrameCodec.writeFrame(out, BinaryFrame.pong(), maxPayloadBytes);
+                continue;
+            }
+
+            if (frame.getType() != BinaryFrame.Type.REQUEST) {
+                continue;
+            }
+
+            long commandStart = System.currentTimeMillis();
+            boolean framedRequested = true;
+            boolean streamRequested = frame.isStream();
+            String raw = frame.getPayloadUtf8();
+
+            String verifySessionId = sessionByClient.getOrDefault(clientId, baseSessionId);
+            RequestSecurityManager.VerificationResult verified = requestSecurityManager.verifyAndExtract(verifySessionId, raw);
+            if (!verified.isOk()) {
+                sendErrorBinary(out, verified.getError(), maxPayloadBytes);
+                metricsCollector.recordError("security_verify");
+                continue;
+            }
+
+            String[] parts = CommandParser.parse(verified.getCommand());
+            if (parts.length == 0) {
+                continue;
+            }
+
+            String commandName = parts[0].toLowerCase();
+            CommandRegistry.Entry entry = registry.getEntry(commandName);
+            if (entry == null) {
+                sendErrorBinary(out, "Unknown command: " + commandName + ". Type 'help' for available commands.", maxPayloadBytes);
+                metricsCollector.recordError("unknown_command");
+                continue;
+            }
+
+            String currentSessionId = sessionByClient.getOrDefault(clientId, baseSessionId);
+            if (currentSessionId == null && !"auth".equals(commandName)) {
+                sendErrorBinary(out, "Authentication required. Use: auth <user> <password>", maxPayloadBytes);
+                metricsCollector.recordError("unauthorized");
+                continue;
+            }
+
+            CommandContext context = new CommandContext(clientId, clientInfo, currentSessionId, framedRequested, streamRequested);
+            CommandContextHolder.set(context);
+
+            try {
+                metricsCollector.recordCommandStart(commandName);
+                if (streamRequested && config.isStreamingEnabled() && entry.getMeta().isStreamable()
+                    && entry.getCommand() instanceof StreamCommand) {
+                    String precheck = pipeline.validateAndAuthorize(commandName, parts, context);
+                    if (precheck != null) {
+                        sendErrorBinary(out, precheck, maxPayloadBytes);
+                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
+                        continue;
+                    }
+
+                    StreamCommand streamCommand = (StreamCommand) entry.getCommand();
+                    StreamSink sink = new StreamSink() {
+                        @Override
+                        public void send(String data) {
+                            try {
+                                sendDataBinary(out, data, maxPayloadBytes);
+                            } catch (IOException e) {
+                                metricsCollector.recordError("protocol_binary_write");
+                            }
+                        }
+
+                        @Override
+                        public void close(String summary) {
+                            try {
+                                if (summary != null && !summary.isEmpty()) {
+                                    sendDataBinary(out, summary, maxPayloadBytes);
+                                }
+                                BinaryFrameCodec.writeFrame(out, BinaryFrame.end(), maxPayloadBytes);
+                            } catch (IOException e) {
+                                metricsCollector.recordError("protocol_binary_write");
+                            }
+                        }
+
+                        @Override
+                        public void error(String message) {
+                            try {
+                                sendErrorBinary(out, message, maxPayloadBytes);
+                            } catch (IOException e) {
+                                metricsCollector.recordError("protocol_binary_write");
+                            }
+                        }
+                    };
+
+                    streamCommand.executeStream(parts, sink);
+                    auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, true);
+                } else {
+                    CommandPipeline.Result result = pipeline.execute(entry, parts, context);
+                    if (result.isSuccess()) {
+                        sendDataBinary(out, result.getOutput(), maxPayloadBytes);
+                        BinaryFrameCodec.writeFrame(out, BinaryFrame.end(), maxPayloadBytes);
+                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, true);
+                    } else {
+                        sendErrorBinary(out, result.getError(), maxPayloadBytes);
+                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
+                    }
+                }
+
+                long duration = System.currentTimeMillis() - commandStart;
+                metricsCollector.recordCommandComplete(commandName, duration);
+
+                if ("quit".equals(commandName)) {
+                    break;
+                }
+            } catch (Exception e) {
+                sendErrorBinary(out, "Error executing command: " + e.getMessage(), maxPayloadBytes);
+                metricsCollector.recordError("command_execution");
+                auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
+            } finally {
+                if (context.getSessionId() != null && !context.getSessionId().equals(currentSessionId)) {
+                    if (currentSessionId != null) {
+                        authenticationManager.logout(currentSessionId);
+                    }
+                    sessionByClient.put(clientId, context.getSessionId());
+                }
+                CommandContextHolder.clear();
+            }
+        }
+    }
+
+    private void sendDataBinary(DataOutputStream out, String data, int maxPayloadBytes) throws IOException {
+        if (data == null) {
+            data = "";
+        }
+        BinaryFrameCodec.writeFrame(out, BinaryFrame.data(data), maxPayloadBytes);
+    }
+
+    private void sendErrorBinary(DataOutputStream out, String message, int maxPayloadBytes) throws IOException {
+        if (message == null) {
+            message = "Unknown error";
+        }
+        BinaryFrameCodec.writeFrame(out, BinaryFrame.err(message), maxPayloadBytes);
+        BinaryFrameCodec.writeFrame(out, BinaryFrame.end(), maxPayloadBytes);
+    }
+
+    private String handleHello(String line, PrintWriter writer) {
+        metricsCollector.recordHandshake();
+        Map<String, String> kv = parseHandshakeKv(line);
+        Set<String> clientProtocols = parseProtocols(kv.get("protocols"));
+        String requested = kv.get("protocol");
+        if (requested != null && !requested.trim().isEmpty()) {
+            clientProtocols.add(requested.trim().toLowerCase());
+        }
+        if (clientProtocols.isEmpty()) {
+            clientProtocols.add("legacy");
+        }
+
+        String preferred = config.getProtocolMode();
+        if (preferred == null) {
+            preferred = "legacy";
+        }
+        preferred = preferred.toLowerCase();
+
+        String selected;
+        if ("binary".equals(preferred) && clientProtocols.contains("binary")) {
+            selected = "binary";
+        } else if ("framed".equals(preferred) && clientProtocols.contains("framed")) {
+            selected = "framed";
+        } else if ("binary".equals(preferred) && clientProtocols.contains("framed")) {
+            selected = "framed";
+        } else {
+            selected = "legacy";
+        }
+
+        writer.println(buildConfigLine(selected));
+        writer.flush();
+        return selected;
+    }
+
+    private String buildConfigLine(String protocol) {
+        return "CONFIG v=1" +
+            " protocol=" + protocol +
+            " streaming=" + config.isStreamingEnabled() +
+            " maxPayload=" + config.getFrameMaxPayload() +
+            " port=" + config.getServerPort() +
+            " bind=" + config.getServerBindAddress() +
+            " securityMode=" + config.getSecurityMode() +
+            " authorization=" + config.isAuthorizationEnabled();
+    }
+
+    private static Map<String, String> parseHandshakeKv(String line) {
+        Map<String, String> kv = new HashMap<>();
+        if (line == null) {
+            return kv;
+        }
+        String[] tokens = line.trim().split("\\s+");
+        for (int i = 1; i < tokens.length; i++) {
+            String token = tokens[i];
+            int idx = token.indexOf('=');
+            if (idx <= 0 || idx >= token.length() - 1) {
+                continue;
+            }
+            String k = token.substring(0, idx).trim().toLowerCase();
+            String v = token.substring(idx + 1).trim();
+            if (!k.isEmpty() && !v.isEmpty()) {
+                kv.put(k, v);
+            }
+        }
+        return kv;
+    }
+
+    private static Set<String> parseProtocols(String csv) {
+        Set<String> out = new HashSet<>();
+        if (csv == null || csv.trim().isEmpty()) {
+            return out;
+        }
+        String[] parts = csv.split(",");
+        for (String p : parts) {
+            if (p == null) {
+                continue;
+            }
+            String v = p.trim().toLowerCase();
+            if (!v.isEmpty()) {
+                out.add(v);
+            }
+        }
+        return out;
+    }
+
+    private static boolean isLoopbackBind(String bindAddress) {
+        if (bindAddress == null) {
+            return true;
+        }
+        String v = bindAddress.trim().toLowerCase();
+        if (v.isEmpty()) {
+            return true;
+        }
+        return "127.0.0.1".equals(v) || "localhost".equals(v) || "::1".equals(v);
+    }
+
+    private void sendData(PrintWriter writer, boolean framed, String data) {
+        if (data == null) {
+            data = "";
+        }
+        if (framed) {
+            FrameCodec.writeFrame(writer, Frame.data(data), config.getFrameMaxPayload());
+        } else {
+            writer.println(data);
+        }
+    }
+
+    private void sendError(PrintWriter writer, boolean framed, String message) {
+        if (message == null) {
+            message = "Unknown error";
+        }
+        if (framed) {
+            FrameCodec.writeFrame(writer, Frame.err(message), config.getFrameMaxPayload());
+            FrameCodec.writeFrame(writer, Frame.end(), config.getFrameMaxPayload());
+        } else {
+            writer.println(message);
         }
     }
 

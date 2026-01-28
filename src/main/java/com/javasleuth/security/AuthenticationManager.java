@@ -121,6 +121,21 @@ public class AuthenticationManager {
     }
 
     /**
+     * Create session without credential verification (for anonymous/guest access)
+     */
+    public AuthenticationResult createSession(UserRole role, String clientInfo) {
+        if (role == UserRole.VIEWER && !config.isAnonymousViewerEnabled()) {
+            return AuthenticationResult.failure("Anonymous viewer sessions disabled");
+        }
+
+        String sessionId = generateSessionId();
+        SessionInfo session = new SessionInfo(sessionId, clientInfo, role);
+        activeSessions.put(sessionId, session);
+        auditLogger.logSessionStart(sessionId, clientInfo, role.getName());
+        return AuthenticationResult.success(sessionId, role);
+    }
+
+    /**
      * Validate session and check if it's still active
      */
     public SessionValidationResult validateSession(String sessionId) {

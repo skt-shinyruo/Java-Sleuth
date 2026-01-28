@@ -89,7 +89,7 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
         return instance;
     }
 
-    public <T> CompletableFuture<T> executeAsync(Supplier<T> operation, String operationName) {
+    private <T> CompletableFuture<T> executeAsyncInternal(Supplier<T> operation, String operationName) {
         return CompletableFuture.supplyAsync(() -> {
             long startTime = System.currentTimeMillis();
             totalOperations.incrementAndGet();
@@ -111,12 +111,12 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
     }
 
     @SuppressWarnings("unchecked")
-    public <T> T getCachedResult(String key, Supplier<T> supplier) {
-        return getCachedResult(key, supplier, "default", DEFAULT_CACHE_TTL_MS);
+    private <T> T getCachedResultInternal(String key, Supplier<T> supplier) {
+        return getCachedResultInternal(key, supplier, "default", DEFAULT_CACHE_TTL_MS);
     }
 
     @SuppressWarnings("unchecked")
-    public <T> T getCachedResult(String key, Supplier<T> supplier, String category, long ttl) {
+    private <T> T getCachedResultInternal(String key, Supplier<T> supplier, String category, long ttl) {
         // Check short-term cache first
         CacheEntry entry = resultCache.get(key);
         if (entry != null && !entry.isExpired(ttl)) {
@@ -155,25 +155,24 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
                "decompile".equals(category) || "classloader".equals(category);
     }
 
-    public void clearCache() {
+    private void clearCacheInternal() {
         resultCache.clear();
         longTermCache.clear();
         System.out.println("Performance cache cleared");
     }
 
-    public void clearExpiredCache() {
-        long currentTime = System.currentTimeMillis();
+    private void clearExpiredCacheInternal() {
         int expiredCount = 0;
 
         // Clean short-term cache
-        expiredCount += resultCache.entrySet().removeIf(entry -> {
-            return entry.getValue().isExpired(DEFAULT_CACHE_TTL_MS);
-        });
+        int shortBefore = resultCache.size();
+        resultCache.entrySet().removeIf(entry -> entry.getValue().isExpired(DEFAULT_CACHE_TTL_MS));
+        expiredCount += Math.max(0, shortBefore - resultCache.size());
 
         // Clean long-term cache
-        expiredCount += longTermCache.entrySet().removeIf(entry -> {
-            return entry.getValue().isExpired(LONG_TERM_CACHE_TTL_MS);
-        });
+        int longBefore = longTermCache.size();
+        longTermCache.entrySet().removeIf(entry -> entry.getValue().isExpired(LONG_TERM_CACHE_TTL_MS));
+        expiredCount += Math.max(0, longBefore - longTermCache.size());
 
         if (expiredCount > 0) {
             System.out.println("Cleaned " + expiredCount + " expired cache entries");
@@ -182,7 +181,7 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
 
     private void performMaintenance() {
         try {
-            clearExpiredCache();
+            clearExpiredCacheInternal();
             optimizeThreadPool();
             System.gc(); // Suggest garbage collection during maintenance
         } catch (Exception e) {
@@ -208,7 +207,7 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
         }
     }
 
-    public void shutdown() {
+    private void shutdownInternal() {
         System.out.println("Shutting down performance optimizer...");
 
         // Shutdown maintenance first
@@ -239,7 +238,7 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
             Thread.currentThread().interrupt();
         }
 
-        clearCache();
+        clearCacheInternal();
         unregisterMBean();
 
         System.out.println("Performance optimizer shutdown complete");
@@ -319,7 +318,7 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
 
     @Override
     public void clearAllCaches() {
-        clearCache();
+        clearCacheInternal();
     }
 
     @Override
@@ -380,24 +379,24 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
 
     // Static convenience methods for backward compatibility
     public static <T> CompletableFuture<T> executeAsync(Supplier<T> operation, String operationName) {
-        return getInstance().executeAsync(operation, operationName);
+        return getInstance().executeAsyncInternal(operation, operationName);
     }
 
     public static <T> T getCachedResult(String key, Supplier<T> supplier) {
-        return getInstance().getCachedResult(key, supplier);
+        return getInstance().getCachedResultInternal(key, supplier);
     }
 
     public static void clearCache() {
-        getInstance().clearCache();
+        getInstance().clearCacheInternal();
     }
 
     public static void clearExpiredCache() {
-        getInstance().clearExpiredCache();
+        getInstance().clearExpiredCacheInternal();
     }
 
     public static void shutdown() {
         if (instance != null) {
-            instance.shutdown();
+            instance.shutdownInternal();
         }
     }
 }

@@ -1,0 +1,118 @@
+package com.javasleuth.command;
+
+import com.javasleuth.command.impl.*;
+import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.monitoring.MetricsCollector;
+import com.javasleuth.security.AuditLogger;
+import com.javasleuth.security.AuthenticationManager.UserRole;
+import java.lang.instrument.Instrumentation;
+import java.util.HashMap;
+import java.util.Map;
+
+public class BuiltinCommandProvider implements CommandProvider {
+    private final Instrumentation instrumentation;
+    private final SleuthClassFileTransformer transformer;
+    private final MetricsCollector metricsCollector;
+    private final ProductionConfig config;
+    private final AuditLogger auditLogger;
+
+    public BuiltinCommandProvider(Instrumentation instrumentation,
+                                  SleuthClassFileTransformer transformer,
+                                  MetricsCollector metricsCollector,
+                                  ProductionConfig config,
+                                  AuditLogger auditLogger) {
+        this.instrumentation = instrumentation;
+        this.transformer = transformer;
+        this.metricsCollector = metricsCollector;
+        this.config = config;
+        this.auditLogger = auditLogger;
+    }
+
+    @Override
+    public String getName() {
+        return "builtin";
+    }
+
+    @Override
+    public Map<String, Command> getCommands() {
+        Map<String, Command> commands = new HashMap<>();
+
+        commands.put("dashboard", new DashboardCommand(instrumentation));
+        commands.put("thread", new ThreadCommand(instrumentation));
+        commands.put("sc", new SearchClassCommand(instrumentation));
+        commands.put("sm", new SearchMethodCommand(instrumentation));
+        commands.put("watch", new WatchCommand(instrumentation, transformer));
+        commands.put("trace", new TraceCommand(instrumentation, transformer));
+        commands.put("redefine", new RedefineCommand(instrumentation));
+        commands.put("mc", new MemoryCompilerCommand());
+        commands.put("retransform", new RetransformCommand(instrumentation));
+
+        commands.put("profiler", new ProfilerCommand(instrumentation));
+        commands.put("monitor", new MonitorCommand(instrumentation, transformer));
+        commands.put("stack", new StackCommand(instrumentation));
+
+        commands.put("jvm", new JvmCommand(instrumentation));
+        commands.put("sysprop", new SysPropCommand(instrumentation));
+        commands.put("sysenv", new SysEnvCommand(instrumentation));
+        commands.put("vmoption", new VmOptionCommand(instrumentation));
+        commands.put("memory", new MemoryCommand(instrumentation));
+        commands.put("heapdump", new HeapDumpCommand(instrumentation));
+
+        commands.put("jad", new JadCommand(instrumentation));
+        commands.put("classloader", new ClassLoaderCommand(instrumentation));
+        commands.put("mbean", new MBeanCommand(instrumentation));
+
+        commands.put("health", new HealthCommand(metricsCollector));
+        commands.put("metrics", new MetricsCommand(metricsCollector));
+        commands.put("status", new StatusCommand(instrumentation, metricsCollector, transformer));
+        commands.put("config", new ConfigCommand(config));
+        commands.put("audit", new AuditCommand(auditLogger));
+
+        commands.put("quit", new QuitCommand());
+        commands.put("auth", new AuthCommand());
+
+        return commands;
+    }
+
+    @Override
+    public Map<String, CommandMeta> getCommandMeta() {
+        Map<String, CommandMeta> meta = new HashMap<>();
+
+        meta.put("help", CommandMeta.viewer(true, false));
+        meta.put("sc", CommandMeta.viewer(true, false));
+        meta.put("sm", CommandMeta.viewer(true, false));
+        meta.put("jad", CommandMeta.viewer(true, false));
+        meta.put("classloader", CommandMeta.viewer(true, false));
+
+        meta.put("dashboard", CommandMeta.viewer(false, false));
+        meta.put("thread", CommandMeta.viewer(false, false));
+        meta.put("memory", CommandMeta.viewer(false, false));
+        meta.put("jvm", CommandMeta.viewer(false, false));
+        meta.put("health", CommandMeta.viewer(false, false));
+        meta.put("metrics", CommandMeta.viewer(false, false));
+        meta.put("status", CommandMeta.viewer(false, false));
+        meta.put("sysprop", CommandMeta.viewer(true, false));
+        meta.put("sysenv", CommandMeta.viewer(true, false));
+        meta.put("vmoption", CommandMeta.viewer(true, false));
+        meta.put("mbean", CommandMeta.viewer(false, false));
+
+        meta.put("watch", CommandMeta.operator(false, true));
+        meta.put("trace", CommandMeta.operator(false, true));
+        meta.put("monitor", CommandMeta.operator(false, false));
+        meta.put("profiler", CommandMeta.operator(false, false));
+        meta.put("stack", CommandMeta.operator(false, false));
+
+        meta.put("redefine", CommandMeta.admin(false, false));
+        meta.put("retransform", CommandMeta.admin(false, false));
+        meta.put("mc", CommandMeta.admin(false, false));
+        meta.put("heapdump", CommandMeta.admin(false, false));
+
+        meta.put("config", CommandMeta.admin(false, false));
+        meta.put("audit", CommandMeta.admin(false, false));
+        meta.put("quit", CommandMeta.viewer(false, false));
+        meta.put("auth", CommandMeta.viewer(false, false));
+
+        return meta;
+    }
+}

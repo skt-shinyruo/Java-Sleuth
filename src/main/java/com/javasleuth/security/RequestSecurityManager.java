@@ -1,0 +1,270 @@
+package com.javasleuth.security;
+
+import com.javasleuth.config.ProductionConfig;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+
+/**
+ * Optional request integrity / anti-replay protection.
+ *
+ * Default: disabled (security.mode=off)
+ * Supported: hmac (security.mode=hmac)
+ *
+ * Request wrapper format (command line level):
+ *   SIG ts=<epoch_ms> nonce=<base64url> sig=<hex> cmd=<base64url>
+ *
+ * Signature base string:
+ *   ts + "\\n" + nonce + "\\n" + cmd
+ */
+public class RequestSecurityManager {
+    public static class VerificationResult {
+        private final boolean ok;
+        private final String command;
+        private final String error;
+
+        private VerificationResult(boolean ok, String command, String error) {
+            this.ok = ok;
+            this.command = command;
+            this.error = error;
+        }
+
+        public static VerificationResult ok(String command) {
+            return new VerificationResult(true, command, null);
+        }
+
+        public static VerificationResult denied(String error) {
+            return new VerificationResult(false, null, error);
+        }
+
+        public boolean isOk() {
+            return ok;
+        }
+
+        public String getCommand() {
+            return command;
+        }
+
+        public String getError() {
+            return error;
+        }
+    }
+
+    private static RequestSecurityManager instance;
+    private final ProductionConfig config;
+    private final AuditLogger auditLogger;
+
+    // Key: sessionId:nonce -> timestamp
+    private final ConcurrentHashMap<String, Long> seenNonces = new ConcurrentHashMap<>();
+
+    private RequestSecurityManager() {
+        this.config = ProductionConfig.getInstance();
+        this.auditLogger = AuditLogger.getInstance();
+    }
+
+    public static synchronized RequestSecurityManager getInstance() {
+        if (instance == null) {
+            instance = new RequestSecurityManager();
+        }
+        return instance;
+    }
+
+    public VerificationResult verifyAndExtract(String sessionId, String raw) {
+        String mode = config.getSecurityMode();
+        if (mode == null || "off".equalsIgnoreCase(mode)) {
+            return VerificationResult.ok(raw != null ? raw : "");
+        }
+
+        if (!"hmac".equalsIgnoreCase(mode)) {
+            return VerificationResult.denied("Unsupported security.mode: " + mode);
+        }
+
+        String secret = config.getSecurityHmacSecret();
+        if (secret == null || secret.trim().isEmpty()) {
+            return VerificationResult.denied("security.hmac.secret is required when security.mode=hmac");
+        }
+
+        if (raw == null || !raw.startsWith("SIG ")) {
+            return VerificationResult.denied("Security mode hmac enabled: command must be signed (SIG ...)");
+        }
+
+        Map<String, String> kv = parseKv(raw);
+        String tsStr = kv.get("ts");
+        String nonce = kv.get("nonce");
+        String sigHex = kv.get("sig");
+        String cmdB64 = kv.get("cmd");
+        if (tsStr == null || nonce == null || sigHex == null || cmdB64 == null) {
+            return VerificationResult.denied("Invalid SIG format: required fields ts/nonce/sig/cmd");
+        }
+
+        Long ts = parseLongSafe(tsStr);
+        if (ts == null) {
+            return VerificationResult.denied("Invalid SIG ts value");
+        }
+
+        long now = System.currentTimeMillis();
+        long windowMs = config.getSecurityHmacTimestampWindowMs();
+        if (windowMs <= 0) {
+            windowMs = 30000;
+        }
+        if (Math.abs(now - ts) > windowMs) {
+            return VerificationResult.denied("Signature timestamp out of window");
+        }
+
+        String sessionKey = sessionId != null ? sessionId : "anonymous";
+        String nonceKey = sessionKey + ":" + nonce;
+        Long existing = seenNonces.putIfAbsent(nonceKey, ts);
+        if (existing != null) {
+            auditLogger.logSecurityViolation(sessionKey, "replay", "NONCE_REUSE", "Nonce reuse detected");
+            return VerificationResult.denied("Replay detected (nonce reused)");
+        }
+
+        int maxNonces = config.getSecurityHmacNonceCacheSize();
+        if (maxNonces > 0 && seenNonces.size() > maxNonces) {
+            pruneOldNonces(now, windowMs);
+        }
+
+        String base = tsStr + "\n" + nonce + "\n" + cmdB64;
+        byte[] expected;
+        try {
+            expected = hmacSha256(secret, base);
+        } catch (Exception e) {
+            return VerificationResult.denied("HMAC initialization failed");
+        }
+
+        byte[] provided = hexToBytes(sigHex);
+        if (provided == null) {
+            return VerificationResult.denied("Invalid SIG sig value");
+        }
+
+        if (!MessageDigest.isEqual(expected, provided)) {
+            auditLogger.logSecurityViolation(sessionKey, "hmac", "SIG_MISMATCH", "Signature mismatch");
+            return VerificationResult.denied("Signature mismatch");
+        }
+
+        byte[] decoded;
+        try {
+            decoded = Base64.getUrlDecoder().decode(cmdB64);
+        } catch (IllegalArgumentException e) {
+            return VerificationResult.denied("Invalid SIG cmd value");
+        }
+        String command = new String(decoded, StandardCharsets.UTF_8);
+        return VerificationResult.ok(command);
+    }
+
+    public String signCommand(String command, long timestampMs, String nonce) {
+        String mode = config.getSecurityMode();
+        if (mode == null || !"hmac".equalsIgnoreCase(mode)) {
+            return command;
+        }
+        String secret = config.getSecurityHmacSecret();
+        if (secret == null || secret.trim().isEmpty()) {
+            return command;
+        }
+
+        String cmdB64 = Base64.getUrlEncoder().withoutPadding().encodeToString((command != null ? command : "").getBytes(StandardCharsets.UTF_8));
+        String tsStr = String.valueOf(timestampMs);
+        String base = tsStr + "\n" + nonce + "\n" + cmdB64;
+        try {
+            byte[] mac = hmacSha256(secret, base);
+            String sigHex = bytesToHex(mac);
+            return "SIG ts=" + tsStr + " nonce=" + nonce + " sig=" + sigHex + " cmd=" + cmdB64;
+        } catch (Exception e) {
+            return command;
+        }
+    }
+
+    private void pruneOldNonces(long now, long windowMs) {
+        long cutoff = now - (windowMs * 2);
+        seenNonces.entrySet().removeIf(e -> e.getValue() == null || e.getValue() < cutoff);
+    }
+
+    private static Map<String, String> parseKv(String line) {
+        Map<String, String> kv = new HashMap<>();
+        if (line == null) {
+            return kv;
+        }
+        String[] tokens = line.trim().split("\\s+");
+        for (int i = 1; i < tokens.length; i++) {
+            String token = tokens[i];
+            int idx = token.indexOf('=');
+            if (idx <= 0 || idx >= token.length() - 1) {
+                continue;
+            }
+            String k = token.substring(0, idx).trim().toLowerCase();
+            String v = token.substring(idx + 1).trim();
+            if (!k.isEmpty() && !v.isEmpty()) {
+                kv.put(k, v);
+            }
+        }
+        return kv;
+    }
+
+    private static Long parseLongSafe(String s) {
+        if (s == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(s.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static byte[] hmacSha256(String secret, String message) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        return mac.doFinal(message.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static byte[] hexToBytes(String hex) {
+        if (hex == null) {
+            return null;
+        }
+        String v = hex.trim();
+        if (v.length() == 0 || (v.length() % 2) != 0) {
+            return null;
+        }
+        int len = v.length() / 2;
+        byte[] out = new byte[len];
+        for (int i = 0; i < len; i++) {
+            int hi = hexCharToInt(v.charAt(i * 2));
+            int lo = hexCharToInt(v.charAt(i * 2 + 1));
+            if (hi < 0 || lo < 0) {
+                return null;
+            }
+            out[i] = (byte) ((hi << 4) | lo);
+        }
+        return out;
+    }
+
+    private static int hexCharToInt(char c) {
+        if (c >= '0' && c <= '9') {
+            return c - '0';
+        }
+        if (c >= 'a' && c <= 'f') {
+            return 10 + (c - 'a');
+        }
+        if (c >= 'A' && c <= 'F') {
+            return 10 + (c - 'A');
+        }
+        return -1;
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        if (bytes == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b & 0xFF));
+        }
+        return sb.toString();
+    }
+}
+
