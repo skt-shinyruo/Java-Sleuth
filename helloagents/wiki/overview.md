@@ -38,9 +38,9 @@
 ---
 
 ## 3. Quick Links
+- [User Docs](../../docs/index.md)
 - [Technical Conventions](../project.md)
 - [Architecture Design](arch.md)
 - [API Manual](api.md)
 - [Data Models](data.md)
 - [Change History](../history/index.md)
-

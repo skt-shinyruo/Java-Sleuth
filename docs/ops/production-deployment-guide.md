@@ -92,7 +92,7 @@ Java-Sleuth is a production-ready Java diagnostic and monitoring agent that prov
 
 ```bash
 # Download and run the production deployment script
-./production-deploy.sh
+./scripts/deploy/production-deploy.sh
 
 # Follow the interactive prompts
 # The script will:

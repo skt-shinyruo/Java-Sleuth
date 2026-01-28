@@ -502,7 +502,7 @@ echo "=== Java-Sleuth Monthly Maintenance ==="
 tar czf /backup/java-sleuth-backup-$(date +%Y%m%d).tar.gz /opt/java-sleuth/
 
 # Performance benchmarking
-./performance-benchmark.sh
+./scripts/perf/performance-benchmark.sh
 
 # Security review
 echo "=== Security Review ==="
@@ -699,7 +699,7 @@ If all else fails and the system needs to be completely rebuilt:
    rm -rf /opt/java-sleuth/
 
    # Reinstall from scratch
-   ./production-deploy.sh
+   ./scripts/deploy/production-deploy.sh
    ```
 
 3. **Restore Configuration**

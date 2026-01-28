@@ -22,6 +22,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - Enhancer 支持链式叠加与按会话移除
 - CommandProcessor 支持 bind address + handshake 协商并可升级 binary 通道
 - Launcher 支持 handshake 协商与 binary 通道；在 security.mode=hmac 时自动封装 SIG 请求
+- 项目根目录结构整理：文档集中到 docs/，脚本归档到 scripts/
 
 ### Fixed
 - watch/trace 队列增加背压与采样

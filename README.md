@@ -29,6 +29,11 @@ A lightweight Java diagnostic and monitoring tool inspired by Arthas. Java-Sleut
 - **Maven 3.6+** for building
 - **Linux/macOS/Windows** support
 
+## Documentation
+
+- `docs/index.md` - User-facing documentation (usage/dev/ops)
+- `helloagents/wiki/overview.md` - Internal project knowledge base (architecture/modules)
+
 ## Quick Start
 
 ### 1. Build the Project
