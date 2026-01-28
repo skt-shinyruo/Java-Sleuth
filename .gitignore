@@ -78,3 +78,32 @@ Thumbs.db
 *.swp
 tmp/
 temp/
+
+# --- HelloAGENTS local ignores ---
+
+# Maven / build output
+/target/
+target/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+.vscode/
+
+# Logs / crash dumps
+*.log
+*.hprof
+*.jfr
+hs_err_pid*.log
+replay_pid*.log
+
+# OS / editor temp
+.DS_Store
+Thumbs.db
+*.swp
+*~
