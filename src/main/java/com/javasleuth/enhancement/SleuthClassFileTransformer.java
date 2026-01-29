@@ -1,5 +1,6 @@
 package com.javasleuth.enhancement;
 
+import com.javasleuth.util.SleuthLogger;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.ClassVisitor;
@@ -7,7 +8,9 @@ import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
@@ -40,6 +43,10 @@ public class SleuthClassFileTransformer implements ClassFileTransformer {
         enhancers.clear();
     }
 
+    public Set<String> getEnhancedClassNames() {
+        return Collections.unmodifiableSet(enhancers.keySet());
+    }
+
     @Override
     public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
                           ProtectionDomain protectionDomain, byte[] classfileBuffer)
@@ -68,8 +75,8 @@ public class SleuthClassFileTransformer implements ClassFileTransformer {
 
             byte[] transformedBytes = classWriter.toByteArray();
 
-            System.out.println("Java-Sleuth: Enhanced class " + normalizedClassName +
-                             " (transformation #" + transformationCount.get() + ")");
+            SleuthLogger.debug("Enhanced class " + normalizedClassName +
+                " (transformation #" + transformationCount.get() + ")");
 
             return transformedBytes;
 
@@ -77,8 +84,7 @@ public class SleuthClassFileTransformer implements ClassFileTransformer {
             enhancementFailureCount.incrementAndGet();
             // Self-protection: disable enhancers for this class to avoid repeated failures and log spam.
             enhancers.remove(normalizedClassName);
-            System.err.println("Java-Sleuth: Failed to enhance class " + normalizedClassName + ": " + e.getMessage());
-            e.printStackTrace();
+            SleuthLogger.error("Failed to enhance class " + normalizedClassName + ": " + e.getMessage(), e);
             return null;
         }
     }
@@ -90,7 +96,8 @@ public class SleuthClassFileTransformer implements ClassFileTransformer {
                className.startsWith("com/sun/") ||
                className.startsWith("org/objectweb/asm/") ||
                className.startsWith("com/javasleuth/") ||
-               className.contains("$$");
+               // Allow common proxy classes (e.g. Spring/CGLIB) but keep filtering noisy synthetic classes.
+               className.contains("$$Lambda$");
     }
 
     public long getTransformationCount() {

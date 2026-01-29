@@ -2,7 +2,10 @@ package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.monitor.MonitorInterceptor;
+import com.javasleuth.monitor.StackInterceptor;
 import com.javasleuth.monitor.TraceInterceptor;
+import com.javasleuth.monitor.TtInterceptor;
 import com.javasleuth.monitor.WatchInterceptor;
 import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.util.PerformanceOptimizer;
@@ -105,6 +108,12 @@ public class StatusCommand implements Command {
         status.append("Trace Dropped: ").append(TraceInterceptor.getDroppedEventCount()).append("\n");
         status.append("Trace Evicted: ").append(TraceInterceptor.getEvictedEventCount()).append("\n");
         status.append("Trace Sampled Out: ").append(TraceInterceptor.getSampledOutEventCount()).append("\n");
+        status.append("Active Stacks: ").append(StackInterceptor.getActiveStackCount()).append("\n");
+        status.append("Stack Published: ").append(StackInterceptor.getPublishedEventCount()).append("\n");
+        status.append("Stack Dropped: ").append(StackInterceptor.getDroppedEventCount()).append("\n");
+        status.append("Stack Evicted: ").append(StackInterceptor.getEvictedEventCount()).append("\n");
+        status.append("Active Monitors: ").append(MonitorInterceptor.getActiveMonitorCount()).append("\n");
+        status.append("Active TT Sessions: ").append(TtInterceptor.getActiveTtCount()).append("\n");
 
         // Configuration status
         ProductionConfig config = ProductionConfig.getInstance();

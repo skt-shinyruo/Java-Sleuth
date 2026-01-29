@@ -4,6 +4,7 @@ import org.objectweb.asm.*;
 import org.objectweb.asm.commons.AdviceAdapter;
 import java.util.Set;
 import java.util.HashSet;
+import com.javasleuth.util.WildcardMatcher;
 
 public class WatchEnhancer implements ClassEnhancer {
     private final String targetClassName;
@@ -56,13 +57,14 @@ public class WatchEnhancer implements ClassEnhancer {
         }
 
         private boolean shouldEnhanceMethod(String methodName, String methodDesc) {
-            if ("*".equals(targetMethodName)) {
-                return true;
+            boolean nameMatches = WildcardMatcher.matches(methodName, targetMethodName);
+            if (!nameMatches) {
+                return false;
             }
             if (targetMethodDesc == null || "*".equals(targetMethodDesc)) {
-                return targetMethodName.equals(methodName);
+                return true;
             }
-            return targetMethodName.equals(methodName) && targetMethodDesc.equals(methodDesc);
+            return targetMethodDesc.equals(methodDesc);
         }
     }
 
@@ -71,6 +73,9 @@ public class WatchEnhancer implements ClassEnhancer {
         private final String methodDesc;
         private int startTimeVar;
         private int exceptionVar;
+        private int returnVar;
+        private final Label tryStart = new Label();
+        private final Label tryEnd = new Label();
 
         public WatchMethodVisitor(MethodVisitor mv, int access, String methodName, String methodDesc) {
             super(Opcodes.ASM9, mv, access, methodName, methodDesc);
@@ -82,6 +87,11 @@ public class WatchEnhancer implements ClassEnhancer {
         protected void onMethodEnter() {
             // Store start time
             startTimeVar = newLocal(Type.LONG_TYPE);
+            // 先初始化本地变量，避免异常处理器看到未初始化的 top 类型导致 VerifyError
+            mv.visitInsn(LCONST_0);
+            mv.visitVarInsn(LSTORE, startTimeVar);
+
+            mv.visitLabel(tryStart);
             mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
             mv.visitVarInsn(LSTORE, startTimeVar);
 
@@ -95,7 +105,16 @@ public class WatchEnhancer implements ClassEnhancer {
         protected void onMethodExit(int opcode) {
             if (opcode != ATHROW) {
                 if (captureReturn) {
-                    generateMethodExitCall(false);
+                    Type returnType = Type.getReturnType(methodDesc);
+                    returnVar = -1;
+                    if (returnType.getSort() != Type.VOID) {
+                        returnVar = newLocal(returnType);
+                        mv.visitVarInsn(returnType.getOpcode(ISTORE), returnVar);
+                    }
+                    generateMethodExitCall(false, returnType, returnVar);
+                    if (returnType.getSort() != Type.VOID) {
+                        mv.visitVarInsn(returnType.getOpcode(ILOAD), returnVar);
+                    }
                 }
             }
         }
@@ -104,22 +123,17 @@ public class WatchEnhancer implements ClassEnhancer {
         public void visitMaxs(int maxStack, int maxLocals) {
             if (captureException) {
                 // Add try-catch block for exception capture
-                Label startLabel = new Label();
-                Label endLabel = new Label();
                 Label handlerLabel = new Label();
 
-                mv.visitTryCatchBlock(startLabel, endLabel, handlerLabel, "java/lang/Throwable");
-
-                mv.visitLabel(startLabel);
-                super.visitMaxs(maxStack + 10, maxLocals + 5);
-                mv.visitLabel(endLabel);
-
+                mv.visitTryCatchBlock(tryStart, tryEnd, handlerLabel, "java/lang/Throwable");
+                mv.visitLabel(tryEnd);
                 mv.visitLabel(handlerLabel);
                 exceptionVar = newLocal(Type.getType(Throwable.class));
                 mv.visitVarInsn(ASTORE, exceptionVar);
                 generateMethodExitCall(true);
                 mv.visitVarInsn(ALOAD, exceptionVar);
                 mv.visitInsn(ATHROW);
+                super.visitMaxs(maxStack + 10, maxLocals + 5);
             } else {
                 super.visitMaxs(maxStack + 10, maxLocals + 5);
             }
@@ -150,6 +164,10 @@ public class WatchEnhancer implements ClassEnhancer {
         }
 
         private void generateMethodExitCall(boolean isException) {
+            generateMethodExitCall(isException, null, -1);
+        }
+
+        private void generateMethodExitCall(boolean isException, Type returnType, int returnVar) {
             // Push watch ID
             mv.visitLdcInsn(watchId);
 
@@ -166,11 +184,14 @@ public class WatchEnhancer implements ClassEnhancer {
                 // Push exception
                 mv.visitVarInsn(ALOAD, exceptionVar);
             } else {
-                // Push return value (if any)
-                Type returnType = Type.getReturnType(methodDesc);
-                if (returnType.getSort() == Type.VOID) {
+                // Push return value (boxed) without breaking original stack semantics.
+                if (returnType == null) {
+                    returnType = Type.getReturnType(methodDesc);
+                }
+                if (returnType.getSort() == Type.VOID || returnVar < 0) {
                     mv.visitInsn(ACONST_NULL);
                 } else {
+                    mv.visitVarInsn(returnType.getOpcode(ILOAD), returnVar);
                     generateReturnValueBoxing(returnType);
                 }
             }

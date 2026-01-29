@@ -44,9 +44,9 @@ public class HeapDumpCommand implements Command {
             }
         }
 
-        // Security validation for filename
-        if (fileName != null && !SecurityValidator.canAccessFile(fileName)) {
-            return "Invalid or inaccessible file path: " + fileName;
+        // Security validation for filename (heapdump writes a new file)
+        if (fileName != null && !SecurityValidator.canWriteFile(fileName)) {
+            return "Invalid or non-writable file path: " + fileName;
         }
 
         // Generate default filename if not provided

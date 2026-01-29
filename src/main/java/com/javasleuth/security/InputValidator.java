@@ -117,12 +117,28 @@ public class InputValidator {
     private ValidationResult validateCommandSpecificArguments(String sessionId, String clientInfo,
                                                             String command, String arg, int position) {
         switch (command.toLowerCase()) {
-            case "redefine":
             case "mc":
-                // File path arguments need special validation
-                if (position == 1 && (arg.contains("..") || !arg.endsWith(".java"))) {
-                    auditLogger.logInputValidationFailure(sessionId, clientInfo, arg, "Invalid file path");
-                    return ValidationResult.invalid("Invalid file path for " + command);
+                // mc <source-file-path> [options]
+                if (position == 1) {
+                    if (arg.contains("..") || !arg.endsWith(".java")) {
+                        auditLogger.logInputValidationFailure(sessionId, clientInfo, arg, "Invalid source file path");
+                        return ValidationResult.invalid("Invalid source file path for mc (expected .java)");
+                    }
+                }
+                break;
+
+            case "redefine":
+                // redefine <class-name> <class-file-path> [options]
+                if (position == 1) {
+                    if (!arg.matches("^[a-zA-Z0-9_.$]+$") || !SecurityValidator.isClassAccessible(arg)) {
+                        auditLogger.logInputValidationFailure(sessionId, clientInfo, arg, "Invalid class name");
+                        return ValidationResult.invalid("Invalid class name for redefine");
+                    }
+                } else if (position == 2) {
+                    if (arg.contains("..") || !arg.endsWith(".class")) {
+                        auditLogger.logInputValidationFailure(sessionId, clientInfo, arg, "Invalid class file path");
+                        return ValidationResult.invalid("Invalid class file path for redefine (expected .class)");
+                    }
                 }
                 break;
 
@@ -136,11 +152,20 @@ public class InputValidator {
                 break;
 
             case "heapdump":
-                // Heap dump path validation
-                if (position == 1 && (arg.contains("..") || arg.contains("/etc/") || arg.contains("/proc/"))) {
-                    auditLogger.logSecurityViolation(sessionId, clientInfo, "HEAP_DUMP_PATH",
-                        "Suspicious heap dump path: " + arg);
-                    return ValidationResult.invalid("Invalid heap dump path");
+                // heapdump [options] [filename]
+                String file = null;
+                if (arg.startsWith("--file=")) {
+                    file = arg.substring("--file=".length());
+                } else if (!arg.startsWith("-")) {
+                    file = arg;
+                }
+                if (file != null) {
+                    String normalized = file.toLowerCase();
+                    if (file.contains("..") || normalized.contains("/etc/") || normalized.contains("/proc/") || normalized.contains("/sys/")) {
+                        auditLogger.logSecurityViolation(sessionId, clientInfo, "HEAP_DUMP_PATH",
+                            "Suspicious heap dump path: " + file);
+                        return ValidationResult.invalid("Invalid heap dump path");
+                    }
                 }
                 break;
 
@@ -160,7 +185,7 @@ public class InputValidator {
     private ValidationResult validatePrivilegedCommand(String sessionId, String clientInfo, String command, String[] args) {
         // Additional security checks for privileged commands
         auditLogger.logSystemEvent("PRIVILEGED_COMMAND_ACCESS",
-            "Session " + sessionId + " attempting privileged command: " + command);
+            "Privileged command attempted: " + command + ", client=" + clientInfo);
 
         // For demo purposes, we'll allow all privileged commands
         // In production, you might want to add role-based access control
@@ -169,11 +194,28 @@ public class InputValidator {
 
     private boolean isCommandAllowed(String command) {
         String allowedCommands = config.getAllowedCommands();
-        if ("*".equals(allowedCommands)) {
+        if (allowedCommands == null) {
+            return false;
+        }
+        String raw = allowedCommands.trim();
+        if ("*".equals(raw)) {
             return true;
         }
 
-        Set<String> allowed = new HashSet<>(Arrays.asList(allowedCommands.split(",")));
+        Set<String> allowed = new HashSet<>();
+        for (String token : raw.split(",")) {
+            if (token == null) {
+                continue;
+            }
+            String v = token.trim().toLowerCase();
+            if (v.isEmpty()) {
+                continue;
+            }
+            if ("*".equals(v)) {
+                return true;
+            }
+            allowed.add(v);
+        }
         return allowed.contains(command.toLowerCase());
     }
 

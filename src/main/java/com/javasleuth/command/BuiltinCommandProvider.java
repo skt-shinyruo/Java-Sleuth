@@ -44,13 +44,16 @@ public class BuiltinCommandProvider implements CommandProvider {
         commands.put("sm", new SearchMethodCommand(instrumentation));
         commands.put("watch", new WatchCommand(instrumentation, transformer));
         commands.put("trace", new TraceCommand(instrumentation, transformer));
+        commands.put("tt", new TtCommand(instrumentation, transformer));
+        commands.put("jobs", new JobsCommand());
         commands.put("redefine", new RedefineCommand(instrumentation));
         commands.put("mc", new MemoryCompilerCommand());
         commands.put("retransform", new RetransformCommand(instrumentation));
 
         commands.put("profiler", new ProfilerCommand(instrumentation));
         commands.put("monitor", new MonitorCommand(instrumentation, transformer));
-        commands.put("stack", new StackCommand(instrumentation));
+        commands.put("stack", new StackCommand(instrumentation, transformer));
+        commands.put("reset", new ResetCommand(instrumentation, transformer));
 
         commands.put("jvm", new JvmCommand(instrumentation));
         commands.put("sysprop", new SysPropCommand(instrumentation));
@@ -58,19 +61,26 @@ public class BuiltinCommandProvider implements CommandProvider {
         commands.put("vmoption", new VmOptionCommand(instrumentation));
         commands.put("memory", new MemoryCommand(instrumentation));
         commands.put("heapdump", new HeapDumpCommand(instrumentation));
+        commands.put("dump", new DumpCommand(instrumentation));
+        commands.put("getstatic", new GetStaticCommand(instrumentation));
 
         commands.put("jad", new JadCommand(instrumentation));
         commands.put("classloader", new ClassLoaderCommand(instrumentation));
         commands.put("mbean", new MBeanCommand(instrumentation));
+        commands.put("logger", new LoggerCommand());
 
         commands.put("health", new HealthCommand(metricsCollector));
         commands.put("metrics", new MetricsCommand(metricsCollector));
         commands.put("status", new StatusCommand(instrumentation, metricsCollector, transformer));
         commands.put("config", new ConfigCommand(config));
         commands.put("audit", new AuditCommand(auditLogger));
+        commands.put("session", new SessionCommand());
+        commands.put("perm", new PermCommand());
+        commands.put("version", new VersionCommand());
 
         commands.put("quit", new QuitCommand());
         commands.put("auth", new AuthCommand());
+        commands.put("stop", new StopCommand());
 
         return commands;
     }
@@ -94,12 +104,20 @@ public class BuiltinCommandProvider implements CommandProvider {
         meta.put("status", CommandMeta.viewer(false, false));
         meta.put("sysprop", CommandMeta.viewer(true, false));
         meta.put("sysenv", CommandMeta.viewer(true, false));
-        meta.put("vmoption", CommandMeta.viewer(true, false));
+        meta.put("vmoption", CommandMeta.operator(true, false));
         meta.put("mbean", CommandMeta.viewer(false, false));
+        meta.put("session", CommandMeta.viewer(true, false));
+        meta.put("perm", CommandMeta.viewer(true, false));
+        meta.put("version", CommandMeta.viewer(true, false));
 
         meta.put("watch", CommandMeta.operator(false, true));
         meta.put("trace", CommandMeta.operator(false, true));
-        meta.put("monitor", CommandMeta.operator(false, false));
+        meta.put("monitor", CommandMeta.operator(false, true));
+        meta.put("tt", CommandMeta.operator(false, true));
+        meta.put("jobs", CommandMeta.operator(true, false));
+        meta.put("dump", CommandMeta.operator(false, false));
+        meta.put("getstatic", CommandMeta.operator(false, false));
+        meta.put("logger", CommandMeta.operator(true, false));
         meta.put("profiler", CommandMeta.operator(false, false));
         meta.put("stack", CommandMeta.operator(false, false));
 
@@ -107,6 +125,8 @@ public class BuiltinCommandProvider implements CommandProvider {
         meta.put("retransform", CommandMeta.admin(false, false));
         meta.put("mc", CommandMeta.admin(false, false));
         meta.put("heapdump", CommandMeta.admin(false, false));
+        meta.put("reset", CommandMeta.admin(false, false).withDangerous(true));
+        meta.put("stop", CommandMeta.admin(false, false).withDangerous(true));
 
         meta.put("config", CommandMeta.admin(false, false));
         meta.put("audit", CommandMeta.admin(false, false));

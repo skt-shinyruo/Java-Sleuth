@@ -5,8 +5,12 @@ import java.lang.instrument.Instrumentation;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class ThreadCommand implements Command {
     private final ThreadMXBean threadMXBean;
@@ -17,8 +21,6 @@ public class ThreadCommand implements Command {
 
     @Override
     public String execute(String[] args) throws Exception {
-        StringBuilder sb = new StringBuilder();
-
         if (args.length > 1) {
             String option = args[1].toLowerCase();
             switch (option) {
@@ -28,6 +30,19 @@ public class ThreadCommand implements Command {
                 case "-d":
                 case "--deadlock":
                     return getDeadlockInfo();
+                case "-n":
+                case "--top":
+                    int n = args.length > 2 ? parseInt(args[2], 5) : 5;
+                    long intervalMs = 200;
+                    for (int i = 3; i < args.length; i++) {
+                        String a = args[i];
+                        if ("-i".equals(a) || "--interval".equals(a)) {
+                            if (i + 1 < args.length) {
+                                intervalMs = parseLong(args[++i], 200);
+                            }
+                        }
+                    }
+                    return getTopCpuThreads(n, intervalMs);
                 case "-h":
                 case "--help":
                     return getHelp();
@@ -42,6 +57,82 @@ public class ThreadCommand implements Command {
         }
 
         return getAllThreads();
+    }
+
+    private String getTopCpuThreads(int topN, long intervalMs) {
+        if (!threadMXBean.isThreadCpuTimeSupported()) {
+            return "Thread CPU time is not supported on this JVM.";
+        }
+        if (!threadMXBean.isThreadCpuTimeEnabled()) {
+            try {
+                threadMXBean.setThreadCpuTimeEnabled(true);
+            } catch (Exception ignored) {
+                // best-effort
+            }
+        }
+
+        long[] ids = threadMXBean.getAllThreadIds();
+        Map<Long, Long> before = new HashMap<>();
+        for (long id : ids) {
+            long v = threadMXBean.getThreadCpuTime(id);
+            if (v >= 0) {
+                before.put(id, v);
+            }
+        }
+
+        try {
+            Thread.sleep(Math.max(1, intervalMs));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "Interrupted while sampling threads.";
+        }
+
+        long[] ids2 = threadMXBean.getAllThreadIds();
+        Map<Long, Long> delta = new HashMap<>();
+        for (long id : ids2) {
+            long after = threadMXBean.getThreadCpuTime(id);
+            Long b = before.get(id);
+            if (after >= 0 && b != null) {
+                long d = Math.max(0, after - b);
+                delta.put(id, d);
+            }
+        }
+
+        List<Map.Entry<Long, Long>> sorted = new ArrayList<>(delta.entrySet());
+        sorted.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== Thread Top CPU (delta) ===\n");
+        sb.append("Interval: ").append(intervalMs).append(" ms\n\n");
+        sb.append(String.format("%-5s %-12s %-12s %-15s %s\n", "ID", "CPU_DELTA", "CPU_TOTAL", "STATE", "NAME"));
+        sb.append("=".repeat(80)).append("\n");
+
+        int shown = 0;
+        for (Map.Entry<Long, Long> e : sorted) {
+            if (shown >= topN) {
+                break;
+            }
+            long id = e.getKey();
+            long dNs = e.getValue();
+            long totalNs = threadMXBean.getThreadCpuTime(id);
+            ThreadInfo info = threadMXBean.getThreadInfo(id);
+            String state = info != null ? info.getThreadState().toString() : "N/A";
+            String name = info != null ? info.getThreadName() : "N/A";
+
+            sb.append(String.format("%-5d %-12s %-12s %-15s %s\n",
+                id,
+                (dNs / 1_000_000) + "ms",
+                (totalNs >= 0 ? (totalNs / 1_000_000) + "ms" : "N/A"),
+                state,
+                truncate(name, 40)
+            ));
+            shown++;
+        }
+
+        if (shown == 0) {
+            sb.append("No threads with CPU time.\n");
+        }
+        return sb.toString().trim();
     }
 
     private String getAllThreads() {
@@ -201,9 +292,32 @@ public class ThreadCommand implements Command {
         return "Thread command usage:\n" +
                "  thread              - Show all threads\n" +
                "  thread <id>         - Show details for specific thread ID\n" +
+               "  thread -n <N> -i <ms> - Show top N threads by CPU delta over interval\n" +
                "  thread -b|--blocked - Show only blocked threads\n" +
                "  thread -d|--deadlock- Show deadlock information\n" +
                "  thread -h|--help    - Show this help\n";
+    }
+
+    private int parseInt(String v, int def) {
+        if (v == null) {
+            return def;
+        }
+        try {
+            return Integer.parseInt(v);
+        } catch (NumberFormatException e) {
+            return def;
+        }
+    }
+
+    private long parseLong(String v, long def) {
+        if (v == null) {
+            return def;
+        }
+        try {
+            return Long.parseLong(v);
+        } catch (NumberFormatException e) {
+            return def;
+        }
     }
 
     private String truncate(String str, int maxLength) {

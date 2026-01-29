@@ -2,6 +2,7 @@ package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
 import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.security.SecurityValidator;
 
 public class ConfigCommand implements Command {
     private final ProductionConfig config;
@@ -27,7 +28,7 @@ public class ConfigCommand implements Command {
                 }
                 String key = args[2];
                 String value = config.getString(key, "NOT_FOUND");
-                return key + " = " + value;
+                return key + " = " + SecurityValidator.maskSensitiveValue(key, value);
 
             case "set":
                 if (args.length < 4) {
@@ -36,7 +37,8 @@ public class ConfigCommand implements Command {
                 String setKey = args[2];
                 String setValue = args[3];
                 config.setRuntimeConfig(setKey, setValue);
-                return "Runtime configuration updated: " + setKey + " = " + setValue;
+                return "Runtime configuration updated: " + setKey + " = " +
+                    SecurityValidator.maskSensitiveValue(setKey, setValue);
 
             case "remove":
                 if (args.length < 3) {
@@ -80,8 +82,20 @@ public class ConfigCommand implements Command {
                 show.append("\n-- Security Settings --\n");
                 show.append("security.input.validation = ").append(config.isInputValidationEnabled()).append("\n");
                 show.append("security.audit.logging = ").append(config.isAuditLoggingEnabled()).append("\n");
+                show.append("security.authorization.enabled = ").append(config.isAuthorizationEnabled()).append("\n");
+                show.append("security.anonymous.viewer = ").append(config.isAnonymousViewerEnabled()).append("\n");
+                show.append("security.mode = ").append(config.getSecurityMode()).append("\n");
+                String maskedSecret = SecurityValidator.maskSensitiveValue("security.hmac.secret", config.getSecurityHmacSecret());
+                show.append("security.hmac.secret = ").append(maskedSecret).append("\n");
                 show.append("security.max.command.length = ").append(config.getMaxCommandLength()).append("\n");
                 show.append("security.allowed.commands = ").append(config.getAllowedCommands()).append("\n");
+
+                show.append("\n-- Protocol Settings --\n");
+                show.append("protocol.mode = ").append(config.getProtocolMode()).append("\n");
+                show.append("protocol.handshake.enabled = ").append(config.isHandshakeEnabled()).append("\n");
+                show.append("protocol.streaming.enabled = ").append(config.isStreamingEnabled()).append("\n");
+                show.append("protocol.frame.max.payload = ").append(config.getFrameMaxPayload()).append("\n");
+                show.append("protocol.text.max.line.bytes = ").append(config.getInt("protocol.text.max.line.bytes", 8192)).append("\n");
 
                 show.append("\n-- Monitoring Settings --\n");
                 show.append("monitoring.metrics.enabled = ").append(config.isMetricsEnabled()).append("\n");

@@ -27,7 +27,7 @@ public class AuthCommand implements Command {
             context.setSessionId(result.getSessionId());
         }
 
-        return "Authenticated as " + result.getRole().getName() + ", session=" + result.getSessionId();
+        return "Authenticated as " + result.getRole().getName() + ".";
     }
 
     @Override
@@ -35,4 +35,3 @@ public class AuthCommand implements Command {
         return "Authenticate and upgrade session role";
     }
 }
-

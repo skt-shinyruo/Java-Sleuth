@@ -1,10 +1,16 @@
 package com.javasleuth.data;
 
 import java.io.Serializable;
-import java.util.Arrays;
+import com.javasleuth.util.SleuthValueFormatter;
 
 public class WatchResult implements Serializable {
     private static final long serialVersionUID = 1L;
+    private static final SleuthValueFormatter.Options FORMAT_OPTIONS =
+        new SleuthValueFormatter.Options()
+            .withMaxDepth(2)
+            .withMaxStringLength(200)
+            .withMaxCollectionItems(20)
+            .withMaxMapEntries(20);
 
     public enum EventType {
         METHOD_ENTRY, METHOD_EXIT, METHOD_EXCEPTION
@@ -91,28 +97,7 @@ public class WatchResult implements Serializable {
     }
 
     private String formatObject(Object obj) {
-        if (obj == null) {
-            return "null";
-        }
-
-        if (obj instanceof String) {
-            return "\"" + obj + "\"";
-        }
-
-        if (obj instanceof Number || obj instanceof Boolean || obj instanceof Character) {
-            return obj.toString();
-        }
-
-        if (obj.getClass().isArray()) {
-            if (obj instanceof Object[]) {
-                return Arrays.toString((Object[]) obj);
-            } else {
-                return Arrays.toString((int[]) obj); // Handle primitive arrays
-            }
-        }
-
-        String className = obj.getClass().getSimpleName();
-        return className + "@" + Integer.toHexString(obj.hashCode());
+        return SleuthValueFormatter.format(obj, FORMAT_OPTIONS);
     }
 
     @Override

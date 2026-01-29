@@ -1,0 +1,106 @@
+package com.javasleuth.security;
+
+import org.junit.Test;
+
+import static org.junit.Assert.*;
+
+public class InputValidatorTest {
+
+    @Test
+    public void testRedefineArgumentPositionsAreValidatedCorrectly() {
+        String oldValidation = System.getProperty("sleuth.security.input.validation");
+        try {
+            System.setProperty("sleuth.security.input.validation", "true");
+
+            InputValidator validator = new InputValidator();
+            InputValidator.ValidationResult ok = validator.validateCommand(
+                "s1",
+                "test-client",
+                "redefine",
+                new String[]{"redefine", "com.example.TestService", "TestService.class"}
+            );
+
+            assertTrue(ok.isValid());
+        } finally {
+            setOrClearProperty("sleuth.security.input.validation", oldValidation);
+        }
+    }
+
+    @Test
+    public void testRedefineRejectsInvalidClassName() {
+        String oldValidation = System.getProperty("sleuth.security.input.validation");
+        try {
+            System.setProperty("sleuth.security.input.validation", "true");
+
+            InputValidator validator = new InputValidator();
+            InputValidator.ValidationResult bad = validator.validateCommand(
+                "s1",
+                "test-client",
+                "redefine",
+                new String[]{"redefine", "com.example.Bad Class", "Bad.class"}
+            );
+
+            assertFalse(bad.isValid());
+            assertNotNull(bad.getMessage());
+        } finally {
+            setOrClearProperty("sleuth.security.input.validation", oldValidation);
+        }
+    }
+
+    @Test
+    public void testMcRequiresJavaSourceFile() {
+        String oldValidation = System.getProperty("sleuth.security.input.validation");
+        try {
+            System.setProperty("sleuth.security.input.validation", "true");
+
+            InputValidator validator = new InputValidator();
+
+            InputValidator.ValidationResult ok = validator.validateCommand(
+                "s1",
+                "test-client",
+                "mc",
+                new String[]{"mc", "Test.java"}
+            );
+            assertTrue(ok.isValid());
+
+            InputValidator.ValidationResult bad = validator.validateCommand(
+                "s1",
+                "test-client",
+                "mc",
+                new String[]{"mc", "Test.class"}
+            );
+            assertFalse(bad.isValid());
+        } finally {
+            setOrClearProperty("sleuth.security.input.validation", oldValidation);
+        }
+    }
+
+    @Test
+    public void testHeapdumpRejectsSystemPaths() {
+        String oldValidation = System.getProperty("sleuth.security.input.validation");
+        try {
+            System.setProperty("sleuth.security.input.validation", "true");
+
+            InputValidator validator = new InputValidator();
+            InputValidator.ValidationResult bad = validator.validateCommand(
+                "s1",
+                "test-client",
+                "heapdump",
+                new String[]{"heapdump", "/etc/passwd"}
+            );
+
+            assertFalse(bad.isValid());
+        } finally {
+            setOrClearProperty("sleuth.security.input.validation", oldValidation);
+        }
+    }
+
+    private static void setOrClearProperty(String key, String value) {
+        if (value == null) {
+            System.clearProperty(key);
+        } else {
+            System.setProperty(key, value);
+        }
+    }
+}
+

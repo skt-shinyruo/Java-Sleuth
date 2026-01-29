@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** MemoryJavaCompiler 为热更新提供编译能力
 - **Status:** ✅Stable
-- **Last Updated:** 2026-01-28
+- **Last Updated:** 2026-01-29
 
 ## Specifications
 
@@ -19,6 +19,10 @@
 - 编译为 class 输出
 - 供 redefine 使用
 
+#### Notes
+- MemoryJavaCompiler 需要确保编译产物能可靠写入 `compiledClasses`（通过在 OutputStream.close 时落盘到内存 map）。
+- `mc` 默认会根据 `package` + 主类型名推导 FQCN（若未显式传入 `-c/--class`）。
+
 ## API Interfaces
 N/A
 
@@ -30,4 +34,3 @@ N/A
 
 ## Change History
 - 202601281100_init_kb (planned)
-

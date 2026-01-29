@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** JVM 选择、Attach、Socket 交互
 - **Status:** ✅Stable
-- **Last Updated:** 2026-01-28
+- **Last Updated:** 2026-01-29
 
 ## Specifications
 
@@ -16,8 +16,18 @@
 
 #### Scenario: 连接本地命令服务
 前置：Agent 已启动命令服务  
-- 连接 localhost:3658
+- 连接 host:port（host 来自 `server.bind.address` 或握手返回的 bind 信息；`0.0.0.0/::` 会回退到 `127.0.0.1` 用于本机 attach）
 - 逐行发送命令并读取响应
+
+### Requirement: JVM 列表展示与选择一致
+**Module:** launcher
+过滤 JVM 列表后重新编号，保证“展示序号=可选序号”，避免选错目标进程。
+
+#### Scenario: 过滤 Java-Sleuth 自身并正确选择 PID
+前置：本机存在多个 Java 进程  
+- 列表过滤掉 Java-Sleuth 自身进程  
+- 展示序号连续、选择范围与展示一致  
+- 选择后 attach 到正确 PID
 
 ### Requirement: 握手协商与协议升级
 **Module:** launcher
@@ -61,3 +71,4 @@ N/A
 - 202601281100_init_kb (planned)
 - 202601281207_sleuth_plugin_stream (history/2026-01/202601281207_sleuth_plugin_stream/) - framed/stream 协议支持
 - 202601281301_sleuth_handshake_secure_frames (history/2026-01/202601281301_sleuth_handshake_secure_frames/) - handshake + binary + 可选 SIG 签名
+- 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 进程选择修复与连接地址解析增强

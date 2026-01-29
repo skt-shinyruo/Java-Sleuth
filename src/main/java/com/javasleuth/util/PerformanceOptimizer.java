@@ -183,7 +183,9 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
         try {
             clearExpiredCacheInternal();
             optimizeThreadPool();
-            System.gc(); // Suggest garbage collection during maintenance
+            if (config.getBoolean("performance.maintenance.force_gc", false)) {
+                System.gc();
+            }
         } catch (Exception e) {
             System.err.println("Error during performance maintenance: " + e.getMessage());
         }

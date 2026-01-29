@@ -33,7 +33,8 @@ public class SleuthAgent {
                 commandProcessor.start();
             }, "sleuth-command-processor");
 
-            commandThread.setDaemon(false);
+            // Do not block JVM exit when only daemon threads remain.
+            commandThread.setDaemon(true);
             commandThread.start();
 
         } catch (Exception e) {
@@ -64,7 +65,13 @@ public class SleuthAgent {
         }
         if (transformer != null) {
             transformer.removeAllEnhancers();
-            instrumentation.removeTransformer(transformer);
+            if (instrumentation != null) {
+                try {
+                    instrumentation.removeTransformer(transformer);
+                } catch (Exception e) {
+                    System.err.println("Java-Sleuth: Failed to remove transformer: " + e.getMessage());
+                }
+            }
         }
         ATTACHED.set(false);
         System.out.println("Java-Sleuth agent shutdown");

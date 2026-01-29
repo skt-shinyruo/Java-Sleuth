@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** WatchResult/TraceResult 模型
 - **Status:** ✅Stable
-- **Last Updated:** 2026-01-28
+- **Last Updated:** 2026-01-29
 
 ## Specifications
 
@@ -25,10 +25,10 @@ N/A
 ## Data Models
 - WatchResult
 - TraceResult
+- TtRecord（TT-lite 录制条目）
 
 ## Dependencies
 N/A
 
 ## Change History
 - 202601281100_init_kb (planned)
-

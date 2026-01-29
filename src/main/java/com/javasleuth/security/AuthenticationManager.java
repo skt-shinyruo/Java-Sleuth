@@ -17,7 +17,7 @@ public class AuthenticationManager {
 
     // Session management
     private final Map<String, SessionInfo> activeSessions = new ConcurrentHashMap<>();
-    private final Map<String, Integer> loginAttempts = new ConcurrentHashMap<>();
+    private final Map<String, AttemptInfo> loginAttempts = new ConcurrentHashMap<>();
     private final SecureRandom secureRandom = new SecureRandom();
 
     // Configuration
@@ -47,6 +47,43 @@ public class AuthenticationManager {
 
         void updateActivity() {
             this.lastActivity = Instant.now();
+        }
+    }
+
+    private static class AttemptInfo {
+        int attempts;
+        Instant lastAttempt;
+        Instant lockedUntil;
+
+        synchronized boolean isLocked(Instant now) {
+            if (lockedUntil == null) {
+                return false;
+            }
+            if (now.isAfter(lockedUntil)) {
+                lockedUntil = null;
+                attempts = 0;
+                return false;
+            }
+            return true;
+        }
+
+        synchronized void recordFailure(Instant now) {
+            lastAttempt = now;
+            if (lockedUntil != null && now.isBefore(lockedUntil)) {
+                return;
+            }
+            attempts += 1;
+            if (attempts >= MAX_LOGIN_ATTEMPTS) {
+                lockedUntil = now.plus(LOCKOUT_DURATION_MINUTES, ChronoUnit.MINUTES);
+            }
+        }
+
+        synchronized boolean isStale(Instant now) {
+            if (lastAttempt == null) {
+                return true;
+            }
+            Instant cutoff = now.minus(LOCKOUT_DURATION_MINUTES + 5, ChronoUnit.MINUTES);
+            return lastAttempt.isBefore(cutoff);
         }
     }
 
@@ -256,26 +293,55 @@ public class AuthenticationManager {
      * Record failed login attempt
      */
     private void recordFailedAttempt(String clientKey) {
-        loginAttempts.merge(clientKey, 1, Integer::sum);
+        Instant now = Instant.now();
+        AttemptInfo info = loginAttempts.computeIfAbsent(clientKey, k -> new AttemptInfo());
+        info.recordFailure(now);
     }
 
     /**
      * Check if client is locked out
      */
     private boolean isClientLockedOut(String clientKey) {
-        Integer attempts = loginAttempts.get(clientKey);
-        return attempts != null && attempts >= MAX_LOGIN_ATTEMPTS;
+        AttemptInfo info = loginAttempts.get(clientKey);
+        if (info == null) {
+            return false;
+        }
+        return info.isLocked(Instant.now());
     }
 
     /**
      * Extract client key for rate limiting
      */
     private String extractClientKey(String clientInfo) {
-        // Extract IP address from client info for rate limiting
-        if (clientInfo != null && clientInfo.contains("/")) {
-            return clientInfo.substring(0, clientInfo.indexOf("/"));
+        if (clientInfo == null) {
+            return "unknown";
         }
-        return clientInfo != null ? clientInfo : "unknown";
+
+        // Expected formats:
+        // - "/127.0.0.1:54321"
+        // - "/[::1]:54321"
+        // - "127.0.0.1:54321"
+        // - "[::1]:54321"
+        String v = clientInfo.trim();
+        if (v.startsWith("/")) {
+            v = v.substring(1);
+        }
+        if (v.isEmpty()) {
+            return "unknown";
+        }
+
+        if (v.startsWith("[")) {
+            int end = v.indexOf(']');
+            if (end > 1) {
+                return v.substring(1, end);
+            }
+        }
+
+        int colon = v.lastIndexOf(':');
+        if (colon > 0) {
+            return v.substring(0, colon);
+        }
+        return v;
     }
 
     /**
@@ -315,9 +381,11 @@ public class AuthenticationManager {
             return false;
         });
 
-        // Clear old lockouts
-        Instant lockoutCutoff = now.minus(LOCKOUT_DURATION_MINUTES, ChronoUnit.MINUTES);
-        loginAttempts.clear(); // For simplicity, clear all. In production, you'd track timestamps
+        // Cleanup old/stale attempt records (do not clear everything).
+        loginAttempts.entrySet().removeIf(entry -> {
+            AttemptInfo info = entry.getValue();
+            return info == null || info.isStale(now);
+        });
     }
 
     /**

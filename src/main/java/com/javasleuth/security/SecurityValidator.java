@@ -5,7 +5,8 @@ import java.security.Permission;
 import java.util.regex.Pattern;
 
 public class SecurityValidator {
-    private static final Pattern SAFE_PATH_PATTERN = Pattern.compile("^[a-zA-Z0-9._/\\-]+$");
+    // Allow common file path characters on Linux/macOS/Windows (avoid control chars and obvious injection delimiters).
+    private static final Pattern SAFE_PATH_PATTERN = Pattern.compile("^[a-zA-Z0-9._/\\\\:\\- ]+$");
     private static final String[] SENSITIVE_PROPERTIES = {
         "password", "secret", "key", "token", "credential"
     };
@@ -34,18 +35,39 @@ public class SecurityValidator {
     }
 
     public static boolean canAccessFile(String filePath) {
+        // Backward-compatible semantics: "can read existing file, or can write to parent for new file".
+        return canReadFile(filePath) || canWriteFile(filePath);
+    }
+
+    public static boolean canReadFile(String filePath) {
+        if (!isValidPath(filePath)) {
+            return false;
+        }
+        try {
+            File file = new File(filePath);
+            return file.exists() && file.isFile() && file.canRead();
+        } catch (SecurityException e) {
+            return false;
+        }
+    }
+
+    public static boolean canWriteFile(String filePath) {
         if (!isValidPath(filePath)) {
             return false;
         }
 
         try {
             File file = new File(filePath);
-            if (!file.exists()) {
-                // Check if parent directory is writable for new files
-                File parent = file.getParentFile();
-                return parent != null && parent.exists() && parent.canWrite();
+            if (file.exists()) {
+                return file.isFile() && file.canWrite();
             }
-            return file.canRead();
+
+            // New file: treat null parent as current working directory.
+            File parent = file.getParentFile();
+            if (parent == null) {
+                parent = new File(".");
+            }
+            return parent.exists() && parent.isDirectory() && parent.canWrite();
         } catch (SecurityException e) {
             return false;
         }

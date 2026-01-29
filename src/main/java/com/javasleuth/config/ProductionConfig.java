@@ -78,6 +78,7 @@ public class ProductionConfig {
         properties.setProperty("performance.thread.pool.core", "4");
         properties.setProperty("performance.thread.pool.max", "16");
         properties.setProperty("performance.command.timeout", "60000");
+        properties.setProperty("performance.maintenance.force_gc", "false");
 
         // Security configuration
         properties.setProperty("security.input.validation", "true");
@@ -85,7 +86,7 @@ public class ProductionConfig {
         properties.setProperty("security.max.command.length", "1000");
         properties.setProperty("security.allowed.commands", "*");
         properties.setProperty("security.authorization.enabled", "true");
-        properties.setProperty("security.anonymous.viewer", "true");
+        properties.setProperty("security.anonymous.viewer", "false");
         properties.setProperty("security.mode", "off");
         properties.setProperty("security.hmac.secret", "");
         properties.setProperty("security.hmac.timestamp.window.ms", "30000");
@@ -96,6 +97,7 @@ public class ProductionConfig {
         properties.setProperty("protocol.streaming.enabled", "true");
         properties.setProperty("protocol.frame.max.payload", "4096");
         properties.setProperty("protocol.handshake.enabled", "true");
+        properties.setProperty("protocol.text.max.line.bytes", "8192");
 
         // Plugin configuration
         properties.setProperty("plugins.directory", "plugins");
@@ -332,7 +334,7 @@ public class ProductionConfig {
     // Runtime configuration updates
     public void setRuntimeConfig(String key, String value) {
         runtimeConfig.put(key, value);
-        System.out.println("Runtime config updated: " + key + " = " + value);
+        System.out.println("Runtime config updated: " + key + " = " + maskIfSensitive(key, value));
     }
 
     public void removeRuntimeConfig(String key) {
@@ -373,5 +375,23 @@ public class ProductionConfig {
             properties.store(output, "Java-Sleuth Production Configuration");
             System.out.println("Configuration saved to: " + configFile.getAbsolutePath());
         }
+    }
+
+    private String maskIfSensitive(String key, String value) {
+        if (key == null) {
+            return value;
+        }
+        String k = key.toLowerCase();
+        if (k.contains("password") || k.contains("secret") || k.contains("token") || k.contains("credential") ||
+            k.contains("session") || k.contains("apikey") || k.contains("api_key")) {
+            if (value == null) {
+                return "null";
+            }
+            if (value.length() <= 4) {
+                return "***";
+            }
+            return value.substring(0, 2) + "***" + value.substring(value.length() - 2);
+        }
+        return value;
     }
 }

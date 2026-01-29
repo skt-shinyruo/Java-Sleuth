@@ -2,6 +2,7 @@ package com.javasleuth.enhancement;
 
 import org.objectweb.asm.*;
 import org.objectweb.asm.commons.AdviceAdapter;
+import com.javasleuth.util.WildcardMatcher;
 
 public class TraceEnhancer implements ClassEnhancer {
     private final String targetClassName;
@@ -47,13 +48,14 @@ public class TraceEnhancer implements ClassEnhancer {
         }
 
         private boolean shouldEnhanceMethod(String methodName, String methodDesc) {
-            if ("*".equals(targetMethodName)) {
-                return true;
+            boolean nameMatches = WildcardMatcher.matches(methodName, targetMethodName);
+            if (!nameMatches) {
+                return false;
             }
             if (targetMethodDesc == null || "*".equals(targetMethodDesc)) {
-                return targetMethodName.equals(methodName);
+                return true;
             }
-            return targetMethodName.equals(methodName) && targetMethodDesc.equals(methodDesc);
+            return targetMethodDesc.equals(methodDesc);
         }
     }
 
@@ -61,6 +63,8 @@ public class TraceEnhancer implements ClassEnhancer {
         private final String methodName;
         private final String methodDesc;
         private int startTimeVar;
+        private final Label tryStart = new Label();
+        private final Label tryEnd = new Label();
 
         public TraceMethodVisitor(MethodVisitor mv, int access, String methodName, String methodDesc) {
             super(Opcodes.ASM9, mv, access, methodName, methodDesc);
@@ -70,6 +74,7 @@ public class TraceEnhancer implements ClassEnhancer {
 
         @Override
         protected void onMethodEnter() {
+            mv.visitLabel(tryStart);
             // Store start time
             startTimeVar = newLocal(Type.LONG_TYPE);
             mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
@@ -99,22 +104,17 @@ public class TraceEnhancer implements ClassEnhancer {
         @Override
         public void visitMaxs(int maxStack, int maxLocals) {
             // Add try-catch for exception tracing
-            Label startLabel = new Label();
-            Label endLabel = new Label();
             Label handlerLabel = new Label();
 
-            mv.visitTryCatchBlock(startLabel, endLabel, handlerLabel, "java/lang/Throwable");
-
-            mv.visitLabel(startLabel);
-            super.visitMaxs(maxStack + 10, maxLocals + 3);
-            mv.visitLabel(endLabel);
-
+            mv.visitTryCatchBlock(tryStart, tryEnd, handlerLabel, "java/lang/Throwable");
+            mv.visitLabel(tryEnd);
             mv.visitLabel(handlerLabel);
             int exceptionVar = newLocal(Type.getType(Throwable.class));
             mv.visitVarInsn(ASTORE, exceptionVar);
             generateTraceExitCall(true);
             mv.visitVarInsn(ALOAD, exceptionVar);
             mv.visitInsn(ATHROW);
+            super.visitMaxs(maxStack + 10, maxLocals + 3);
         }
 
         private void generateTraceEntryCall() {

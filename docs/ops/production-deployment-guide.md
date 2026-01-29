@@ -332,10 +332,16 @@ sudo chmod 640 /opt/java-sleuth/config/*.properties
 Configure role-based access in the application:
 
 ```properties
-# Security configuration
-security.authentication.enabled=true
+# Security configuration（以当前代码实现为准）
+# - 当前版本未实现 security.authentication.enabled / security.session.timeout 这类配置项
+# - 默认关闭匿名 viewer：连接后需先执行 auth
+# - 非回环绑定时禁止 security.mode=off（会拒绝启动），建议启用 hmac 并设置强随机 secret
 security.authorization.enabled=true
-security.session.timeout=3600
+security.anonymous.viewer=false
+security.mode=hmac
+security.hmac.secret=<a-strong-random-secret>
+security.hmac.timestamp.window.ms=30000
+security.hmac.nonce.cache.size=10000
 ```
 
 ### Audit Logging

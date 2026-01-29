@@ -31,6 +31,8 @@ public class JadCommand implements Command {
         boolean showLineNumbers = false;
         boolean verbose = false;
         String methodFilter = null;
+        String containsFilter = null;
+        int maxLines = 0;
 
         for (int i = 2; i < args.length; i++) {
             String arg = args[i];
@@ -42,13 +44,22 @@ public class JadCommand implements Command {
                 methodFilter = arg.substring(9);
             } else if (arg.startsWith("-m=")) {
                 methodFilter = arg.substring(3);
+            } else if ("--contains".equals(arg) && i + 1 < args.length) {
+                containsFilter = args[++i];
+            } else if ("--max-lines".equals(arg) && i + 1 < args.length) {
+                try {
+                    maxLines = Integer.parseInt(args[++i]);
+                } catch (NumberFormatException ignored) {
+                    maxLines = 0;
+                }
             }
         }
 
-        return decompileClass(className, showLineNumbers, verbose, methodFilter);
+        return decompileClass(className, showLineNumbers, verbose, methodFilter, containsFilter, maxLines);
     }
 
-    private String decompileClass(String className, boolean showLineNumbers, boolean verbose, String methodFilter) {
+    private String decompileClass(String className, boolean showLineNumbers, boolean verbose, String methodFilter,
+                                  String containsFilter, int maxLines) {
         StringBuilder sb = new StringBuilder();
         sb.append("=== Java Decompilation ===\n");
         sb.append("Class: ").append(className).append("\n");
@@ -79,6 +90,16 @@ public class JadCommand implements Command {
                 sb.append("Method filter: ").append(methodFilter).append("\n");
             }
 
+            if (containsFilter != null && !containsFilter.trim().isEmpty()) {
+                decompiled = filterContains(decompiled, containsFilter);
+                sb.append("Contains filter: ").append(containsFilter).append("\n");
+            }
+
+            if (maxLines > 0) {
+                decompiled = truncateLines(decompiled, maxLines);
+                sb.append("Max lines: ").append(maxLines).append("\n");
+            }
+
             sb.append("Decompiled source:\n");
             sb.append("=" .repeat(50)).append("\n");
             sb.append(decompiled);
@@ -98,6 +119,36 @@ public class JadCommand implements Command {
             }
         }
 
+        return sb.toString();
+    }
+
+    private String filterContains(String decompiled, String containsFilter) {
+        String[] lines = decompiled.split("\n");
+        StringBuilder sb = new StringBuilder();
+        for (String line : lines) {
+            if (line.contains(containsFilter)) {
+                sb.append(line).append("\n");
+            }
+        }
+        if (sb.length() == 0) {
+            return "// No lines matched --contains=" + containsFilter;
+        }
+        return sb.toString();
+    }
+
+    private String truncateLines(String decompiled, int maxLines) {
+        if (maxLines <= 0) {
+            return decompiled;
+        }
+        String[] lines = decompiled.split("\n");
+        if (lines.length <= maxLines) {
+            return decompiled;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < maxLines; i++) {
+            sb.append(lines[i]).append("\n");
+        }
+        sb.append("// ... [truncated, total lines=").append(lines.length).append("]\n");
         return sb.toString();
     }
 

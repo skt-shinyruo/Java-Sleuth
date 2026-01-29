@@ -7,6 +7,7 @@ import com.javasleuth.command.protocol.BinaryFrame;
 import com.javasleuth.command.protocol.BinaryFrameCodec;
 import com.javasleuth.command.protocol.Frame;
 import com.javasleuth.command.protocol.FrameCodec;
+import com.javasleuth.command.protocol.Utf8LineCodec;
 import com.javasleuth.security.RequestSecurityManager;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
@@ -15,8 +16,8 @@ import org.jline.terminal.TerminalBuilder;
 
 import java.io.*;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -71,18 +72,31 @@ public class SleuthLauncher {
             return null;
         }
 
+        List<VirtualMachineDescriptor> candidates = new ArrayList<>();
+        for (VirtualMachineDescriptor vm : vmList) {
+            String displayName = vm.displayName();
+            if (displayName == null) {
+                displayName = "";
+            }
+            if (displayName.contains("SleuthLauncher") || displayName.contains("java-sleuth")) {
+                continue;
+            }
+            candidates.add(vm);
+        }
+
+        if (candidates.isEmpty()) {
+            System.out.println("No attachable Java processes found (Java-Sleuth itself is excluded).");
+            return null;
+        }
+
         System.out.println("Available Java processes:");
         System.out.println("===============================================");
 
-        for (int i = 0; i < vmList.size(); i++) {
-            VirtualMachineDescriptor vm = vmList.get(i);
+        for (int i = 0; i < candidates.size(); i++) {
+            VirtualMachineDescriptor vm = candidates.get(i);
             String displayName = vm.displayName();
             if (displayName.isEmpty()) {
                 displayName = "Unknown";
-            }
-
-            if (displayName.contains("SleuthLauncher") || displayName.contains("java-sleuth")) {
-                continue;
             }
 
             System.out.printf("[%d] PID: %-8s %s\n", i + 1, vm.id(), displayName);
@@ -95,25 +109,17 @@ public class SleuthLauncher {
 
         while (true) {
             try {
-                String input = reader.readLine("Select a process (1-" + vmList.size() + ") or 'q' to quit: ");
+                String input = reader.readLine("Select a process (1-" + candidates.size() + ") or 'q' to quit: ");
 
                 if ("q".equalsIgnoreCase(input.trim())) {
                     return null;
                 }
 
                 int selection = Integer.parseInt(input.trim());
-                if (selection >= 1 && selection <= vmList.size()) {
-                    VirtualMachineDescriptor selected = vmList.get(selection - 1);
-
-                    if (selected.displayName().contains("SleuthLauncher") ||
-                        selected.displayName().contains("java-sleuth")) {
-                        System.out.println("Cannot attach to Java-Sleuth itself. Please select another process.");
-                        continue;
-                    }
-
-                    return selected;
+                if (selection >= 1 && selection <= candidates.size()) {
+                    return candidates.get(selection - 1);
                 } else {
-                    System.out.println("Invalid selection. Please enter a number between 1 and " + vmList.size());
+                    System.out.println("Invalid selection. Please enter a number between 1 and " + candidates.size());
                 }
             } catch (NumberFormatException e) {
                 System.out.println("Invalid input. Please enter a number or 'q' to quit.");
@@ -174,9 +180,15 @@ public class SleuthLauncher {
             int maxPayloadBytes = config.getFrameMaxPayload();
             boolean handshakeEnabled = config.isHandshakeEnabled();
 
-            try (Socket socket = new Socket("localhost", port);
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-                 PrintWriter writer = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8), true)) {
+            String connectHost = resolveConnectHost(config.getServerBindAddress());
+            int maxLineBytes = config.getInt(
+                "protocol.text.max.line.bytes",
+                Math.max(8192, maxPayloadBytes * 2)
+            );
+
+            try (Socket socket = new Socket(connectHost, port);
+                 BufferedInputStream in = new BufferedInputStream(socket.getInputStream());
+                 BufferedOutputStream out = new BufferedOutputStream(socket.getOutputStream())) {
 
                 System.out.println("Connected to agent. Starting interactive session...");
                 System.out.println();
@@ -184,7 +196,7 @@ public class SleuthLauncher {
                 Terminal terminal = TerminalBuilder.builder().system(true).build();
                 LineReader lineReader = LineReaderBuilder.builder().terminal(terminal).build();
 
-                String welcomeMessage = reader.readLine();
+                String welcomeMessage = Utf8LineCodec.readLine(in, maxLineBytes);
                 if (welcomeMessage != null) {
                     System.out.println(welcomeMessage);
                 }
@@ -193,9 +205,8 @@ public class SleuthLauncher {
                 DataOutputStream binaryOut = null;
 
                 if (handshakeEnabled) {
-                    writer.println(buildHelloLine(protocol));
-                    writer.flush();
-                    String configLine = reader.readLine();
+                    Utf8LineCodec.writeLine(out, buildHelloLine(protocol), true);
+                    String configLine = Utf8LineCodec.readLine(in, maxLineBytes);
                     if (configLine != null && configLine.startsWith("CONFIG")) {
                         Map<String, String> kv = parseHandshakeKv(configLine);
                         String negotiated = kv.get("protocol");
@@ -218,12 +229,11 @@ public class SleuthLauncher {
                 }
 
                 if (binary) {
-                    writer.println("UPGRADE BINARY");
-                    writer.flush();
-                    String ok = reader.readLine();
+                    Utf8LineCodec.writeLine(out, "UPGRADE BINARY", true);
+                    String ok = Utf8LineCodec.readLine(in, maxLineBytes);
                     if (ok != null && "OK".equalsIgnoreCase(ok.trim())) {
-                        binaryIn = new DataInputStream(socket.getInputStream());
-                        binaryOut = new DataOutputStream(socket.getOutputStream());
+                        binaryIn = new DataInputStream(in);
+                        binaryOut = new DataOutputStream(out);
                     } else {
                         System.err.println("Binary upgrade failed, falling back to framed/legacy mode.");
                         binary = false;
@@ -270,10 +280,10 @@ public class SleuthLauncher {
                         } else if (framed) {
                             String signed = securityManager.signCommand(command, System.currentTimeMillis(), generateNonce());
                             String outbound = stream ? "STREAM " + signed : "CMD " + signed;
-                            writer.println(outbound);
+                            Utf8LineCodec.writeLine(out, outbound, true);
 
                             while (true) {
-                                Frame frame = FrameCodec.readFrame(reader);
+                                Frame frame = FrameCodec.readFrame(in, maxLineBytes);
                                 if (frame == null) {
                                     break;
                                 }
@@ -287,19 +297,25 @@ public class SleuthLauncher {
                             }
                         } else {
                             String signed = securityManager.signCommand(command, System.currentTimeMillis(), generateNonce());
-                            writer.println(signed);
+                            Utf8LineCodec.writeLine(out, signed, true);
 
                             StringBuilder response = new StringBuilder();
-                            String line;
-                            long startTime = System.currentTimeMillis();
-
-                            while ((line = reader.readLine()) != null) {
-                                response.append(line).append("\n");
-
-                                if (System.currentTimeMillis() - startTime > 100 &&
-                                    !reader.ready()) {
-                                    break;
+                            int originalTimeout = socket.getSoTimeout();
+                            try {
+                                socket.setSoTimeout(200);
+                                while (true) {
+                                    try {
+                                        String line = Utf8LineCodec.readLine(in, maxLineBytes);
+                                        if (line == null) {
+                                            break;
+                                        }
+                                        response.append(line).append("\n");
+                                    } catch (java.net.SocketTimeoutException timeout) {
+                                        break;
+                                    }
                                 }
+                            } finally {
+                                socket.setSoTimeout(originalTimeout);
                             }
 
                             System.out.print(response.toString());
@@ -324,6 +340,22 @@ public class SleuthLauncher {
         }
 
         System.out.println("Session ended.");
+    }
+
+    private static String resolveConnectHost(String bindAddress) {
+        if (bindAddress == null) {
+            return "127.0.0.1";
+        }
+        String v = bindAddress.trim();
+        if (v.isEmpty()) {
+            return "127.0.0.1";
+        }
+        String lower = v.toLowerCase();
+        // Unspecified bind addresses are not connectable; use loopback for local attach sessions.
+        if ("0.0.0.0".equals(lower) || "::".equals(lower) || "0:0:0:0:0:0:0:0".equals(lower)) {
+            return "127.0.0.1";
+        }
+        return v;
     }
 
     private static String buildHelloLine(String preferredProtocol) {

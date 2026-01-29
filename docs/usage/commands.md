@@ -14,6 +14,30 @@ Exits the Java-Sleuth session.
 - **Usage**: `quit`
 - **Description**: Exit the current session
 
+## 认证与配置命令
+
+> 说明：从 2026-01-29 起，默认配置关闭匿名 viewer（`security.anonymous.viewer=false`）。因此新连接建立后，除 `auth` 外的命令可能会提示需要认证。
+
+### `auth`
+对当前连接进行认证，并将会话角色升级为对应用户角色。
+- **Usage**: `auth <username> <password>`
+- **Description**: Authenticate current session and upgrade role
+- **Notes**:
+  - 认证成功后不会回显 sessionId（避免泄露 bearer token）
+  - 默认账号口令为演示用途，具体见 `AuthenticationManager`（建议仅在受控环境使用）
+
+### `config`
+管理运行时配置（优先级高于默认配置与外部文件），并对敏感值进行脱敏输出。
+- **Usage**:
+  - `config` / `config status` - Show configuration status
+  - `config get <key>` - Get configuration value（敏感 key 自动脱敏）
+  - `config set <key> <value>` - Set runtime override（敏感 key 自动脱敏）
+  - `config remove <key>` - Remove runtime override
+  - `config clear` - Clear all runtime overrides
+  - `config show` - Show current key settings（含安全/协议关键项）
+- **Notes**:
+  - 在默认 RBAC 策略下，`config` 相关操作建议仅由 ADMIN 执行
+
 ## Monitoring Commands
 
 ### `dashboard`
@@ -68,7 +92,7 @@ View and modify system properties.
   - `sysprop` - List all properties
   - `sysprop <key>` - Get specific property
   - `sysprop <pattern>` - Search with wildcards
-  - `sysprop <key> <value>` - Set property
+  - `sysprop set <key> <value>` - Set property（写入需更高权限，value 暂不支持空格）
 - **Description**: System property management with security validation
 - **Features**:
   - Wildcard pattern matching

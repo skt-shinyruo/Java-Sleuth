@@ -1,19 +1,35 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
-import com.javasleuth.util.PerformanceOptimizer;
+import com.javasleuth.command.JobManager;
+import com.javasleuth.command.StreamCommand;
+import com.javasleuth.command.StreamSink;
+import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.data.StackTraceResult;
+import com.javasleuth.enhancement.ClassEnhancer;
+import com.javasleuth.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.enhancement.StackEnhancer;
+import com.javasleuth.monitor.StackInterceptor;
+import com.javasleuth.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import java.time.LocalTime;
+import java.util.UUID;
 
 /**
- * StackCommand provides advanced stack trace monitoring and analysis
+ * StackCommand 提供两类能力：
+ * 1) 线程栈采样/分析（原有能力，stack monitor/dump/analyze/...）
+ * 2) 方法触发栈追踪（Arthas 风格简化版）：stack <class-pattern> <method-pattern> [options]
  *
  * Usage:
  * stack dump [thread-id] - Dump stack traces
@@ -24,46 +40,280 @@ import java.util.stream.Collectors;
  * stack deadlock - Check for deadlocks
  * stack hot - Show hottest stack traces
  */
-public class StackCommand implements Command {
+public class StackCommand implements StreamCommand {
     private final Instrumentation instrumentation;
+    private final SleuthClassFileTransformer transformer;
+    private final ProductionConfig config;
     private final ThreadMXBean threadMXBean;
     private final AtomicBoolean monitoring = new AtomicBoolean(false);
     private final ConcurrentHashMap<String, StackTraceStats> stackStats = new ConcurrentHashMap<>();
     private final AtomicLong samplingCount = new AtomicLong(0);
     private Thread monitoringThread;
 
-    public StackCommand(Instrumentation instrumentation) {
+    private final ConcurrentHashMap<String, StackSession> activeSessions = new ConcurrentHashMap<>();
+
+    public StackCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
         this.instrumentation = instrumentation;
+        this.transformer = transformer;
+        this.config = ProductionConfig.getInstance();
         this.threadMXBean = ManagementFactory.getThreadMXBean();
     }
 
     @Override
     public String execute(String[] args) throws Exception {
-        if (args.length < 2) {
+        return runStack(args, null);
+    }
+
+    @Override
+    public void executeStream(String[] args, StreamSink sink) throws Exception {
+        runStack(args, sink);
+    }
+
+    private String runStack(String[] args, StreamSink sink) throws Exception {
+        if (args == null || args.length < 2) {
             return getUsage();
         }
 
-        String action = args[1].toLowerCase();
+        String sub = args[1];
+        if ("-h".equals(sub) || "--help".equals(sub) || "help".equalsIgnoreCase(sub)) {
+            return getUsage();
+        }
 
-        switch (action) {
-            case "dump":
-                return dumpStackTraces(args);
-            case "monitor":
-                return handleMonitoring(args);
-            case "analyze":
-                return analyzeStackPatterns(args);
-            case "blocked":
-                return showBlockedThreads();
-            case "deadlock":
-                return checkDeadlocks();
-            case "hot":
-                return showHotStackTraces(args);
-            case "stats":
-                return showStackStats();
-            case "clear":
-                return clearStackData();
-            default:
-                return "Unknown stack action: " + action + "\n" + getUsage();
+        String action = sub.toLowerCase(Locale.ROOT);
+        if (isLegacyAction(action)) {
+            // 兼容原有线程栈采样/分析命令（非 streaming 模式）
+            switch (action) {
+                case "dump":
+                    return dumpStackTraces(args);
+                case "monitor":
+                    return handleMonitoring(args);
+                case "analyze":
+                    return analyzeStackPatterns(args);
+                case "blocked":
+                    return showBlockedThreads();
+                case "deadlock":
+                    return checkDeadlocks();
+                case "hot":
+                    return showHotStackTraces(args);
+                case "stats":
+                    return showStackStats();
+                case "clear":
+                    return clearStackData();
+                default:
+                    return "Unknown stack action: " + action + "\n" + getUsage();
+            }
+        }
+
+        // Arthas-like: stack <class-pattern> <method-pattern> [options]
+        if (args.length < 3) {
+            return getTraceHelp();
+        }
+
+        boolean background = false;
+        String classPattern = args[1];
+        String methodPattern = args[2];
+
+        int maxCount = 10;
+        long timeoutSeconds = 30;
+        int depth = 20;
+
+        for (int i = 3; i < args.length; i++) {
+            String a = args[i];
+            if ("-n".equals(a) || "--count".equals(a)) {
+                if (i + 1 < args.length) {
+                    maxCount = parseInt(args[++i], 10);
+                }
+            } else if ("-t".equals(a) || "--timeout".equals(a)) {
+                if (i + 1 < args.length) {
+                    timeoutSeconds = parseLong(args[++i], 30);
+                }
+            } else if ("--depth".equals(a)) {
+                if (i + 1 < args.length) {
+                    depth = parseInt(args[++i], 20);
+                }
+            } else if ("--bg".equals(a)) {
+                background = true;
+            } else if ("-h".equals(a) || "--help".equals(a)) {
+                return getTraceHelp();
+            }
+        }
+
+        if (timeoutSeconds <= 0) {
+            timeoutSeconds = 30;
+        }
+        if (maxCount <= 0) {
+            maxCount = 1;
+        }
+        depth = Math.max(1, Math.min(depth, 200));
+
+        if (background) {
+            String[] jobArgs = removeFlag(args, "--bg");
+            String commandLine = String.join(" ", jobArgs);
+            String jobId = JobManager.getInstance().submitStreamJob(
+                "stack",
+                commandLine,
+                jobSink -> runStack(jobArgs, jobSink)
+            );
+            String msg = "Started stack in background. Job ID: " + jobId + " (use: jobs tail " + jobId + ")";
+            if (sink != null) {
+                sink.send(msg);
+                sink.close("job started");
+                return "";
+            }
+            return msg;
+        }
+
+        return startStackTrace(classPattern, methodPattern, maxCount, timeoutSeconds, depth, sink);
+    }
+
+    private boolean isLegacyAction(String action) {
+        return "dump".equals(action) ||
+            "monitor".equals(action) ||
+            "analyze".equals(action) ||
+            "blocked".equals(action) ||
+            "deadlock".equals(action) ||
+            "hot".equals(action) ||
+            "stats".equals(action) ||
+            "clear".equals(action);
+    }
+
+    private String startStackTrace(String classPattern, String methodPattern,
+                                   int maxCount, long timeoutSeconds, int depth,
+                                   StreamSink sink) throws Exception {
+        if (transformer == null) {
+            return "Stack trace mode requires transformer, but transformer is null.";
+        }
+
+        // 简化策略：只选择一个已加载的匹配类
+        Class<?>[] loaded = instrumentation.getAllLoadedClasses();
+        Class<?> target = null;
+        for (Class<?> c : loaded) {
+            if (c != null && WildcardMatcher.matches(c.getName(), classPattern)) {
+                target = c;
+                break;
+            }
+        }
+        if (target == null) {
+            return "No loaded class matches pattern: " + classPattern;
+        }
+
+        String stackId = UUID.randomUUID().toString();
+        BlockingQueue<StackTraceResult> q = new LinkedBlockingQueue<>(config.getWatchQueueCapacity());
+        StackInterceptor.register(stackId, q);
+
+        ClassEnhancer enhancer = new StackEnhancer(target.getName(), methodPattern, null, stackId, depth);
+        transformer.addEnhancer(target.getName(), enhancer);
+        instrumentation.retransformClasses(target);
+
+        activeSessions.put(stackId, new StackSession(stackId, target, methodPattern, q, enhancer));
+
+        StringBuilder banner = new StringBuilder();
+        banner.append("Started stack trace ").append(target.getName()).append(".").append(methodPattern).append("\n");
+        banner.append("Stack ID: ").append(stackId).append("\n");
+        banner.append("Max events: ").append(maxCount)
+            .append(", Timeout: ").append(timeoutSeconds).append("s")
+            .append(", Depth: ").append(depth)
+            .append("\n");
+
+        if (sink != null) {
+            sink.send(banner.toString().trim());
+        }
+
+        StringBuilder out = new StringBuilder();
+        int events = 0;
+        long startMs = System.currentTimeMillis();
+        long timeoutMs = timeoutSeconds * 1000;
+
+        try {
+            while (events < maxCount) {
+                long remaining = timeoutMs - (System.currentTimeMillis() - startMs);
+                if (remaining <= 0) {
+                    appendOrSend(out, sink, "\nStack timeout reached");
+                    break;
+                }
+                StackTraceResult r = q.poll(Math.min(remaining, 1000), TimeUnit.MILLISECONDS);
+                if (r != null) {
+                    events++;
+                    appendOrSend(out, sink, formatStackTraceResult(r, events));
+                }
+            }
+        } finally {
+            stopSession(stackId);
+        }
+
+        String summary = "Stack completed. totalEvents=" + events;
+        if (sink != null) {
+            sink.close(summary);
+            return "";
+        }
+        out.append(summary);
+        return out.toString();
+    }
+
+    private boolean stopSession(String stackId) {
+        StackSession session = activeSessions.remove(stackId);
+        if (session == null) {
+            StackInterceptor.unregister(stackId);
+            return false;
+        }
+        try {
+            transformer.removeEnhancer(session.target.getName(), session.enhancer);
+            instrumentation.retransformClasses(session.target);
+        } catch (Exception ignored) {
+            // best-effort
+        } finally {
+            StackInterceptor.unregister(stackId);
+        }
+        return true;
+    }
+
+    private String formatStackTraceResult(StackTraceResult r, int idx) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("[%3d] ", idx));
+        sb.append(String.format("%s ", LocalTime.now().toString()));
+        sb.append(r.getClassName()).append(".").append(r.getMethodName());
+        sb.append(" [").append(r.getThreadName()).append("#").append(r.getThreadId()).append("]");
+        sb.append("\n");
+
+        StackTraceElement[] st = r.getStackTrace();
+        if (st != null) {
+            for (StackTraceElement e : st) {
+                if (e == null) {
+                    continue;
+                }
+                sb.append("    at ").append(e.toString()).append("\n");
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    private void appendOrSend(StringBuilder buf, StreamSink sink, String text) {
+        if (sink != null) {
+            sink.send(text);
+        } else {
+            buf.append(text).append("\n");
+        }
+    }
+
+    private int parseInt(String raw, int def) {
+        if (raw == null) {
+            return def;
+        }
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            return def;
+        }
+    }
+
+    private long parseLong(String raw, long def) {
+        if (raw == null) {
+            return def;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            return def;
         }
     }
 
@@ -402,28 +652,50 @@ public class StackCommand implements Command {
     }
 
     private String getUsage() {
-        return "Stack Command Usage:\n" +
-               "  stack dump [thread-id]          - Dump stack traces (all threads or specific)\n" +
-               "  stack monitor start [interval]  - Start continuous monitoring (default 1000ms)\n" +
-               "  stack monitor stop              - Stop monitoring\n" +
-               "  stack monitor status            - Show monitoring status\n" +
-               "  stack analyze [limit]           - Analyze collected stack patterns\n" +
-               "  stack blocked                   - Show blocked/waiting threads\n" +
-               "  stack deadlock                  - Check for deadlocks\n" +
-               "  stack hot [limit]               - Show hottest stack traces\n" +
-               "  stack stats                     - Show stack statistics\n" +
-               "  stack clear                     - Clear collected data\n" +
-               "\n" +
-               "Examples:\n" +
-               "  stack dump                      - Dump all thread stacks\n" +
-               "  stack dump 123                  - Dump stack for thread ID 123\n" +
-               "  stack monitor start 500         - Monitor every 500ms\n" +
-               "  stack analyze 20                - Show top 20 stack patterns";
+        return "Stack command usage:\n" +
+            "  stack <class-pattern> <method-pattern> [options]   - Trace call stacks when method is invoked (lite)\n" +
+            "  stack dump [thread-id]                            - Dump stack traces (all threads or specific)\n" +
+            "  stack monitor start [interval]                    - Start continuous monitoring (default 1000ms)\n" +
+            "  stack monitor stop                                - Stop monitoring\n" +
+            "  stack monitor status                              - Show monitoring status\n" +
+            "  stack analyze [limit]                             - Analyze collected stack patterns\n" +
+            "  stack blocked                                     - Show blocked/waiting threads\n" +
+            "  stack deadlock                                    - Check for deadlocks\n" +
+            "  stack hot [limit]                                 - Show hottest stack traces\n" +
+            "  stack stats                                       - Show stack statistics\n" +
+            "  stack clear                                       - Clear collected data\n" +
+            "\n" +
+            "Stack trace options:\n" +
+            "  -n, --count <num>     Max events to capture (default: 10)\n" +
+            "  -t, --timeout <sec>   Timeout in seconds (default: 30)\n" +
+            "  --depth <frames>      Max stack frames to print (default: 20, max: 200)\n" +
+            "  --bg                 Run in background (use jobs tail/stop)\n" +
+            "\n" +
+            "Examples:\n" +
+            "  stack com.example.* doWork -n 5 --depth 30\n" +
+            "  stack com.example.* doWork --bg\n" +
+            "  stack dump\n" +
+            "  stack monitor start 500\n" +
+            "  stack analyze 20";
     }
 
     @Override
     public String getDescription() {
-        return "Advanced stack trace monitoring and analysis";
+        return "Stack sampling and Arthas-like stack trace (lite)";
+    }
+
+    private String getTraceHelp() {
+        return "Stack trace (lite) usage:\n" +
+            "  stack <class-pattern> <method-pattern> [options]\n\n" +
+            "Options:\n" +
+            "  -n, --count <num>     Max events to capture (default: 10)\n" +
+            "  -t, --timeout <sec>   Timeout in seconds (default: 30)\n" +
+            "  --depth <frames>      Max stack frames to print (default: 20, max: 200)\n" +
+            "  --bg                 Run in background (use jobs tail/stop)\n" +
+            "  -h, --help           Show this help\n\n" +
+            "Examples:\n" +
+            "  stack com.example.* doWork -n 5 --depth 30\n" +
+            "  stack *Service* *method* -t 60\n";
     }
 
     // Inner class to store stack trace statistics
@@ -465,6 +737,40 @@ public class StackCommand implements Command {
 
         public String getTopMethod() {
             return topMethod;
+        }
+    }
+
+    private static String[] removeFlag(String[] args, String flag) {
+        if (args == null || args.length == 0 || flag == null || flag.isEmpty()) {
+            return args;
+        }
+        List<String> out = new ArrayList<>();
+        for (String a : args) {
+            if (a == null) {
+                continue;
+            }
+            if (flag.equals(a)) {
+                continue;
+            }
+            out.add(a);
+        }
+        return out.toArray(new String[0]);
+    }
+
+    private static final class StackSession {
+        private final String stackId;
+        private final Class<?> target;
+        private final String methodPattern;
+        private final BlockingQueue<StackTraceResult> queue;
+        private final ClassEnhancer enhancer;
+
+        private StackSession(String stackId, Class<?> target, String methodPattern,
+                             BlockingQueue<StackTraceResult> queue, ClassEnhancer enhancer) {
+            this.stackId = stackId;
+            this.target = target;
+            this.methodPattern = methodPattern;
+            this.queue = queue;
+            this.enhancer = enhancer;
         }
     }
 }

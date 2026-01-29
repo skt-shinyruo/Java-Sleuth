@@ -307,6 +307,24 @@ public class AuthorizationManager {
                     return AuthorizationResult.denied("Configuration modification requires admin privileges");
                 }
                 break;
+
+            case "sysprop":
+                // Read-only is allowed for viewers; modification must be admin.
+                if (args.length > 1 && "set".equalsIgnoreCase(args[1]) && userRole != UserRole.ADMIN) {
+                    auditLogger.logAuthorizationFailure(sessionId, "role", command,
+                        "Non-admin user attempting to modify system properties");
+                    return AuthorizationResult.denied("sysprop set requires admin privileges");
+                }
+                break;
+
+            case "vmoption":
+                // Listing is operator; setting must be admin.
+                if (args.length > 1 && "set".equalsIgnoreCase(args[1]) && userRole != UserRole.ADMIN) {
+                    auditLogger.logAuthorizationFailure(sessionId, "role", command,
+                        "Non-admin user attempting to set VM options");
+                    return AuthorizationResult.denied("vmoption set requires admin privileges");
+                }
+                break;
         }
 
         return AuthorizationResult.allowed();

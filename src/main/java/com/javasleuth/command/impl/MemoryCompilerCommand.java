@@ -3,6 +3,7 @@ package com.javasleuth.command.impl;
 import com.javasleuth.command.Command;
 import com.javasleuth.compiler.MemoryJavaCompiler;
 import com.javasleuth.compiler.MemoryJavaCompiler.CompilationResult;
+import com.javasleuth.security.SecurityValidator;
 
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
@@ -102,8 +103,12 @@ public class MemoryCompilerCommand implements Command {
 
                         // Save to file if output directory is specified
                         if (outputDir != null) {
-                            saveClassFile(compiledClassName, classBytes, outputDir);
-                            result.append("    Saved to: ").append(getClassFilePath(compiledClassName, outputDir)).append("\n");
+                            try {
+                                saveClassFile(compiledClassName, classBytes, outputDir);
+                                result.append("    Saved to: ").append(getClassFilePath(compiledClassName, outputDir)).append("\n");
+                            } catch (IOException ioe) {
+                                result.append("    Save failed: ").append(ioe.getMessage()).append("\n");
+                            }
                         }
                     }
 
@@ -161,25 +166,39 @@ public class MemoryCompilerCommand implements Command {
     }
 
     private String extractClassName(String sourceCode, String fileName) {
-        // Simple class name extraction - look for "public class" declaration
+        String pkg = extractPackage(sourceCode);
+        String simple = extractPrimaryTypeName(sourceCode, fileName);
+        if (simple == null) {
+            return null;
+        }
+        return pkg == null ? simple : (pkg + "." + simple);
+    }
+
+    private String extractPrimaryTypeName(String sourceCode, String fileName) {
+        // Very small parser: find first class/interface/enum declaration.
         String[] lines = sourceCode.split("\n");
         for (String line : lines) {
-            line = line.trim();
-            if (line.startsWith("public class ") || line.startsWith("class ")) {
-                String[] parts = line.split("\\s+");
+            String t = line.trim();
+            if (t.startsWith("public class ") || t.startsWith("class ") ||
+                t.startsWith("public interface ") || t.startsWith("interface ") ||
+                t.startsWith("public enum ") || t.startsWith("enum ")) {
+                String[] parts = t.split("\\s+");
                 for (int i = 0; i < parts.length - 1; i++) {
-                    if ("class".equals(parts[i])) {
+                    if ("class".equals(parts[i]) || "interface".equals(parts[i]) || "enum".equals(parts[i])) {
                         String name = parts[i + 1];
-                        // Remove generic parameters or implements clause
                         int genericStart = name.indexOf('<');
                         if (genericStart > 0) {
                             name = name.substring(0, genericStart);
                         }
-                        int implementsStart = name.indexOf('{');
+                        int braceStart = name.indexOf('{');
+                        if (braceStart > 0) {
+                            name = name.substring(0, braceStart);
+                        }
+                        int implementsStart = name.indexOf("implements");
                         if (implementsStart > 0) {
                             name = name.substring(0, implementsStart);
                         }
-                        return name;
+                        return name.trim();
                     }
                 }
             }
@@ -193,8 +212,25 @@ public class MemoryCompilerCommand implements Command {
         return null;
     }
 
+    private String extractPackage(String sourceCode) {
+        String[] lines = sourceCode.split("\n");
+        for (String line : lines) {
+            String t = line.trim();
+            if (t.startsWith("package ") && t.endsWith(";")) {
+                String body = t.substring("package ".length(), t.length() - 1).trim();
+                if (!body.isEmpty()) {
+                    return body;
+                }
+            }
+        }
+        return null;
+    }
+
     private void saveClassFile(String className, byte[] classBytes, String outputDir) throws IOException {
         String classFilePath = getClassFilePath(className, outputDir);
+        if (!SecurityValidator.canWriteFile(classFilePath)) {
+            throw new IOException("Output path not allowed: " + classFilePath);
+        }
         File classFile = new File(classFilePath);
 
         // Create parent directories if they don't exist

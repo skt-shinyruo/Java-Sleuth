@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 命令解析、校验、执行、输出
 - **Status:** ✅Stable
-- **Last Updated:** 2026-01-28
+- **Last Updated:** 2026-01-29
 
 ## Specifications
 
@@ -19,6 +19,34 @@
 - 输入校验
 - 命令执行
 - 结果清洗与返回
+
+### Requirement: 统一传输层与协议状态机（握手/升级）
+**Module:** command / protocol
+服务端与客户端在同一底层 `InputStream/OutputStream` 上完成文本行协议与二进制帧协议的协商与升级，避免混用多层缓冲导致的边界错位。
+
+#### Scenario: HELLO/CONFIG 协商并升级到 binary
+前置：`protocol.handshake.enabled=true`  
+- 客户端发送 `HELLO ... protocols=legacy,framed,binary`  
+- 服务端返回 `CONFIG v=1 protocol=<selected> ...`  
+- 若选择 binary：客户端发送 `UPGRADE BINARY` 后进入严格二进制帧通道
+
+### Requirement: 资源治理与 DoS 防护（连接/行长度/超时）
+**Module:** command
+将配置项真正落地到运行时行为，避免“配置存在但不生效”的假象。
+
+#### Scenario: 超限连接被拒绝
+前置：设置 `server.max.connections`  
+- 超出上限的新连接被拒绝并快速关闭  
+- 现有连接不受影响
+
+#### Scenario: 文本协议超长输入被拒绝
+前置：设置 `protocol.text.max.line.bytes`  
+- 读入阶段即拒绝超长单行输入，避免 OOM/CPU 过载
+
+#### Scenario: 长耗时命令按 timeout 中断
+前置：设置 `performance.command.timeout`  
+- 命令执行超过超时阈值返回错误  
+- 不长期占用 worker 线程
 
 ### Requirement: 插件化命令与分帧协议
 **Module:** command
@@ -33,7 +61,20 @@
 #### Scenario: 分帧与流式输出
 前置：客户端使用 framed 模式  
 - DATA/END/ERR 分帧输出
-- watch/trace 可流式推送
+- watch/trace/monitor/tt 可流式推送
+
+### Requirement: Arthas-like 命令集（简化版）
+**Module:** command
+对齐 Arthas 高频能力，保持“本机诊断 + 受控输入”。
+
+#### Scenario: 常用命令覆盖
+- watch/trace：支持 `--expr/--condition` 与 `--bg`（配合 jobs）
+- monitor：周期统计输出（支持 `--bg`）
+- tt（lite）：record/list/detail/replay（replay 仅生成模板，不在目标 JVM 执行；支持 `--bg`）
+- stack：新增 `stack <class-pattern> <method-pattern>` 方法触发调用栈追踪（支持 `-n/-t/--depth/--bg`）；保留原 `stack monitor/dump/analyze/...` 线程栈采样分析
+- jobs：list/tail/stop 管理后台任务
+- reset：一键清理增强与会话并回滚 retransform
+- stop/session/perm/version/logger/dump/getstatic/vmoption：诊断与管理补齐
 
 #### Scenario: 严格二进制帧输出
 前置：握手选择 binary 模式  
@@ -56,3 +97,4 @@ N/A
 - 202601281100_init_kb (planned)
 - 202601281207_sleuth_plugin_stream (history/2026-01/202601281207_sleuth_plugin_stream/) - 插件化命令与分帧协议
 - 202601281301_sleuth_handshake_secure_frames (history/2026-01/202601281301_sleuth_handshake_secure_frames/) - 握手协商 + 严格二进制帧 + 插件授权治理
+- 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 统一传输层/握手升级重构、连接/行长度/超时治理

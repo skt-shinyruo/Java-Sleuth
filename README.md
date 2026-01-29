@@ -90,6 +90,30 @@ help         - Show help information for all commands
 quit         - Exit the Java-Sleuth session
 ```
 
+> 重要提示（2026-01-29 起）：默认配置关闭匿名 viewer（`security.anonymous.viewer=false`）。新连接建立后，除 `auth` 外的命令可能会提示需要认证，请先执行 `auth <user> <password>`。
+
+## 安全与协议说明（2026-01-29 变更）
+
+为降低“非回环绑定 + 明文控制”带来的风险，本项目对默认安全边界与传输层做了收敛与重构：
+
+- 默认仅允许本机访问：`server.bind.address=127.0.0.1`
+- 若配置为非回环地址（例如 `0.0.0.0` 或局域网 IP），且 `security.mode=off`，Agent 会拒绝启动并提示修复方式
+- 若启用 `security.mode=hmac`，必须配置非空的 `security.hmac.secret`，否则也会拒绝启动（避免误以为“已开启安全”但实际无签名校验）
+- 默认关闭匿名 viewer：`security.anonymous.viewer=false`，连接后需要通过 `auth` 建立会话
+
+传输层与资源治理相关配置：
+
+- `protocol.handshake.enabled=true`：CLI 与 Agent 会先握手协商协议，再按协商结果进入 legacy/framed/binary
+- `protocol.text.max.line.bytes`：文本协议单行最大字节数，避免超长输入导致资源耗尽
+- `server.max.connections`：并发连接上限（超限新连接会被拒绝）
+- `performance.command.timeout`：命令执行超时（避免长耗时命令永久占用线程）
+
+插桩日志与代理类覆盖：
+
+- 默认允许对常见代理类（如 Spring/CGLIB `$$EnhancerBySpringCGLIB$$`）执行 watch/trace
+- 仍会过滤噪音类（如 `$$Lambda$`）
+- `logging.level=DEBUG` 时会输出每次 transform 的增强日志，`INFO` 默认不刷屏
+
 ## Commands Reference
 
 ### Phase 1 Commands

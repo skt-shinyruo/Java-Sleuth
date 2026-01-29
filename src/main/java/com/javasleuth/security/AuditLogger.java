@@ -8,6 +8,7 @@ import java.io.*;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -118,7 +119,7 @@ public class AuditLogger {
                 jsonEvent.put("client", event.getClientInfo());
             }
             if (event.getSessionId() != null) {
-                jsonEvent.put("session", event.getSessionId());
+                jsonEvent.put("session", maskSessionId(event.getSessionId()));
             }
 
             String jsonLog = objectMapper.writeValueAsString(jsonEvent);
@@ -137,7 +138,7 @@ public class AuditLogger {
         if (!config.isAuditLoggingEnabled()) return;
 
         String details = String.format("Command: %s, Args: %s, Success: %s",
-            command, String.join(" ", args), success);
+            sanitizeForLog(command), formatArgsForAudit(command, args), success);
 
         AuditEvent event = new AuditEvent(
             success ? "INFO" : "WARN",
@@ -276,12 +277,14 @@ public class AuditLogger {
     }
 
     public void logCommandAuthorization(String sessionId, String command, String[] args, boolean success, String role) {
+        if (!config.isAuditLoggingEnabled()) return;
+
         AuditEvent event = new AuditEvent(
             success ? "INFO" : "WARN",
             "SECURITY",
             "COMMAND_AUTHORIZATION",
             String.format("Command: %s, Args: %s, Role: %s, Success: %s",
-                command, String.join(" ", args), role, success),
+                sanitizeForLog(command), formatArgsForAudit(command, args), sanitizeForLog(role), success),
             sessionId,
             null
         );
@@ -316,12 +319,18 @@ public class AuditLogger {
     }
 
     public void logConfigurationChange(String sessionId, String parameter, String oldValue, String newValue) {
+        String safeOld = oldValue;
+        String safeNew = newValue;
+        if (isSensitiveKey(parameter)) {
+            safeOld = maskValue(oldValue);
+            safeNew = maskValue(newValue);
+        }
         AuditEvent event = new AuditEvent(
             "INFO",
             "CONFIGURATION",
             "PARAMETER_CHANGED",
             String.format("Parameter: %s, Old: %s, New: %s",
-                parameter, sanitizeForLog(oldValue), sanitizeForLog(newValue)),
+                parameter, sanitizeForLog(safeOld), sanitizeForLog(safeNew)),
             sessionId,
             null
         );
@@ -346,6 +355,60 @@ public class AuditLogger {
         }
         // Remove potential log injection characters
         return input.replaceAll("[\r\n\t]", "_");
+    }
+
+    private String formatArgsForAudit(String command, String[] args) {
+        if (args == null || args.length == 0) {
+            return "";
+        }
+
+        String cmd = command != null ? command.trim().toLowerCase() : "";
+        String[] safe = Arrays.copyOf(args, args.length);
+        for (int i = 0; i < safe.length; i++) {
+            if (safe[i] == null) {
+                safe[i] = "null";
+            }
+        }
+
+        if ("auth".equals(cmd)) {
+            if (safe.length >= 3) {
+                safe[2] = "***";
+            }
+        } else if ("config".equals(cmd)) {
+            if (safe.length >= 4 && "set".equalsIgnoreCase(safe[1]) && isSensitiveKey(safe[2])) {
+                safe[3] = "***";
+            }
+        } else if ("sysprop".equals(cmd)) {
+            if (safe.length >= 4 && "set".equalsIgnoreCase(safe[1]) && isSensitiveKey(safe[2])) {
+                safe[3] = "***";
+            }
+        }
+
+        return sanitizeForLog(String.join(" ", safe));
+    }
+
+    private boolean isSensitiveKey(String key) {
+        if (key == null) {
+            return false;
+        }
+        String k = key.toLowerCase();
+        return k.contains("password") || k.contains("secret") || k.contains("token") ||
+               k.contains("credential") || k.contains("session") || k.contains("apikey") || k.contains("api_key");
+    }
+
+    private String maskValue(String value) {
+        if (value == null) {
+            return "null";
+        }
+        if (value.length() <= 4) {
+            return "***";
+        }
+        return value.substring(0, 2) + "***" + value.substring(value.length() - 2);
+    }
+
+    private String maskSessionId(String sessionId) {
+        // Session IDs are bearer tokens; never write them in full to logs.
+        return maskValue(sessionId);
     }
 
     public void shutdown() {

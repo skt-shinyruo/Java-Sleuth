@@ -4,9 +4,9 @@
 性能优化、缓存、内存优化等工具能力。
 
 ## Module Overview
-- **Responsibility:** PerformanceOptimizer/MemoryOptimizer/JvmUtils
+- **Responsibility:** PerformanceOptimizer/MemoryOptimizer/JvmUtils + 诊断辅助工具
 - **Status:** ✅Stable
-- **Last Updated:** 2026-01-28
+- **Last Updated:** 2026-01-29
 
 ## Specifications
 
@@ -19,6 +19,24 @@
 - 命中缓存直接返回
 - 过期后重新计算
 
+### Requirement: 维护策略可配置（默认不强制 System.gc）
+**Module:** util
+避免默认定时触发 `System.gc()` 造成 STW 抖动，将强制 GC 变更为显式开关。
+
+#### Scenario: 默认不触发强制 GC，可配置开启
+前置：`performance.maintenance.force_gc=false`（默认）  
+- maintenance 不会主动调用 `System.gc()`  
+- 如确需启用，可显式设置为 true 并记录相关审计/提示
+
+### Requirement: 轻量日志封装（agent 侧降噪）
+**Module:** util
+提供不引入第三方框架的轻量日志封装，支持通过 `logging.level` 控制输出等级。
+
+#### Scenario: INFO 不刷屏，DEBUG 才输出增强细节
+前置：运行时设置 `logging.level`  
+- INFO/WARN/ERROR：仅输出关键事件  
+- DEBUG/TRACE：输出更详细的增强/调试信息（包含异常栈）
+
 ## API Interfaces
 N/A
 
@@ -28,6 +46,12 @@ N/A
 ## Dependencies
 - config
 
+## Utilities Added
+- WildcardMatcher：统一 `*` 通配符匹配（避免将用户输入当作正则）
+- RingBuffer：jobs/tt 等能力复用的环形缓冲
+- SleuthValueFormatter：安全可读化（限深/限长/脱敏）
+- SleuthConditionEvaluator：受控条件过滤（lhs:op:rhs，支持 cost 单位）
+
 ## Change History
 - 202601281100_init_kb (planned)
-
+- 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - maintenance GC 默认关闭、引入 SleuthLogger

@@ -13,12 +13,12 @@ import com.javasleuth.command.protocol.BinaryFrame;
 import com.javasleuth.command.protocol.BinaryFrameCodec;
 import com.javasleuth.command.protocol.Frame;
 import com.javasleuth.command.protocol.FrameCodec;
+import com.javasleuth.command.protocol.Utf8LineCodec;
 import java.io.*;
 import java.lang.instrument.Instrumentation;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -95,9 +95,33 @@ public class CommandProcessor {
             auditLogger.logSystemEvent("SERVER_START", "Server started on port " + port);
 
             if (!isLoopbackBind(bindAddress) && "off".equalsIgnoreCase(config.getSecurityMode())) {
-                System.err.println("⚠️ SECURITY WARNING: security.mode=off with non-loopback bind address may expose plaintext auth");
-                auditLogger.logSystemEvent("SECURITY_WARNING",
-                    "security.mode=off with bind=" + bindAddress + " may expose plaintext auth; consider security.mode=hmac or bind to 127.0.0.1");
+                System.err.println("❌ SECURITY ERROR: Refusing to start with non-loopback bind and security.mode=off");
+                System.err.println("Fix: set security.mode=hmac + security.hmac.secret, or bind to 127.0.0.1/::1");
+                auditLogger.logSystemEvent("SERVER_START_BLOCKED",
+                    "Refused to start: security.mode=off with non-loopback bind=" + bindAddress);
+                running.set(false);
+                try {
+                    serverSocket.close();
+                } catch (Exception ignore) {
+                    // ignore
+                }
+                return;
+            }
+
+            if ("hmac".equalsIgnoreCase(config.getSecurityMode())) {
+                String secret = config.getSecurityHmacSecret();
+                if (secret == null || secret.trim().isEmpty()) {
+                    System.err.println("❌ SECURITY ERROR: Refusing to start with security.mode=hmac but empty security.hmac.secret");
+                    auditLogger.logSystemEvent("SERVER_START_BLOCKED",
+                        "Refused to start: security.mode=hmac but security.hmac.secret is empty");
+                    running.set(false);
+                    try {
+                        serverSocket.close();
+                    } catch (Exception ignore) {
+                        // ignore
+                    }
+                    return;
+                }
             }
 
             // Add shutdown hook for graceful termination
@@ -108,6 +132,27 @@ public class CommandProcessor {
                 try {
                     Socket clientSocket = serverSocket.accept();
                     clientSocket.setSoTimeout(config.getConnectionTimeout());
+                    int maxConnections = config.getMaxConnections();
+                    int active = metricsCollector.getActiveConnections();
+                    if (maxConnections > 0 && active >= maxConnections) {
+                        String remote = String.valueOf(clientSocket.getRemoteSocketAddress());
+                        auditLogger.logSecurityViolation(null, remote, "MAX_CONNECTIONS",
+                            "Rejected connection: active=" + active + ", max=" + maxConnections);
+                        try {
+                            BufferedOutputStream out = new BufferedOutputStream(clientSocket.getOutputStream());
+                            Utf8LineCodec.writeLine(out, "ERROR: too many connections (max=" + maxConnections + ")", true);
+                        } catch (Exception ignore) {
+                            // ignore
+                        } finally {
+                            try {
+                                clientSocket.close();
+                            } catch (Exception ignore) {
+                                // ignore
+                            }
+                        }
+                        continue;
+                    }
+
                     metricsCollector.recordClientConnection();
 
                     clientExecutor.submit(() -> handleClient(clientSocket));
@@ -158,41 +203,53 @@ public class CommandProcessor {
 
         boolean pendingBinaryUpgrade = false;
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8));
-             PrintWriter writer = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8), true)) {
+        int maxLineBytes = config.getInt(
+            "protocol.text.max.line.bytes",
+            Math.max(8192, config.getFrameMaxPayload() * 2)
+        );
 
-            writer.println("Welcome to Java-Sleuth! Type 'help' for available commands.");
+        try (BufferedInputStream in = new BufferedInputStream(clientSocket.getInputStream());
+             BufferedOutputStream out = new BufferedOutputStream(clientSocket.getOutputStream())) {
+
+            Utf8LineCodec.writeLine(out, "Welcome to Java-Sleuth! Type 'help' for available commands.", true);
             metricsCollector.recordSessionStart(clientId);
             auditLogger.logConnectionEvent(clientId, clientInfo, "CONNECT");
 
-            String line;
-            while ((line = reader.readLine()) != null && running.get()) {
+            while (running.get()) {
+                String line;
+                try {
+                    line = Utf8LineCodec.readLine(in, maxLineBytes);
+                } catch (java.net.SocketTimeoutException timeout) {
+                    continue;
+                }
+                if (line == null) {
+                    break;
+                }
                 line = line.trim();
                 if (line.isEmpty()) {
                     continue;
                 }
 
                 if (config.isHandshakeEnabled() && line.toUpperCase().startsWith("HELLO")) {
-                    String selected = handleHello(line, writer);
+                    String selected = handleHello(line, out);
                     pendingBinaryUpgrade = "binary".equalsIgnoreCase(selected);
                     continue;
                 }
 
                 if (pendingBinaryUpgrade) {
                     if ("UPGRADE BINARY".equalsIgnoreCase(line)) {
-                        writer.println("OK");
-                        writer.flush();
+                        Utf8LineCodec.writeLine(out, "OK", true);
                         metricsCollector.recordBinaryUpgrade();
                         handleBinaryClient(
-                            new DataInputStream(clientSocket.getInputStream()),
-                            new DataOutputStream(clientSocket.getOutputStream()),
+                            new DataInputStream(in),
+                            new DataOutputStream(out),
                             clientId,
                             clientInfo,
                             sessionId
                         );
                         break;
                     } else {
-                        sendError(writer, false, "Handshake pending. Send: UPGRADE BINARY");
+                        sendError(out, false, "Handshake pending. Send: UPGRADE BINARY");
                         continue;
                     }
                 }
@@ -215,10 +272,16 @@ public class CommandProcessor {
                     raw = line;
                 }
 
-                String verifySessionId = sessionByClient.getOrDefault(clientId, sessionId);
-                RequestSecurityManager.VerificationResult verified = requestSecurityManager.verifyAndExtract(verifySessionId, raw);
+                String verifyKey = sessionByClient.get(clientId);
+                if (verifyKey == null) {
+                    verifyKey = sessionId;
+                }
+                if (verifyKey == null) {
+                    verifyKey = clientId;
+                }
+                RequestSecurityManager.VerificationResult verified = requestSecurityManager.verifyAndExtract(verifyKey, raw);
                 if (!verified.isOk()) {
-                    sendError(writer, framedRequested, verified.getError());
+                    sendError(out, framedRequested, verified.getError());
                     metricsCollector.recordError("security_verify");
                     continue;
                 }
@@ -231,14 +294,14 @@ public class CommandProcessor {
                 String commandName = parts[0].toLowerCase();
                 CommandRegistry.Entry entry = registry.getEntry(commandName);
                 if (entry == null) {
-                    sendError(writer, framedRequested, "Unknown command: " + commandName + ". Type 'help' for available commands.");
+                    sendError(out, framedRequested, "Unknown command: " + commandName + ". Type 'help' for available commands.");
                     metricsCollector.recordError("unknown_command");
                     continue;
                 }
 
                 String currentSessionId = sessionByClient.getOrDefault(clientId, sessionId);
                 if (currentSessionId == null && !"auth".equals(commandName)) {
-                    sendError(writer, framedRequested, "Authentication required. Use: auth <user> <password>");
+                    sendError(out, framedRequested, "Authentication required. Use: auth <user> <password>");
                     metricsCollector.recordError("unauthorized");
                     continue;
                 }
@@ -251,7 +314,7 @@ public class CommandProcessor {
                         && entry.getCommand() instanceof StreamCommand) {
                         String precheck = pipeline.validateAndAuthorize(commandName, parts, context);
                         if (precheck != null) {
-                            sendError(writer, framedRequested, precheck);
+                            sendError(out, framedRequested, precheck);
                             auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
                             continue;
                         }
@@ -259,22 +322,34 @@ public class CommandProcessor {
                         StreamSink sink = new StreamSink() {
                             @Override
                             public void send(String data) {
-                                sendData(writer, framedRequested, data);
+                                try {
+                                    sendData(out, framedRequested, data);
+                                } catch (IOException e) {
+                                    metricsCollector.recordError("protocol_write");
+                                }
                             }
 
                             @Override
                             public void close(String summary) {
-                                if (summary != null && !summary.isEmpty()) {
-                                    sendData(writer, framedRequested, summary);
-                                }
-                                if (framedRequested) {
-                                    FrameCodec.writeFrame(writer, Frame.end(), config.getFrameMaxPayload());
+                                try {
+                                    if (summary != null && !summary.isEmpty()) {
+                                        sendData(out, framedRequested, summary);
+                                    }
+                                    if (framedRequested) {
+                                        FrameCodec.writeFrame(out, Frame.end(), config.getFrameMaxPayload());
+                                    }
+                                } catch (IOException e) {
+                                    metricsCollector.recordError("protocol_write");
                                 }
                             }
 
                             @Override
                             public void error(String message) {
-                                sendError(writer, framedRequested, message);
+                                try {
+                                    sendError(out, framedRequested, message);
+                                } catch (IOException e) {
+                                    metricsCollector.recordError("protocol_write");
+                                }
                             }
                         };
 
@@ -283,13 +358,13 @@ public class CommandProcessor {
                     } else {
                         CommandPipeline.Result result = pipeline.execute(entry, parts, context);
                         if (result.isSuccess()) {
-                            sendData(writer, framedRequested, result.getOutput());
+                            sendData(out, framedRequested, result.getOutput());
                             if (framedRequested) {
-                                FrameCodec.writeFrame(writer, Frame.end(), config.getFrameMaxPayload());
+                                FrameCodec.writeFrame(out, Frame.end(), config.getFrameMaxPayload());
                             }
                             auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, true);
                         } else {
-                            sendError(writer, framedRequested, result.getError());
+                            sendError(out, framedRequested, result.getError());
                             auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
                         }
                     }
@@ -301,7 +376,7 @@ public class CommandProcessor {
                         break;
                     }
                 } catch (Exception e) {
-                    sendError(writer, framedRequested, "Error executing command: " + e.getMessage());
+                    sendError(out, framedRequested, "Error executing command: " + e.getMessage());
                     metricsCollector.recordError("command_execution");
                     auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
                 } finally {
@@ -368,8 +443,14 @@ public class CommandProcessor {
             boolean streamRequested = frame.isStream();
             String raw = frame.getPayloadUtf8();
 
-            String verifySessionId = sessionByClient.getOrDefault(clientId, baseSessionId);
-            RequestSecurityManager.VerificationResult verified = requestSecurityManager.verifyAndExtract(verifySessionId, raw);
+            String verifyKey = sessionByClient.get(clientId);
+            if (verifyKey == null) {
+                verifyKey = baseSessionId;
+            }
+            if (verifyKey == null) {
+                verifyKey = clientId;
+            }
+            RequestSecurityManager.VerificationResult verified = requestSecurityManager.verifyAndExtract(verifyKey, raw);
             if (!verified.isOk()) {
                 sendErrorBinary(out, verified.getError(), maxPayloadBytes);
                 metricsCollector.recordError("security_verify");
@@ -494,7 +575,7 @@ public class CommandProcessor {
         BinaryFrameCodec.writeFrame(out, BinaryFrame.end(), maxPayloadBytes);
     }
 
-    private String handleHello(String line, PrintWriter writer) {
+    private String handleHello(String line, OutputStream out) throws IOException {
         metricsCollector.recordHandshake();
         Map<String, String> kv = parseHandshakeKv(line);
         Set<String> clientProtocols = parseProtocols(kv.get("protocols"));
@@ -523,8 +604,7 @@ public class CommandProcessor {
             selected = "legacy";
         }
 
-        writer.println(buildConfigLine(selected));
-        writer.flush();
+        Utf8LineCodec.writeLine(out, buildConfigLine(selected), true);
         return selected;
     }
 
@@ -589,26 +669,26 @@ public class CommandProcessor {
         return "127.0.0.1".equals(v) || "localhost".equals(v) || "::1".equals(v);
     }
 
-    private void sendData(PrintWriter writer, boolean framed, String data) {
+    private void sendData(OutputStream out, boolean framed, String data) throws IOException {
         if (data == null) {
             data = "";
         }
         if (framed) {
-            FrameCodec.writeFrame(writer, Frame.data(data), config.getFrameMaxPayload());
+            FrameCodec.writeFrame(out, Frame.data(data), config.getFrameMaxPayload());
         } else {
-            writer.println(data);
+            Utf8LineCodec.writeLine(out, data, true);
         }
     }
 
-    private void sendError(PrintWriter writer, boolean framed, String message) {
+    private void sendError(OutputStream out, boolean framed, String message) throws IOException {
         if (message == null) {
             message = "Unknown error";
         }
         if (framed) {
-            FrameCodec.writeFrame(writer, Frame.err(message), config.getFrameMaxPayload());
-            FrameCodec.writeFrame(writer, Frame.end(), config.getFrameMaxPayload());
+            FrameCodec.writeFrame(out, Frame.err(message), config.getFrameMaxPayload());
+            FrameCodec.writeFrame(out, Frame.end(), config.getFrameMaxPayload());
         } else {
-            writer.println(message);
+            Utf8LineCodec.writeLine(out, message, true);
         }
     }
 

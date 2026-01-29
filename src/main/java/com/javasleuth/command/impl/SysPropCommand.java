@@ -10,6 +10,7 @@ import java.util.TreeMap;
 import java.util.regex.Pattern;
 
 public class SysPropCommand implements Command {
+    @SuppressWarnings("unused")
     private final Instrumentation instrumentation;
 
     public SysPropCommand(Instrumentation instrumentation) {
@@ -24,26 +25,35 @@ public class SysPropCommand implements Command {
 
         if (args.length == 1) {
             return PerformanceOptimizer.getCachedResult("sysprop_all", this::listAllProperties);
-        } else if (args.length == 2) {
+        }
+
+        if (args.length >= 2 && "set".equalsIgnoreCase(args[1])) {
+            if (args.length < 4) {
+                return "Usage: sysprop set <key> <value>";
+            }
+            if (args.length > 4) {
+                return "Invalid arguments. Note: sysprop set currently supports single-token values (no spaces).";
+            }
+            String key = args[2];
+            String value = args[3];
+            if (!isValidPropertyKey(key)) {
+                return "Invalid property key format";
+            }
+            if (!isValidPropertyValue(value)) {
+                return "Invalid property value format";
+            }
+            return setProperty(key, value);
+        }
+
+        if (args.length == 2) {
             String key = args[1];
             if (key.contains("*")) {
                 return PerformanceOptimizer.getCachedResult("sysprop_search_" + key, () -> searchProperties(key));
-            } else {
-                return PerformanceOptimizer.getCachedResult("sysprop_" + key, () -> getProperty(key));
             }
-        } else if (args.length == 3) {
-            String key = args[1];
-            String value = args[2];
-
-            // Security validation for key and value
-            if (!SecurityValidator.isValidPath(key) || !SecurityValidator.isValidPath(value)) {
-                return "Invalid property key or value format";
-            }
-
-            return setProperty(key, value);
-        } else {
-            return "Invalid arguments. Use: sysprop [key] [value] or sysprop --help for help";
+            return PerformanceOptimizer.getCachedResult("sysprop_" + key, () -> getProperty(key));
         }
+
+        return "Invalid arguments. Use: sysprop [key|pattern] | sysprop set <key> <value> | sysprop --help";
     }
 
     private String listAllProperties() {
@@ -79,6 +89,7 @@ public class SysPropCommand implements Command {
         if (value == null) {
             return String.format("System property '%s' not found", key);
         } else {
+            value = SecurityValidator.maskSensitiveValue(key, value);
             return String.format("=== System Property ===\n" +
                                "Key: %s\n" +
                                "Value: %s\n", key, value);
@@ -111,7 +122,7 @@ public class SysPropCommand implements Command {
 
             for (Map.Entry<String, String> entry : matchingProps.entrySet()) {
                 String key = entry.getKey();
-                String value = entry.getValue();
+                String value = SecurityValidator.maskSensitiveValue(key, entry.getValue());
 
                 // Truncate long values for readability
                 if (value.length() > 100) {
@@ -130,11 +141,14 @@ public class SysPropCommand implements Command {
             String oldValue = System.getProperty(key);
             System.setProperty(key, value);
 
+            String maskedOld = SecurityValidator.maskSensitiveValue(key, oldValue);
+            String maskedNew = SecurityValidator.maskSensitiveValue(key, value);
+
             StringBuilder sb = new StringBuilder();
             sb.append("=== System Property Updated ===\n");
             sb.append("Key: ").append(key).append("\n");
-            sb.append("Old Value: ").append(oldValue != null ? oldValue : "<not set>").append("\n");
-            sb.append("New Value: ").append(value).append("\n");
+            sb.append("Old Value: ").append(oldValue != null ? maskedOld : "<not set>").append("\n");
+            sb.append("New Value: ").append(maskedNew).append("\n");
 
             // Verify the change
             String verifyValue = System.getProperty(key);
@@ -150,6 +164,26 @@ public class SysPropCommand implements Command {
         }
     }
 
+    private boolean isValidPropertyKey(String key) {
+        if (key == null || key.trim().isEmpty()) {
+            return false;
+        }
+        // Typical Java system property key is dot-separated; keep it strict to reduce abuse surface.
+        return key.matches("^[a-zA-Z0-9_.-]{1,200}$");
+    }
+
+    private boolean isValidPropertyValue(String value) {
+        if (value == null) {
+            return false;
+        }
+        if (value.length() > 1000) {
+            return false;
+        }
+        // Reuse the project's masking heuristics and reject obvious log/command injection characters.
+        String sanitized = SecurityValidator.sanitizeInput(value);
+        return value.equals(sanitized);
+    }
+
     private String getHelpText() {
         return "=== System Property Command Help ===\n" +
                "View and modify system properties\n\n" +
@@ -157,12 +191,12 @@ public class SysPropCommand implements Command {
                "  sysprop                    List all system properties\n" +
                "  sysprop <key>              Get specific property value\n" +
                "  sysprop <pattern>          Search properties using wildcards (* and ?)\n" +
-               "  sysprop <key> <value>      Set property to new value\n" +
+               "  sysprop set <key> <value>  Set property to new value\n" +
                "  sysprop --help             Show this help message\n\n" +
                "Examples:\n" +
                "  sysprop java.version       Get Java version\n" +
                "  sysprop java.*             Find all Java-related properties\n" +
-               "  sysprop user.timezone GMT  Set timezone to GMT\n" +
+               "  sysprop set user.timezone GMT  Set timezone to GMT\n" +
                "  sysprop *path*             Find all path-related properties\n\n" +
                "Note: Some system properties may be read-only depending on the JVM\n" +
                "and security manager configuration.\n";

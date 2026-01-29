@@ -9,7 +9,17 @@ import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.enhancement.WatchEnhancer;
 import com.javasleuth.monitor.WatchInterceptor;
 import com.javasleuth.data.WatchResult;
+import com.javasleuth.command.JobManager;
+import com.javasleuth.util.SleuthConditionEvaluator;
+import com.javasleuth.util.SleuthValueFormatter;
+import com.javasleuth.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -48,6 +58,9 @@ public class WatchCommand implements StreamCommand {
             return help;
         }
 
+        // Background mode
+        boolean background = false;
+
         String classPattern = args[1];
         String methodPattern = args[2];
 
@@ -57,6 +70,8 @@ public class WatchCommand implements StreamCommand {
         boolean captureException = true;
         int maxCount = 100;
         long timeoutSeconds = 30;
+        String exprRaw = null;
+        List<String> rawConditions = new ArrayList<>();
 
         for (int i = 3; i < args.length; i++) {
             switch (args[i]) {
@@ -71,6 +86,19 @@ public class WatchCommand implements StreamCommand {
                     if (i + 1 < args.length) {
                         timeoutSeconds = Long.parseLong(args[++i]);
                     }
+                    break;
+                case "--expr":
+                    if (i + 1 < args.length) {
+                        exprRaw = args[++i];
+                    }
+                    break;
+                case "--condition":
+                    if (i + 1 < args.length) {
+                        rawConditions.add(args[++i]);
+                    }
+                    break;
+                case "--bg":
+                    background = true;
                     break;
                 case "--no-params":
                     captureParams = false;
@@ -87,13 +115,36 @@ public class WatchCommand implements StreamCommand {
             }
         }
 
+        if (background) {
+            String[] jobArgs = removeFlag(args, "--bg");
+            String commandLine = String.join(" ", jobArgs);
+            String jobId = JobManager.getInstance().submitStreamJob(
+                "watch",
+                commandLine,
+                jobSink -> runWatch(jobArgs, jobSink)
+            );
+            String msg = "Started watch in background. Job ID: " + jobId + " (use: jobs tail " + jobId + ")";
+            if (sink != null) {
+                sink.send(msg);
+                sink.close("job started");
+                return "";
+            }
+            return msg;
+        }
+
+        List<String> expr = parseExpr(exprRaw);
+        List<SleuthConditionEvaluator.Condition> conditions = SleuthConditionEvaluator.parseConditions(rawConditions);
+
         return startWatching(classPattern, methodPattern, captureParams, captureReturn,
-                           captureException, maxCount, timeoutSeconds, sink);
+            captureException, maxCount, timeoutSeconds, expr, conditions, sink);
     }
 
     private String startWatching(String classPattern, String methodPattern,
                                boolean captureParams, boolean captureReturn, boolean captureException,
-                               int maxCount, long timeoutSeconds, StreamSink sink) throws Exception {
+                               int maxCount, long timeoutSeconds,
+                               List<String> expr,
+                               List<SleuthConditionEvaluator.Condition> conditions,
+                               StreamSink sink) throws Exception {
 
         // Find matching classes
         Class<?>[] loadedClasses = instrumentation.getAllLoadedClasses();
@@ -160,7 +211,11 @@ public class WatchCommand implements StreamCommand {
 
                 WatchResult watchResult = resultQueue.poll(Math.min(remainingTime, 1000), TimeUnit.MILLISECONDS);
                 if (watchResult != null) {
-                    appendOrSend(result, sink, formatWatchResult(watchResult, ++eventCount));
+                    if (!SleuthConditionEvaluator.matchesWatch(watchResult, conditions)) {
+                        continue;
+                    }
+                    eventCount++;
+                    appendOrSend(result, sink, formatWatchResult(watchResult, eventCount, expr));
                 } else {
                     // Check if we should continue (no results for 1 second)
                     if (System.currentTimeMillis() - startTime > timeoutMs) {
@@ -209,10 +264,57 @@ public class WatchCommand implements StreamCommand {
     }
 
     private String formatWatchResult(WatchResult result, int eventNumber) {
+        return formatWatchResult(result, eventNumber, null);
+    }
+
+    private String formatWatchResult(WatchResult result, int eventNumber, List<String> expr) {
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("[%3d] ", eventNumber));
-        sb.append(String.format("%s ", java.time.LocalTime.now().toString()));
-        sb.append(result.toString());
+        sb.append(String.format("%s ", LocalTime.now().toString()));
+
+        if (expr == null || expr.isEmpty()) {
+            sb.append(result.toString());
+            return sb.toString();
+        }
+
+        Set<String> keys = new HashSet<>();
+        for (String e : expr) {
+            if (e != null && !e.trim().isEmpty()) {
+                keys.add(e.trim().toLowerCase(Locale.ROOT));
+            }
+        }
+
+        SleuthValueFormatter.Options opt = new SleuthValueFormatter.Options()
+            .withMaxDepth(2)
+            .withMaxStringLength(200)
+            .withMaxCollectionItems(20)
+            .withMaxMapEntries(20);
+
+        sb.append("[")
+            .append(result.getEventType() == null ? "EVENT" : result.getEventType().name())
+            .append("] ");
+
+        if (keys.contains("class") || keys.contains("method") || keys.contains("signature")) {
+            sb.append(result.getClassName()).append(".").append(result.getMethodName());
+        } else {
+            sb.append(result.getClassName()).append(".").append(result.getMethodName());
+        }
+
+        if (keys.contains("params") && result.getParameters() != null && result.getEventType() == WatchResult.EventType.METHOD_ENTRY) {
+            sb.append(" params=").append(SleuthValueFormatter.format(result.getParameters(), opt));
+        }
+        if (keys.contains("return") && result.getEventType() == WatchResult.EventType.METHOD_EXIT) {
+            sb.append(" return=").append(SleuthValueFormatter.format(result.getReturnValue(), opt));
+        }
+        if ((keys.contains("throw") || keys.contains("exception")) && result.getEventType() == WatchResult.EventType.METHOD_EXCEPTION) {
+            sb.append(" throw=").append(SleuthValueFormatter.formatThrowable(result.getException(), opt));
+        }
+        if (keys.contains("cost") && result.getEventType() != WatchResult.EventType.METHOD_ENTRY) {
+            sb.append(" cost=").append(result.formatDuration());
+        }
+        if (keys.contains("thread")) {
+            sb.append(" [").append(result.getThreadName()).append("#").append(result.getThreadId()).append("]");
+        }
         return sb.toString();
     }
 
@@ -225,12 +327,7 @@ public class WatchCommand implements StreamCommand {
     }
 
     private boolean matchesPattern(String className, String pattern) {
-        if ("*".equals(pattern)) {
-            return true;
-        }
-
-        String regex = pattern.replace("*", ".*");
-        return className.matches(regex);
+        return WildcardMatcher.matches(className, pattern);
     }
 
     private String getHelp() {
@@ -239,14 +336,52 @@ public class WatchCommand implements StreamCommand {
                "Options:\n" +
                "  -n, --count <num>     Maximum number of events to capture (default: 100)\n" +
                "  -t, --timeout <sec>   Timeout in seconds (default: 30)\n" +
+               "  --expr <fields>       Output fields (comma-separated), e.g. params,return,throw,cost,thread\n" +
+               "  --condition <c>       Filter condition (lhs:op:rhs), can repeat; e.g. cost:gt:1000000\n" +
+               "  --bg                 Run in background (use jobs tail/stop)\n" +
                "  --no-params          Don't capture method parameters\n" +
                "  --no-return          Don't capture return values\n" +
                "  --no-exception       Don't capture exceptions\n" +
                "  -h, --help           Show this help\n\n" +
                "Examples:\n" +
                "  watch com.example.* execute*\n" +
-               "  watch *Service* *method* -n 50 -t 60\n" +
+               "  watch *Service* *method* -n 50 -t 60 --condition cost:gt:1000000\n" +
                "  watch MyClass doWork --no-params\n";
+    }
+
+    private static List<String> parseExpr(String raw) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        String[] parts = raw.split(",");
+        List<String> out = new ArrayList<>();
+        for (String p : parts) {
+            if (p == null) {
+                continue;
+            }
+            String v = p.trim();
+            if (!v.isEmpty()) {
+                out.add(v);
+            }
+        }
+        return out;
+    }
+
+    private static String[] removeFlag(String[] args, String flag) {
+        if (args == null || args.length == 0 || flag == null || flag.isEmpty()) {
+            return args;
+        }
+        List<String> out = new ArrayList<>();
+        for (String a : args) {
+            if (a == null) {
+                continue;
+            }
+            if (flag.equals(a)) {
+                continue;
+            }
+            out.add(a);
+        }
+        return out.toArray(new String[0]);
     }
 
     @Override

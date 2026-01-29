@@ -1,430 +1,341 @@
 package com.javasleuth.command.impl;
 
-import com.javasleuth.command.Command;
+import com.javasleuth.command.JobManager;
+import com.javasleuth.command.StreamCommand;
+import com.javasleuth.command.StreamSink;
+import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.enhancement.ClassEnhancer;
+import com.javasleuth.enhancement.MonitorEnhancer;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
-import com.javasleuth.util.PerformanceOptimizer;
-import org.objectweb.asm.*;
+import com.javasleuth.monitor.MonitorInterceptor;
+import com.javasleuth.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
-import java.util.Map;
-import java.util.List;
+import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * MonitorCommand provides method execution statistics and monitoring
+ * Method monitor (simplified Arthas-like).
  *
  * Usage:
- * monitor start <class-pattern> <method-pattern> - Start monitoring methods
- * monitor stop <id> - Stop monitoring specific method
- * monitor list - List all active monitors
- * monitor stats [id] - Show execution statistics
- * monitor clear - Clear all monitoring data
+ *   monitor <class-pattern> <method-pattern> [-i <ms>] [-n <rounds>] [--limit <classes>] [--bg]
  */
-public class MonitorCommand implements Command {
+public class MonitorCommand implements StreamCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
-    private final ConcurrentHashMap<String, MethodMonitor> activeMonitors = new ConcurrentHashMap<>();
-    private final AtomicLong monitorIdGenerator = new AtomicLong(1);
-
-    // Global method statistics storage
-    private static final ConcurrentHashMap<String, MethodStats> METHOD_STATS = new ConcurrentHashMap<>();
+    private final ProductionConfig config;
+    private final ConcurrentHashMap<String, MonitorSession> activeSessions = new ConcurrentHashMap<>();
 
     public MonitorCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
+        this.config = ProductionConfig.getInstance();
     }
 
     @Override
     public String execute(String[] args) throws Exception {
-        if (args.length < 2) {
-            return getUsage();
-        }
-
-        String action = args[1].toLowerCase();
-
-        switch (action) {
-            case "start":
-                return startMonitoring(args);
-            case "stop":
-                return stopMonitoring(args);
-            case "list":
-                return listMonitors();
-            case "stats":
-                return showStats(args);
-            case "clear":
-                return clearMonitoring();
-            case "top":
-                return showTopMethods(args);
-            default:
-                return "Unknown monitor action: " + action + "\n" + getUsage();
-        }
+        return runMonitor(args, null);
     }
 
-    private String startMonitoring(String[] args) throws Exception {
-        if (args.length < 4) {
-            return "Usage: monitor start <class-pattern> <method-pattern>";
+    @Override
+    public void executeStream(String[] args, StreamSink sink) throws Exception {
+        runMonitor(args, sink);
+    }
+
+    private String runMonitor(String[] args, StreamSink sink) throws Exception {
+        if (args == null || args.length < 3) {
+            String help = getHelp();
+            if (sink != null) {
+                sink.error(help);
+                return "";
+            }
+            return help;
         }
 
-        String classPattern = args[2];
-        String methodPattern = args[3];
-        String monitorId = "monitor-" + monitorIdGenerator.getAndIncrement();
+        boolean background = false;
+        String classPattern = args[1];
+        String methodPattern = args[2];
+
+        long intervalMs = 5000;
+        int rounds = 10;
+        int classLimit = 50;
+
+        for (int i = 3; i < args.length; i++) {
+            String a = args[i];
+            if ("-i".equals(a) || "--interval".equals(a)) {
+                if (i + 1 < args.length) {
+                    intervalMs = parseLong(args[++i], 5000);
+                }
+            } else if ("-n".equals(a) || "--count".equals(a)) {
+                if (i + 1 < args.length) {
+                    rounds = parseInt(args[++i], 10);
+                }
+            } else if ("--limit".equals(a)) {
+                if (i + 1 < args.length) {
+                    classLimit = parseInt(args[++i], 50);
+                }
+            } else if ("--bg".equals(a)) {
+                background = true;
+            } else if ("-h".equals(a) || "--help".equals(a)) {
+                return getHelp();
+            }
+        }
+
+        if (background) {
+            String[] jobArgs = removeFlag(args, "--bg");
+            String commandLine = String.join(" ", jobArgs);
+            String jobId = JobManager.getInstance().submitStreamJob(
+                "monitor",
+                commandLine,
+                jobSink -> runMonitor(jobArgs, jobSink)
+            );
+            String msg = "Started monitor in background. Job ID: " + jobId + " (use: jobs tail " + jobId + ")";
+            if (sink != null) {
+                sink.send(msg);
+                sink.close("job started");
+                return "";
+            }
+            return msg;
+        }
+
+        return startMonitoring(classPattern, methodPattern, intervalMs, rounds, classLimit, sink);
+    }
+
+    private String startMonitoring(String classPattern, String methodPattern,
+                                   long intervalMs, int rounds, int classLimit,
+                                   StreamSink sink) throws Exception {
+        List<Class<?>> matches = new ArrayList<>();
+        for (Class<?> c : instrumentation.getAllLoadedClasses()) {
+            if (c == null) {
+                continue;
+            }
+            if (!WildcardMatcher.matches(c.getName(), classPattern)) {
+                continue;
+            }
+            if (!instrumentation.isModifiableClass(c)) {
+                continue;
+            }
+            matches.add(c);
+            if (matches.size() >= classLimit) {
+                break;
+            }
+        }
+
+        if (matches.isEmpty()) {
+            return "No modifiable loaded class matches pattern: " + classPattern;
+        }
+
+        String monitorId = UUID.randomUUID().toString();
+        MonitorInterceptor.registerMonitor(monitorId);
+        MonitorInterceptor.clear(monitorId);
+
+        List<MonitorSession.EnhancedClass> enhanced = new ArrayList<>();
+        for (Class<?> c : matches) {
+            MonitorEnhancer enhancer = new MonitorEnhancer(c.getName(), methodPattern, null, monitorId);
+            transformer.addEnhancer(c.getName(), enhancer);
+            instrumentation.retransformClasses(c);
+            enhanced.add(new MonitorSession.EnhancedClass(c, enhancer));
+        }
+
+        MonitorSession session = new MonitorSession(monitorId, classPattern, methodPattern, enhanced);
+        activeSessions.put(monitorId, session);
+
+        StringBuilder banner = new StringBuilder();
+        banner.append("Started monitor ").append(classPattern).append(".").append(methodPattern).append("\n");
+        banner.append("Monitor ID: ").append(monitorId).append("\n");
+        banner.append("Classes instrumented: ").append(enhanced.size()).append("\n");
+        banner.append("Interval: ").append(intervalMs).append("ms, Rounds: ").append(rounds).append("\n");
+
+        if (sink != null) {
+            sink.send(banner.toString().trim());
+        }
+
+        StringBuilder out = new StringBuilder();
+        int done = 0;
+        try {
+            for (int i = 0; i < rounds; i++) {
+                try {
+                    Thread.sleep(Math.max(1, intervalMs));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    appendOrSend(out, sink, "\nMonitor interrupted");
+                    break;
+                }
+
+                Map<String, MonitorInterceptor.MethodStatsSnapshot> snap = MonitorInterceptor.snapshot(monitorId);
+                appendOrSend(out, sink, formatSnapshot(snap, i + 1, rounds));
+                MonitorInterceptor.clear(monitorId);
+                done++;
+            }
+        } finally {
+            stopMonitor(monitorId);
+        }
+
+        String summary = "Monitor completed. rounds=" + done;
+        if (sink != null) {
+            sink.close(summary);
+            return "";
+        }
+        out.append(summary);
+        return out.toString();
+    }
+
+    private void stopMonitor(String monitorId) {
+        MonitorSession session = activeSessions.remove(monitorId);
+        if (session == null) {
+            MonitorInterceptor.unregisterMonitor(monitorId);
+            return;
+        }
 
         try {
-            // Find matching classes
-            Class<?>[] loadedClasses = instrumentation.getAllLoadedClasses();
-            List<Class<?>> matchingClasses = new ArrayList<>();
-
-            for (Class<?> clazz : loadedClasses) {
-                if (matchesPattern(clazz.getName(), classPattern)) {
-                    matchingClasses.add(clazz);
+            for (MonitorSession.EnhancedClass ec : session.enhancedClasses) {
+                transformer.removeEnhancer(ec.className, ec.enhancer);
+                try {
+                    instrumentation.retransformClasses(ec.clazz);
+                } catch (Exception ignored) {
+                    // best-effort
                 }
             }
+        } finally {
+            MonitorInterceptor.unregisterMonitor(monitorId);
+        }
+    }
 
-            if (matchingClasses.isEmpty()) {
-                return "No classes found matching pattern: " + classPattern;
+    private String formatSnapshot(Map<String, MonitorInterceptor.MethodStatsSnapshot> snap, int round, int rounds) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n=== Monitor Stats === ").append(LocalTime.now()).append(" (").append(round).append("/").append(rounds).append(")\n");
+        if (snap == null || snap.isEmpty()) {
+            sb.append("(no calls)\n");
+            return sb.toString().trim();
+        }
+
+        List<Map.Entry<String, MonitorInterceptor.MethodStatsSnapshot>> rows = new ArrayList<>(snap.entrySet());
+        rows.sort(Comparator.comparingLong((Map.Entry<String, MonitorInterceptor.MethodStatsSnapshot> e) -> e.getValue().getTotalNanos()).reversed());
+
+        sb.append(String.format("%-60s %8s %8s %10s %10s %10s\n", "METHOD", "COUNT", "EX", "AVG(ms)", "MAX(ms)", "MIN(ms)"));
+        sb.append("=".repeat(120)).append("\n");
+
+        int shown = 0;
+        for (Map.Entry<String, MonitorInterceptor.MethodStatsSnapshot> e : rows) {
+            if (shown >= 20) {
+                break;
             }
-
-            // Create monitor for matching classes
-            MethodMonitor monitor = new MethodMonitor(monitorId, classPattern, methodPattern);
-            activeMonitors.put(monitorId, monitor);
-
-            // Apply instrumentation to matching classes
-            MonitoringClassVisitor visitor = new MonitoringClassVisitor(methodPattern, monitorId);
-
-            int instrumentedCount = 0;
-            for (Class<?> clazz : matchingClasses) {
-                if (instrumentation.isModifiableClass(clazz)) {
-                    // This is a simplified approach - in practice, you'd use the transformer
-                    instrumentedCount++;
-                }
-            }
-
-            monitor.setInstrumentedClasses(instrumentedCount);
-
-            return String.format("Started monitoring [%s] for pattern %s::%s\n" +
-                               "Monitoring ID: %s\n" +
-                               "Instrumented %d classes\n" +
-                               "Use 'monitor stats %s' to view statistics",
-                               monitorId, classPattern, methodPattern, monitorId,
-                               instrumentedCount, monitorId);
-
-        } catch (Exception e) {
-            return "Failed to start monitoring: " + e.getMessage();
+            MonitorInterceptor.MethodStatsSnapshot s = e.getValue();
+            long count = s.getCount();
+            double avgMs = count <= 0 ? 0.0 : (s.getTotalNanos() / 1_000_000.0) / count;
+            sb.append(String.format("%-60s %8d %8d %10.2f %10.2f %10.2f\n",
+                truncate(e.getKey(), 60),
+                count,
+                s.getExceptionCount(),
+                avgMs,
+                s.getMaxNanos() / 1_000_000.0,
+                s.getMinNanos() / 1_000_000.0
+            ));
+            shown++;
         }
+        return sb.toString().trim();
     }
 
-    private String stopMonitoring(String[] args) {
-        if (args.length < 3) {
-            return "Usage: monitor stop <monitor-id>";
-        }
-
-        String monitorId = args[2];
-        MethodMonitor monitor = activeMonitors.remove(monitorId);
-
-        if (monitor == null) {
-            return "Monitor not found: " + monitorId;
-        }
-
-        monitor.stop();
-        return String.format("Stopped monitoring [%s]\n" +
-                           "Total executions: %d\n" +
-                           "Total time: %s",
-                           monitorId,
-                           monitor.getTotalExecutions(),
-                           PerformanceOptimizer.formatDuration(monitor.getTotalTime()));
-    }
-
-    private String listMonitors() {
-        if (activeMonitors.isEmpty()) {
-            return "No active monitors";
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("Active Monitors:\n");
-        sb.append(String.format("%-15s %-20s %-20s %-10s %-15s\n",
-                  "ID", "Class Pattern", "Method Pattern", "Classes", "Executions"));
-        sb.append("-".repeat(80)).append("\n");
-
-        for (MethodMonitor monitor : activeMonitors.values()) {
-            sb.append(String.format("%-15s %-20s %-20s %-10d %-15d\n",
-                      monitor.getId(),
-                      truncate(monitor.getClassPattern(), 20),
-                      truncate(monitor.getMethodPattern(), 20),
-                      monitor.getInstrumentedClasses(),
-                      monitor.getTotalExecutions()));
-        }
-
-        return sb.toString();
-    }
-
-    private String showStats(String[] args) {
-        if (args.length < 3) {
-            // Show overall statistics
-            return showOverallStats();
-        }
-
-        String monitorId = args[2];
-        MethodMonitor monitor = activeMonitors.get(monitorId);
-
-        if (monitor == null) {
-            return "Monitor not found: " + monitorId;
-        }
-
-        return getMonitorStats(monitor);
-    }
-
-    private String showOverallStats() {
-        if (METHOD_STATS.isEmpty()) {
-            return "No method statistics available";
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("Method Execution Statistics:\n");
-        sb.append(String.format("%-50s %-10s %-15s %-15s %-15s\n",
-                  "Method", "Count", "Total Time", "Avg Time", "Max Time"));
-        sb.append("-".repeat(100)).append("\n");
-
-        // Sort by total execution count
-        List<Map.Entry<String, MethodStats>> sorted = METHOD_STATS.entrySet().stream()
-            .sorted((a, b) -> Long.compare(b.getValue().getExecutionCount(), a.getValue().getExecutionCount()))
-            .limit(20)
-            .collect(Collectors.toList());
-
-        for (Map.Entry<String, MethodStats> entry : sorted) {
-            String method = entry.getKey();
-            MethodStats stats = entry.getValue();
-
-            sb.append(String.format("%-50s %-10d %-15s %-15s %-15s\n",
-                      truncate(method, 50),
-                      stats.getExecutionCount(),
-                      PerformanceOptimizer.formatDuration(stats.getTotalTime()),
-                      PerformanceOptimizer.formatDuration(stats.getAverageTime()),
-                      PerformanceOptimizer.formatDuration(stats.getMaxTime())));
-        }
-
-        return sb.toString();
-    }
-
-    private String showTopMethods(String[] args) {
-        int limit = args.length > 2 ? Integer.parseInt(args[2]) : 10;
-
-        if (METHOD_STATS.isEmpty()) {
-            return "No method statistics available";
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("Top ").append(limit).append(" Methods by Execution Count:\n");
-        sb.append(String.format("%-50s %-10s %-15s\n", "Method", "Count", "Total Time"));
-        sb.append("-".repeat(75)).append("\n");
-
-        METHOD_STATS.entrySet().stream()
-            .sorted((a, b) -> Long.compare(b.getValue().getExecutionCount(), a.getValue().getExecutionCount()))
-            .limit(limit)
-            .forEach(entry -> {
-                String method = entry.getKey();
-                MethodStats stats = entry.getValue();
-                sb.append(String.format("%-50s %-10d %-15s\n",
-                          truncate(method, 50),
-                          stats.getExecutionCount(),
-                          PerformanceOptimizer.formatDuration(stats.getTotalTime())));
-            });
-
-        return sb.toString();
-    }
-
-    private String clearMonitoring() {
-        int monitorCount = activeMonitors.size();
-        activeMonitors.clear();
-        METHOD_STATS.clear();
-        return String.format("Cleared %d monitors and all statistics", monitorCount);
-    }
-
-    private String getMonitorStats(MethodMonitor monitor) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Monitor Statistics [").append(monitor.getId()).append("]:\n");
-        sb.append("  Class Pattern: ").append(monitor.getClassPattern()).append("\n");
-        sb.append("  Method Pattern: ").append(monitor.getMethodPattern()).append("\n");
-        sb.append("  Instrumented Classes: ").append(monitor.getInstrumentedClasses()).append("\n");
-        sb.append("  Total Executions: ").append(monitor.getTotalExecutions()).append("\n");
-        sb.append("  Total Time: ").append(PerformanceOptimizer.formatDuration(monitor.getTotalTime())).append("\n");
-        sb.append("  Started: ").append(new java.util.Date(monitor.getStartTime())).append("\n");
-
-        if (monitor.isStopped()) {
-            sb.append("  Status: STOPPED\n");
+    private void appendOrSend(StringBuilder buf, StreamSink sink, String text) {
+        if (sink != null) {
+            sink.send(text);
         } else {
-            sb.append("  Status: ACTIVE\n");
-            long elapsed = System.currentTimeMillis() - monitor.getStartTime();
-            sb.append("  Running for: ").append(PerformanceOptimizer.formatDuration(elapsed)).append("\n");
+            buf.append(text).append("\n");
         }
-
-        return sb.toString();
     }
 
-    private boolean matchesPattern(String target, String pattern) {
-        // Convert glob pattern to regex
-        String regex = pattern.replace("*", ".*").replace("?", ".");
-        return target.matches(regex);
-    }
-
-    private String truncate(String str, int maxLength) {
-        if (str.length() <= maxLength) {
-            return str;
+    private int parseInt(String raw, int def) {
+        if (raw == null) {
+            return def;
         }
-        return str.substring(0, maxLength - 3) + "...";
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            return def;
+        }
     }
 
-    private String getUsage() {
-        return "Monitor Command Usage:\n" +
-               "  monitor start <class-pattern> <method-pattern> - Start monitoring methods\n" +
-               "  monitor stop <monitor-id>                      - Stop specific monitor\n" +
-               "  monitor list                                   - List all active monitors\n" +
-               "  monitor stats [monitor-id]                     - Show execution statistics\n" +
-               "  monitor top [limit]                            - Show top methods by execution count\n" +
-               "  monitor clear                                  - Clear all monitoring data\n" +
-               "\n" +
-               "Examples:\n" +
-               "  monitor start com.example.* execute*           - Monitor execute* methods in com.example.*\n" +
-               "  monitor start java.util.ArrayList *            - Monitor all ArrayList methods\n" +
-               "  monitor top 20                                 - Show top 20 methods by execution count";
+    private long parseLong(String raw, long def) {
+        if (raw == null) {
+            return def;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            return def;
+        }
+    }
+
+    private String truncate(String s, int maxLen) {
+        if (s == null) {
+            return "";
+        }
+        if (s.length() <= maxLen) {
+            return s;
+        }
+        return s.substring(0, Math.max(0, maxLen - 3)) + "...";
+    }
+
+    private String getHelp() {
+        return "Monitor command usage:\n" +
+            "  monitor <class-pattern> <method-pattern> [options]\n\n" +
+            "Options:\n" +
+            "  -i, --interval <ms>  Sampling interval in ms (default: 5000)\n" +
+            "  -n, --count <num>    Number of rounds (default: 10)\n" +
+            "  --limit <num>        Max classes to instrument (default: 50)\n" +
+            "  --bg                 Run in background (use jobs tail/stop)\n" +
+            "  -h, --help           Show this help\n";
     }
 
     @Override
     public String getDescription() {
-        return "Monitor method execution statistics and performance";
+        return "Monitor method statistics periodically (simplified)";
     }
 
-    // Record method execution for statistics
-    public static void recordMethodExecution(String methodSignature, long executionTime) {
-        METHOD_STATS.computeIfAbsent(methodSignature, k -> new MethodStats())
-                   .addExecution(executionTime);
+    private static String[] removeFlag(String[] args, String flag) {
+        if (args == null || args.length == 0 || flag == null || flag.isEmpty()) {
+            return args;
+        }
+        List<String> out = new ArrayList<>();
+        for (String a : args) {
+            if (a == null) {
+                continue;
+            }
+            if (flag.equals(a)) {
+                continue;
+            }
+            out.add(a);
+        }
+        return out.toArray(new String[0]);
     }
 
-    // Inner classes for monitoring data structures
-    private static class MethodMonitor {
+    private static final class MonitorSession {
         private final String id;
         private final String classPattern;
         private final String methodPattern;
-        private final long startTime;
-        private final AtomicLong totalExecutions = new AtomicLong(0);
-        private final AtomicLong totalTime = new AtomicLong(0);
-        private final AtomicBoolean stopped = new AtomicBoolean(false);
-        private int instrumentedClasses = 0;
+        private final List<EnhancedClass> enhancedClasses;
 
-        public MethodMonitor(String id, String classPattern, String methodPattern) {
+        private MonitorSession(String id, String classPattern, String methodPattern, List<EnhancedClass> enhancedClasses) {
             this.id = id;
             this.classPattern = classPattern;
             this.methodPattern = methodPattern;
-            this.startTime = System.currentTimeMillis();
+            this.enhancedClasses = enhancedClasses;
         }
 
-        // Getters and setters
-        public String getId() { return id; }
-        public String getClassPattern() { return classPattern; }
-        public String getMethodPattern() { return methodPattern; }
-        public long getStartTime() { return startTime; }
-        public long getTotalExecutions() { return totalExecutions.get(); }
-        public long getTotalTime() { return totalTime.get(); }
-        public boolean isStopped() { return stopped.get(); }
-        public int getInstrumentedClasses() { return instrumentedClasses; }
-        public void setInstrumentedClasses(int count) { this.instrumentedClasses = count; }
+        private static final class EnhancedClass {
+            private final Class<?> clazz;
+            private final String className;
+            private final ClassEnhancer enhancer;
 
-        public void addExecution(long time) {
-            totalExecutions.incrementAndGet();
-            totalTime.addAndGet(time);
-        }
-
-        public void stop() {
-            stopped.set(true);
-        }
-    }
-
-    private static class MethodStats {
-        private final AtomicLong executionCount = new AtomicLong(0);
-        private final AtomicLong totalTime = new AtomicLong(0);
-        private final AtomicLong maxTime = new AtomicLong(0);
-
-        public void addExecution(long time) {
-            executionCount.incrementAndGet();
-            totalTime.addAndGet(time);
-
-            // Update max time using atomic operation
-            long currentMax = maxTime.get();
-            while (time > currentMax && !maxTime.compareAndSet(currentMax, time)) {
-                currentMax = maxTime.get();
+            private EnhancedClass(Class<?> clazz, ClassEnhancer enhancer) {
+                this.clazz = clazz;
+                this.className = clazz != null ? clazz.getName() : "";
+                this.enhancer = enhancer;
             }
-        }
-
-        public long getExecutionCount() { return executionCount.get(); }
-        public long getTotalTime() { return totalTime.get(); }
-        public long getMaxTime() { return maxTime.get(); }
-        public long getAverageTime() {
-            long count = executionCount.get();
-            return count > 0 ? totalTime.get() / count : 0;
-        }
-    }
-
-    // Simple class visitor for method monitoring instrumentation
-    private static class MonitoringClassVisitor extends ClassVisitor {
-        private final String methodPattern;
-        private final String monitorId;
-
-        public MonitoringClassVisitor(String methodPattern, String monitorId) {
-            super(Opcodes.ASM9);
-            this.methodPattern = methodPattern;
-            this.monitorId = monitorId;
-        }
-
-        @Override
-        public MethodVisitor visitMethod(int access, String name, String descriptor,
-                                       String signature, String[] exceptions) {
-            MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
-
-            // Check if method matches pattern
-            if (matchesMethodPattern(name, methodPattern)) {
-                return new MonitoringMethodVisitor(mv, name, descriptor, monitorId);
-            }
-
-            return mv;
-        }
-
-        private boolean matchesMethodPattern(String methodName, String pattern) {
-            String regex = pattern.replace("*", ".*").replace("?", ".");
-            return methodName.matches(regex);
-        }
-    }
-
-    // Method visitor that adds timing instrumentation
-    private static class MonitoringMethodVisitor extends MethodVisitor {
-        private final String methodName;
-        private final String descriptor;
-        private final String monitorId;
-
-        public MonitoringMethodVisitor(MethodVisitor mv, String methodName, String descriptor, String monitorId) {
-            super(Opcodes.ASM9, mv);
-            this.methodName = methodName;
-            this.descriptor = descriptor;
-            this.monitorId = monitorId;
-        }
-
-        @Override
-        public void visitCode() {
-            // Add timing start code
-            super.visitCode();
-            // This would inject bytecode to record method entry time
-            // Implementation details would depend on the specific instrumentation needs
-        }
-
-        @Override
-        public void visitInsn(int opcode) {
-            // Intercept return instructions to record timing
-            if ((opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN) || opcode == Opcodes.ATHROW) {
-                // Add timing end code and record statistics
-                // This would inject bytecode to calculate execution time and call recordMethodExecution
-            }
-            super.visitInsn(opcode);
         }
     }
 }

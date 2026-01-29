@@ -136,15 +136,15 @@ public class MemoryJavaCompiler implements AutoCloseable {
         @Override
         public OutputStream openOutputStream() {
             outputStream = new ByteArrayOutputStream();
-            return outputStream;
-        }
-
-        public void closeStream() throws IOException {
-            if (outputStream != null) {
-                byte[] classBytes = outputStream.toByteArray();
-                classLoader.addClass(className, classBytes);
-                outputStream.close();
-            }
+            // The compiler will close the returned OutputStream; hook close() to persist bytes.
+            return new FilterOutputStream(outputStream) {
+                @Override
+                public void close() throws IOException {
+                    super.close();
+                    byte[] classBytes = outputStream.toByteArray();
+                    classLoader.addClass(className, classBytes);
+                }
+            };
         }
 
         private static URI createURI(String className) {

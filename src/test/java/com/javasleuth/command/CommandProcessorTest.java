@@ -4,14 +4,18 @@ import com.javasleuth.command.protocol.BinaryFrame;
 import com.javasleuth.command.protocol.BinaryFrameCodec;
 import com.javasleuth.command.protocol.Frame;
 import com.javasleuth.command.protocol.FrameCodec;
+import com.javasleuth.command.protocol.Utf8LineCodec;
+import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.security.AuthenticationManager;
 import com.javasleuth.security.AuthorizationManager;
+import com.javasleuth.security.InputValidator;
 import com.javasleuth.security.RequestSecurityManager;
 import org.junit.Test;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.PrintWriter;
@@ -54,6 +58,39 @@ public class CommandProcessorTest {
     }
 
     @Test
+    public void testFrameCodecRoundTripStream() throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        FrameCodec.writeFrame(baos, Frame.data("hello"), 4096);
+        FrameCodec.writeFrame(baos, Frame.end(), 4096);
+
+        ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
+        Frame data = FrameCodec.readFrame(bais, 8192);
+        assertNotNull(data);
+        assertEquals(Frame.Type.DATA, data.getType());
+        assertEquals("hello", data.getPayload());
+
+        Frame end = FrameCodec.readFrame(bais, 8192);
+        assertNotNull(end);
+        assertEquals(Frame.Type.END, end.getType());
+    }
+
+    @Test
+    public void testUtf8LineCodecMaxBytes() throws Exception {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 50; i++) {
+            sb.append("a");
+        }
+        byte[] bytes = (sb.toString() + "\n").getBytes("UTF-8");
+
+        try {
+            Utf8LineCodec.readLine(new ByteArrayInputStream(bytes), 10);
+            fail("Expected IOException for line too long");
+        } catch (IOException expected) {
+            // ok
+        }
+    }
+
+    @Test
     public void testBinaryFrameCodecRoundTrip() throws Exception {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(baos);
@@ -80,37 +117,91 @@ public class CommandProcessorTest {
     }
 
     @Test
+    public void testCommandTimeoutInPipeline() {
+        String oldAuthz = System.getProperty("sleuth.security.authorization.enabled");
+        String oldValidation = System.getProperty("sleuth.security.input.validation");
+        String oldTimeout = System.getProperty("sleuth.performance.command.timeout");
+
+        try {
+            System.setProperty("sleuth.security.authorization.enabled", "false");
+            System.setProperty("sleuth.security.input.validation", "false");
+            System.setProperty("sleuth.performance.command.timeout", "50");
+
+            ProductionConfig config = ProductionConfig.getInstance();
+            CommandPipeline pipeline = new CommandPipeline(new InputValidator(), AuthorizationManager.getInstance(), config);
+
+            Command slow = new Command() {
+                @Override
+                public String execute(String[] args) throws Exception {
+                    Thread.sleep(200);
+                    return "ok";
+                }
+
+                @Override
+                public String getDescription() {
+                    return "slow";
+                }
+            };
+
+            CommandRegistry.Entry entry = new CommandRegistry.Entry(slow, CommandMeta.viewer(false, false), "test");
+            CommandContext context = new CommandContext("c1", "test", null, false, false);
+            CommandPipeline.Result result = pipeline.execute(entry, new String[]{"slow"}, context);
+            assertFalse(result.isSuccess());
+            assertNotNull(result.getError());
+            assertTrue(result.getError().toLowerCase().contains("timed out"));
+        } finally {
+            setOrClearProperty("sleuth.security.authorization.enabled", oldAuthz);
+            setOrClearProperty("sleuth.security.input.validation", oldValidation);
+            setOrClearProperty("sleuth.performance.command.timeout", oldTimeout);
+        }
+    }
+
+    @Test
     public void testAuthorizationManagerDynamicPermissionRegistration() {
+        String oldAnon = System.getProperty("sleuth.security.anonymous.viewer");
         AuthorizationManager authorizationManager = AuthorizationManager.getInstance();
         AuthenticationManager authenticationManager = AuthenticationManager.getInstance();
 
-        AuthenticationManager.AuthenticationResult session =
-            authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test-client");
-        assertTrue(session.isSuccess());
+        try {
+            System.setProperty("sleuth.security.anonymous.viewer", "true");
 
-        CommandMeta meta = CommandMeta.viewer(false, false);
-        authorizationManager.registerOrUpdatePermission("plugin_cmd", meta);
+            AuthenticationManager.AuthenticationResult session =
+                authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test-client");
+            assertTrue(session.isSuccess());
 
-        AuthorizationManager.AuthorizationResult result =
-            authorizationManager.authorize(session.getSessionId(), "plugin_cmd", new String[]{"plugin_cmd"});
-        assertTrue(result.isAllowed());
+            CommandMeta meta = CommandMeta.viewer(false, false);
+            authorizationManager.registerOrUpdatePermission("plugin_cmd", meta);
+
+            AuthorizationManager.AuthorizationResult result =
+                authorizationManager.authorize(session.getSessionId(), "plugin_cmd", new String[]{"plugin_cmd"});
+            assertTrue(result.isAllowed());
+        } finally {
+            setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
+        }
     }
 
     @Test
     public void testAuthorizationManagerDangerousCommandUpgradesToAdmin() {
+        String oldAnon = System.getProperty("sleuth.security.anonymous.viewer");
         AuthorizationManager authorizationManager = AuthorizationManager.getInstance();
         AuthenticationManager authenticationManager = AuthenticationManager.getInstance();
 
-        AuthenticationManager.AuthenticationResult session =
-            authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test-client");
-        assertTrue(session.isSuccess());
+        try {
+            System.setProperty("sleuth.security.anonymous.viewer", "true");
 
-        CommandMeta meta = CommandMeta.viewer(false, false).withDangerous(true);
-        authorizationManager.registerOrUpdatePermission("dangerous_plugin_cmd", meta);
+            AuthenticationManager.AuthenticationResult session =
+                authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test-client");
+            assertTrue(session.isSuccess());
 
-        AuthorizationManager.AuthorizationResult result =
-            authorizationManager.authorize(session.getSessionId(), "dangerous_plugin_cmd", new String[]{"dangerous_plugin_cmd"});
-        assertFalse(result.isAllowed());
+            CommandMeta meta = CommandMeta.viewer(false, false).withDangerous(true);
+            authorizationManager.registerOrUpdatePermission("dangerous_plugin_cmd", meta);
+
+            AuthorizationManager.AuthorizationResult result =
+                authorizationManager.authorize(session.getSessionId(), "dangerous_plugin_cmd", new String[]{"dangerous_plugin_cmd"});
+            assertFalse(result.isAllowed());
+        } finally {
+            setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
+        }
     }
 
     @Test
