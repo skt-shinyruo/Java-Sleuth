@@ -6,12 +6,14 @@ import com.javasleuth.util.WildcardMatcher;
 
 public class TraceEnhancer implements ClassEnhancer {
     private final String targetClassName;
+    private final String targetClassInternalName;
     private final String targetMethodName;
     private final String targetMethodDesc;
     private final String traceId;
 
     public TraceEnhancer(String className, String methodName, String methodDesc, String traceId) {
         this.targetClassName = className;
+        this.targetClassInternalName = className == null ? null : className.replace('.', '/');
         this.targetMethodName = methodName;
         this.targetMethodDesc = methodDesc;
         this.traceId = traceId;
@@ -74,9 +76,13 @@ public class TraceEnhancer implements ClassEnhancer {
 
         @Override
         protected void onMethodEnter() {
+            // Initialize locals used by the exception handler before tryStart to avoid VerifyError.
+            startTimeVar = newLocal(Type.LONG_TYPE);
+            mv.visitInsn(LCONST_0);
+            mv.visitVarInsn(LSTORE, startTimeVar);
+
             mv.visitLabel(tryStart);
             // Store start time
-            startTimeVar = newLocal(Type.LONG_TYPE);
             mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
             mv.visitVarInsn(LSTORE, startTimeVar);
 
@@ -172,6 +178,16 @@ public class TraceEnhancer implements ClassEnhancer {
             if (owner.startsWith("java/") || owner.startsWith("javax/") ||
                 owner.startsWith("sun/") || owner.startsWith("com/javasleuth/")) {
                 return;
+            }
+
+            // Avoid duplicate events when the callee method is also traced by this enhancer.
+            if (targetClassInternalName != null && targetClassInternalName.equals(owner)) {
+                boolean nameMatches = WildcardMatcher.matches(name, targetMethodName);
+                if (nameMatches) {
+                    if (targetMethodDesc == null || "*".equals(targetMethodDesc) || targetMethodDesc.equals(descriptor)) {
+                        return;
+                    }
+                }
             }
 
             // Push trace ID

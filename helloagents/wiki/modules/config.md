@@ -41,8 +41,11 @@
 - `plugins.allowlist.sha256`：插件 allowlist（jarName:sha256hex）
 - `logging.audit.console.enabled`：审计事件是否镜像到控制台（默认 false）
 - `logging.audit.file.path` / `logging.security.file.path`：审计/安全日志落盘路径（留空默认落到 tmp 并带 pid 后缀）
+- `logging.performance.enabled`：是否启用性能/健康相关 stdout/stderr 日志（默认 false）
 - `monitoring.trace.sample.rate`：trace 采样率（默认更保守）
 - `monitoring.monitor.sample.rate`：monitor 采样率（默认 1.0，避免与 trace 误联动）
+- `monitoring.watch.queue.capacity` / `monitoring.watch.drop.on.full`：watch 事件队列容量与满队列策略
+- `monitoring.trace.queue.capacity` / `monitoring.trace.drop.on.full`：trace 事件队列容量与满队列策略
 
 ### Requirement: 运行时覆盖（Runtime Overrides）
 **Module:** config
@@ -68,3 +71,4 @@ N/A
 - 202601281301_sleuth_handshake_secure_frames (history/2026-01/202601281301_sleuth_handshake_secure_frames/) - 新增 bind/handshake/security.mode 配置项
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 安全默认/资源治理/运行时覆写扩展与文档一致性修复
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - 启动稳定化与安全自举相关配置项补齐
+- 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - logging.performance.enabled 默认关闭与监控队列策略文档补齐

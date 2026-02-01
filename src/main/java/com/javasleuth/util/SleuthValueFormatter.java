@@ -68,6 +68,11 @@ public final class SleuthValueFormatter {
             return "null";
         }
 
+        if (value instanceof SleuthSnapshotValue) {
+            String s = ((SleuthSnapshotValue) value).getSummary();
+            return s == null ? "null" : s;
+        }
+
         if (value instanceof CharSequence) {
             return "\"" + truncate(value.toString(), options.getMaxStringLength()) + "\"";
         }
@@ -223,4 +228,3 @@ public final class SleuthValueFormatter {
         return s.substring(0, maxLen) + "...";
     }
 }
-

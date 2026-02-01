@@ -79,7 +79,13 @@ public class ProductionConfig {
         properties.setProperty("performance.thread.pool.core", "4");
         properties.setProperty("performance.thread.pool.max", "16");
         properties.setProperty("performance.command.timeout", "60000");
+        properties.setProperty("performance.command.timeout.max", "300000");
         properties.setProperty("performance.maintenance.force_gc", "false");
+
+        // Job retention configuration
+        properties.setProperty("jobs.max", "200");
+        properties.setProperty("jobs.ttl.ms", "3600000");
+        properties.setProperty("jobs.output.max.bytes", "262144");
 
         // Security configuration
         properties.setProperty("security.input.validation", "true");
@@ -133,7 +139,8 @@ public class ProductionConfig {
         properties.setProperty("logging.audit.console.enabled", "false");
         properties.setProperty("logging.audit.file.path", "");
         properties.setProperty("logging.security.file.path", "");
-        properties.setProperty("logging.performance.enabled", "true");
+        // Performance/health logging to stdout/stderr is noisy in production; keep it opt-in.
+        properties.setProperty("logging.performance.enabled", "false");
 
         configLoaded = true;
     }
@@ -173,7 +180,28 @@ public class ProductionConfig {
     }
 
     public long getCommandTimeout() {
-        return getLong("performance.command.timeout", 60000);
+        long v = getLong("performance.command.timeout", 60000);
+        long cap = getLong("performance.command.timeout.max", 300000);
+        if (cap > 0 && v > cap) {
+            v = cap;
+        }
+        return v;
+    }
+
+    public long getMaxCommandTimeout() {
+        return getLong("performance.command.timeout.max", 300000);
+    }
+
+    public int getJobsMax() {
+        return getInt("jobs.max", 200);
+    }
+
+    public long getJobsTtlMs() {
+        return getLong("jobs.ttl.ms", 3600000);
+    }
+
+    public int getJobsOutputMaxBytes() {
+        return getInt("jobs.output.max.bytes", 262144);
     }
 
     // Security configuration
@@ -360,7 +388,7 @@ public class ProductionConfig {
     }
 
     public boolean isPerformanceLogEnabled() {
-        return getBoolean("logging.performance.enabled", true);
+        return getBoolean("logging.performance.enabled", false);
     }
 
     // Generic getters with runtime override support

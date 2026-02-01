@@ -28,6 +28,7 @@ A lightweight Java diagnostic and monitoring tool inspired by Arthas. Java-Sleut
 - **Java 8+** (JDK required for tools.jar on Java < 9)
 - **Maven 3.6+** for building
 - **Linux/macOS/Windows** support
+- 构建期兼容性校验：`mvn verify` 会校验 Java 8 API 兼容性，避免在 JDK 11+ 编译但在 Java 8 运行时才炸（Attach API 属于 JDK 能力，已做合理忽略）
 
 ## Documentation
 
@@ -110,12 +111,18 @@ quit         - Exit the Java-Sleuth session
 - `protocol.text.max.line.bytes`：文本协议单行最大字节数，避免超长输入导致资源耗尽
 - `server.max.connections`：并发连接上限（超限新连接会被拒绝）
 - `performance.command.timeout`：命令执行超时（避免长耗时命令永久占用线程）
+- `logging.performance.enabled=false`：默认关闭性能/健康相关的 stdout/stderr 输出（生产环境建议保持关闭）
 
 插桩日志与代理类覆盖：
 
 - 默认允许对常见代理类（如 Spring/CGLIB `$$EnhancerBySpringCGLIB$$`）执行 watch/trace
 - 仍会过滤噪音类（如 `$$Lambda$`）
 - `logging.level=DEBUG` 时会输出每次 transform 的增强日志，`INFO` 默认不刷屏
+
+命令与安全细节补充：
+
+- `session` 命令默认脱敏 `SessionId`，如需排查可显式执行 `session --show-token`（敏感信息，请谨慎）
+- `sm -E`（regex）使用 RE2/J 作为引擎以避免灾难性回溯（ReDoS），但与 Java 原生 regex 行为可能存在差异（例如不支持回溯/反向引用等特性）
 
 ## Commands Reference
 

@@ -2,6 +2,8 @@ package com.javasleuth.monitor;
 
 import com.javasleuth.data.WatchResult;
 import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.util.SleuthValueFormatter;
+import com.javasleuth.util.SleuthValueSnapshotter;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
@@ -13,6 +15,13 @@ public class WatchInterceptor {
     private static final AtomicLong publishedEvents = new AtomicLong(0);
     private static final AtomicLong droppedEvents = new AtomicLong(0);
     private static final AtomicLong evictedEvents = new AtomicLong(0);
+
+    private static final SleuthValueFormatter.Options SNAPSHOT_OPTIONS =
+        new SleuthValueFormatter.Options()
+            .withMaxDepth(2)
+            .withMaxStringLength(200)
+            .withMaxCollectionItems(20)
+            .withMaxMapEntries(20);
 
     public static void registerWatch(String watchId, BlockingQueue<WatchResult> queue) {
         watchQueues.put(watchId, queue);
@@ -42,7 +51,7 @@ public class WatchInterceptor {
             result.setClassName(className);
             result.setMethodName(methodName);
             result.setMethodDescriptor(methodDesc);
-            result.setParameters(parameters);
+            result.setParameters(SleuthValueSnapshotter.snapshotParameters(parameters, SNAPSHOT_OPTIONS));
             result.setStartTime(startTime);
             result.setEventType(WatchResult.EventType.METHOD_ENTRY);
             result.setThreadName(Thread.currentThread().getName());
@@ -67,7 +76,7 @@ public class WatchInterceptor {
             result.setClassName(className);
             result.setMethodName(methodName);
             result.setMethodDescriptor(methodDesc);
-            result.setReturnValue(returnValue);
+            result.setReturnValue(SleuthValueSnapshotter.snapshotValue(returnValue, SNAPSHOT_OPTIONS));
             result.setStartTime(startTime);
             result.setDuration(duration);
             result.setEventType(WatchResult.EventType.METHOD_EXIT);
@@ -93,7 +102,7 @@ public class WatchInterceptor {
             result.setClassName(className);
             result.setMethodName(methodName);
             result.setMethodDescriptor(methodDesc);
-            result.setException(exception);
+            result.setException(SleuthValueSnapshotter.snapshotThrowable(exception, SNAPSHOT_OPTIONS));
             result.setStartTime(startTime);
             result.setDuration(duration);
             result.setEventType(WatchResult.EventType.METHOD_EXCEPTION);

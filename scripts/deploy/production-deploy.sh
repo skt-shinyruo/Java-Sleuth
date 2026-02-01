@@ -169,7 +169,7 @@ monitoring.jmx.enabled=true
 # Logging configuration
 logging.level=INFO
 logging.audit.enabled=true
-logging.performance.enabled=true
+logging.performance.enabled=false
 EOF
 
     # Create JVM configuration

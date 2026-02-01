@@ -945,7 +945,7 @@ monitoring.jmx.enabled=true
 # Logging Configuration
 logging.level=INFO
 logging.audit.enabled=true
-logging.performance.enabled=true
+logging.performance.enabled=false
 
 # Production Configuration
 production.mode=true

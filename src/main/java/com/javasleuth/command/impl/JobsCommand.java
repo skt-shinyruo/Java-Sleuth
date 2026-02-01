@@ -28,6 +28,7 @@ public class JobsCommand implements Command {
     }
 
     private String list() {
+        jobManager.evictExpired();
         List<JobManager.JobInfo> jobs = jobManager.list();
         if (jobs.isEmpty()) {
             return "No jobs.";
@@ -46,6 +47,7 @@ public class JobsCommand implements Command {
     }
 
     private String tail(String[] args) {
+        jobManager.evictExpired();
         if (args.length < 3) {
             return "Usage: jobs tail <job-id> [n]";
         }

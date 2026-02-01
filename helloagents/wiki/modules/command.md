@@ -48,6 +48,21 @@
 - 命令执行超过超时阈值返回错误  
 - 不长期占用 worker 线程
 
+### Requirement: 缓存隔离与敏感命令策略（防串线/防泄露）
+**Module:** command
+命令缓存必须显式考虑“上下文维度”（client/session），避免把会话/身份信息缓存为“公共结果”。
+
+#### Scenario: 缓存 key 含 clientId，避免跨客户端串线
+前置：命令被标记为可缓存  
+- 缓存 key 至少包含 `commandName + args + clientId`
+- 即使误把敏感命令标记为可缓存，也不会导致不同客户端拿到彼此的输出
+
+#### Scenario: session 默认不缓存且 token 脱敏
+前置：执行 `session`  
+- `session` 命令不可缓存
+- `SessionId` 默认脱敏输出
+- 仅在显式参数 `session --show-token` 时输出完整 token（敏感信息）
+
 ### Requirement: 插件化命令与分帧协议
 **Module:** command
 支持插件加载与分帧/流式输出，保持兼容模式；并支持严格二进制帧通道。
@@ -102,3 +117,4 @@ N/A
 - 202601281301_sleuth_handshake_secure_frames (history/2026-01/202601281301_sleuth_handshake_secure_frames/) - 握手协商 + 严格二进制帧 + 插件授权治理
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 统一传输层/握手升级重构、连接/行长度/超时治理
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - 插件默认关闭 + allowlist + classloader 释放
+- 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - 缓存隔离、session 脱敏与诊断命令稳定性加固

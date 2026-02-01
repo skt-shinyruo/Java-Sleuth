@@ -22,7 +22,7 @@ public class WatchResult implements Serializable {
     private String methodDescriptor;
     private Object[] parameters;
     private Object returnValue;
-    private Throwable exception;
+    private Object exception;
     private long startTime;
     private long duration;
     private EventType eventType;
@@ -48,8 +48,8 @@ public class WatchResult implements Serializable {
     public Object getReturnValue() { return returnValue; }
     public void setReturnValue(Object returnValue) { this.returnValue = returnValue; }
 
-    public Throwable getException() { return exception; }
-    public void setException(Throwable exception) { this.exception = exception; }
+    public Object getException() { return exception; }
+    public void setException(Object exception) { this.exception = exception; }
 
     public long getStartTime() { return startTime; }
     public void setStartTime(long startTime) { this.startTime = startTime; }
@@ -115,10 +115,7 @@ public class WatchResult implements Serializable {
                 sb.append(" (").append(formatDuration()).append(")");
                 break;
             case METHOD_EXCEPTION:
-                sb.append(" threw ").append(exception.getClass().getSimpleName());
-                if (exception.getMessage() != null) {
-                    sb.append(": ").append(exception.getMessage());
-                }
+                sb.append(" threw ").append(formatObject(exception));
                 sb.append(" (").append(formatDuration()).append(")");
                 break;
         }

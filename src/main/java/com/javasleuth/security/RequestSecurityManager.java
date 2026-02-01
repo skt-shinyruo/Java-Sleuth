@@ -17,10 +17,11 @@ import javax.crypto.spec.SecretKeySpec;
  * Supported: hmac (security.mode=hmac)
  *
  * Request wrapper format (command line level):
- *   SIG ts=<epoch_ms> nonce=<base64url> sig=<hex> cmd=<base64url>
+ *   SIG v=<1|2> ts=<epoch_ms> nonce=<base64url> sid=<session_id_or_conn_id> sig=<hex> cmd=<base64url>
  *
  * Signature base string:
- *   ts + "\\n" + nonce + "\\n" + cmd
+ *   v1: ts + "\\n" + nonce + "\\n" + cmd
+ *   v2: sid + "\\n" + ts + "\\n" + nonce + "\\n" + cmd
  */
 public class RequestSecurityManager {
     public static class VerificationResult {
@@ -59,7 +60,8 @@ public class RequestSecurityManager {
     private final ProductionConfig config;
     private final AuditLogger auditLogger;
 
-    // Key: sessionId:nonce -> timestamp
+    // Key: bindingId:nonce -> timestamp
+    // bindingId is per-connection by default (sid from handshake); fallback is server sessionId.
     private final ConcurrentHashMap<String, Long> seenNonces = new ConcurrentHashMap<>();
 
     private RequestSecurityManager() {
@@ -94,12 +96,22 @@ public class RequestSecurityManager {
         }
 
         Map<String, String> kv = parseKv(raw);
+        String versionStr = kv.get("v");
+        int version = parseIntSafe(versionStr, 1);
+        if (version != 1 && version != 2) {
+            return VerificationResult.denied("Invalid SIG v value");
+        }
+
         String tsStr = kv.get("ts");
         String nonce = kv.get("nonce");
         String sigHex = kv.get("sig");
         String cmdB64 = kv.get("cmd");
+        String sid = kv.get("sid");
         if (tsStr == null || nonce == null || sigHex == null || cmdB64 == null) {
             return VerificationResult.denied("Invalid SIG format: required fields ts/nonce/sig/cmd");
+        }
+        if (version == 2 && (sid == null || sid.trim().isEmpty())) {
+            return VerificationResult.denied("Invalid SIG format: v=2 requires sid");
         }
 
         Long ts = parseLongSafe(tsStr);
@@ -116,11 +128,13 @@ public class RequestSecurityManager {
             return VerificationResult.denied("Signature timestamp out of window");
         }
 
-        String sessionKey = sessionId != null ? sessionId : "anonymous";
-        String nonceKey = sessionKey + ":" + nonce;
+        // Replay detection must be bound to the signature binding id.
+        // For v2, that is sid (per-connection). For v1, fall back to sessionId.
+        String bindingId = (version == 2) ? sid.trim() : (sessionId != null ? sessionId : "anonymous");
+        String nonceKey = bindingId + ":" + nonce;
         Long existing = seenNonces.putIfAbsent(nonceKey, ts);
         if (existing != null) {
-            auditLogger.logSecurityViolation(sessionKey, "replay", "NONCE_REUSE", "Nonce reuse detected");
+            auditLogger.logSecurityViolation(bindingId, "replay", "NONCE_REUSE", "Nonce reuse detected");
             return VerificationResult.denied("Replay detected (nonce reused)");
         }
 
@@ -129,7 +143,12 @@ public class RequestSecurityManager {
             pruneOldNonces(now, windowMs);
         }
 
-        String base = tsStr + "\n" + nonce + "\n" + cmdB64;
+        String base;
+        if (version == 2) {
+            base = sid.trim() + "\n" + tsStr + "\n" + nonce + "\n" + cmdB64;
+        } else {
+            base = tsStr + "\n" + nonce + "\n" + cmdB64;
+        }
         byte[] expected;
         try {
             expected = hmacSha256(secret, base);
@@ -143,7 +162,7 @@ public class RequestSecurityManager {
         }
 
         if (!MessageDigest.isEqual(expected, provided)) {
-            auditLogger.logSecurityViolation(sessionKey, "hmac", "SIG_MISMATCH", "Signature mismatch");
+            auditLogger.logSecurityViolation(bindingId, "hmac", "SIG_MISMATCH", "Signature mismatch");
             return VerificationResult.denied("Signature mismatch");
         }
 
@@ -158,6 +177,10 @@ public class RequestSecurityManager {
     }
 
     public String signCommand(String command, long timestampMs, String nonce) {
+        return signCommandV2(command, timestampMs, nonce, null);
+    }
+
+    public String signCommandV2(String command, long timestampMs, String nonce, String sid) {
         String mode = config.getSecurityMode();
         if (mode == null || !"hmac".equalsIgnoreCase(mode)) {
             return command;
@@ -169,11 +192,25 @@ public class RequestSecurityManager {
 
         String cmdB64 = Base64.getUrlEncoder().withoutPadding().encodeToString((command != null ? command : "").getBytes(StandardCharsets.UTF_8));
         String tsStr = String.valueOf(timestampMs);
+
+        if (sid != null && !sid.trim().isEmpty()) {
+            String binding = sid.trim();
+            String base = binding + "\n" + tsStr + "\n" + nonce + "\n" + cmdB64;
+            try {
+                byte[] mac = hmacSha256(secret, base);
+                String sigHex = bytesToHex(mac);
+                return "SIG v=2 ts=" + tsStr + " nonce=" + nonce + " sid=" + binding + " sig=" + sigHex + " cmd=" + cmdB64;
+            } catch (Exception e) {
+                return command;
+            }
+        }
+
+        // Backward compatible v1.
         String base = tsStr + "\n" + nonce + "\n" + cmdB64;
         try {
             byte[] mac = hmacSha256(secret, base);
             String sigHex = bytesToHex(mac);
-            return "SIG ts=" + tsStr + " nonce=" + nonce + " sig=" + sigHex + " cmd=" + cmdB64;
+            return "SIG v=1 ts=" + tsStr + " nonce=" + nonce + " sig=" + sigHex + " cmd=" + cmdB64;
         } catch (Exception e) {
             return command;
         }
@@ -213,6 +250,17 @@ public class RequestSecurityManager {
             return Long.parseLong(s.trim());
         } catch (NumberFormatException e) {
             return null;
+        }
+    }
+
+    private static int parseIntSafe(String s, int fallback) {
+        if (s == null) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
         }
     }
 

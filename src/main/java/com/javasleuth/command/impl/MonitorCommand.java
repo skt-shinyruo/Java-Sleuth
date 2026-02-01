@@ -9,6 +9,7 @@ import com.javasleuth.enhancement.MonitorEnhancer;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.monitor.MonitorInterceptor;
 import com.javasleuth.util.WildcardMatcher;
+import com.javasleuth.util.StringUtils;
 import java.lang.instrument.Instrumentation;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -130,15 +131,56 @@ public class MonitorCommand implements StreamCommand {
         }
 
         String monitorId = UUID.randomUUID().toString();
-        MonitorInterceptor.registerMonitor(monitorId);
-        MonitorInterceptor.clear(monitorId);
-
+        boolean interceptorRegistered = false;
         List<MonitorSession.EnhancedClass> enhanced = new ArrayList<>();
-        for (Class<?> c : matches) {
-            MonitorEnhancer enhancer = new MonitorEnhancer(c.getName(), methodPattern, null, monitorId);
-            transformer.addEnhancer(c.getName(), enhancer);
-            instrumentation.retransformClasses(c);
-            enhanced.add(new MonitorSession.EnhancedClass(c, enhancer));
+        try {
+            MonitorInterceptor.registerMonitor(monitorId);
+            interceptorRegistered = true;
+            MonitorInterceptor.clear(monitorId);
+
+            for (Class<?> c : matches) {
+                MonitorEnhancer enhancer = new MonitorEnhancer(c.getName(), methodPattern, null, monitorId);
+                transformer.addEnhancer(c.getName(), enhancer);
+                try {
+                    instrumentation.retransformClasses(c);
+                } catch (Exception e) {
+                    // Roll back this class registration and then abort.
+                    try {
+                        transformer.removeEnhancer(c.getName(), enhancer);
+                    } catch (Exception ignore) {
+                        // ignore
+                    }
+                    try {
+                        instrumentation.retransformClasses(c);
+                    } catch (Exception ignore) {
+                        // ignore
+                    }
+                    throw e;
+                }
+                enhanced.add(new MonitorSession.EnhancedClass(c, enhancer));
+            }
+        } catch (Exception e) {
+            // Rollback any partial state best-effort.
+            for (MonitorSession.EnhancedClass ec : enhanced) {
+                try {
+                    transformer.removeEnhancer(ec.className, ec.enhancer);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+                try {
+                    instrumentation.retransformClasses(ec.clazz);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+            }
+            if (interceptorRegistered) {
+                try {
+                    MonitorInterceptor.unregisterMonitor(monitorId);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+            }
+            throw e;
         }
 
         MonitorSession session = new MonitorSession(monitorId, classPattern, methodPattern, enhanced);
@@ -217,7 +259,7 @@ public class MonitorCommand implements StreamCommand {
         rows.sort(Comparator.comparingLong((Map.Entry<String, MonitorInterceptor.MethodStatsSnapshot> e) -> e.getValue().getTotalNanos()).reversed());
 
         sb.append(String.format("%-60s %8s %8s %10s %10s %10s\n", "METHOD", "COUNT", "EX", "AVG(ms)", "MAX(ms)", "MIN(ms)"));
-        sb.append("=".repeat(120)).append("\n");
+        sb.append(StringUtils.repeat('=', 120)).append("\n");
 
         int shown = 0;
         for (Map.Entry<String, MonitorInterceptor.MethodStatsSnapshot> e : rows) {

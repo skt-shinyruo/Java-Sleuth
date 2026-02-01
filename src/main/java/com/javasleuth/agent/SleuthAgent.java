@@ -59,20 +59,110 @@ public class SleuthAgent {
         return ATTACHED.get();
     }
 
+    /**
+     * Best-effort safe shutdown.
+     *
+     * <p>Goal: behave like a full reset rollback before removing the transformer.
+     * This minimizes residual instrumentation state if shutdown happens mid-command.
+     */
     public static void shutdown() {
-        if (commandProcessor != null) {
-            commandProcessor.shutdown();
-        }
-        if (transformer != null) {
-            transformer.removeAllEnhancers();
-            if (instrumentation != null) {
-                try {
-                    instrumentation.removeTransformer(transformer);
-                } catch (Exception e) {
-                    System.err.println("Java-Sleuth: Failed to remove transformer: " + e.getMessage());
-                }
+        Instrumentation inst = instrumentation;
+        SleuthClassFileTransformer tx = transformer;
+
+        // Snapshot enhanced class names before we start removing state.
+        java.util.Set<String> enhanced = java.util.Collections.emptySet();
+        if (tx != null) {
+            try {
+                enhanced = new java.util.HashSet<>(tx.getEnhancedClassNames());
+            } catch (Exception ignore) {
+                enhanced = java.util.Collections.emptySet();
             }
         }
+
+        // 1) Stop command processor (stops networking / threads) but keep transformer in place for rollback.
+        if (commandProcessor != null) {
+            try {
+                commandProcessor.shutdown();
+            } catch (Exception ignore) {
+                // best-effort
+            }
+        }
+
+        // 2) Stop jobs / clear interceptor sessions.
+        try {
+            com.javasleuth.command.JobManager.getInstance().stopAll("shutdown");
+        } catch (Exception ignore) {
+            // best-effort
+        }
+        try {
+            com.javasleuth.monitor.WatchInterceptor.unregisterAllWatches();
+        } catch (Exception ignore) {
+            // best-effort
+        }
+        try {
+            com.javasleuth.monitor.TraceInterceptor.unregisterAllTraces();
+        } catch (Exception ignore) {
+            // best-effort
+        }
+        try {
+            com.javasleuth.monitor.MonitorInterceptor.unregisterAllMonitors();
+        } catch (Exception ignore) {
+            // best-effort
+        }
+        try {
+            com.javasleuth.monitor.TtInterceptor.unregisterAll();
+        } catch (Exception ignore) {
+            // best-effort
+        }
+        try {
+            com.javasleuth.monitor.StackInterceptor.unregisterAll();
+        } catch (Exception ignore) {
+            // best-effort
+        }
+
+        // 3) Remove enhancers.
+        if (tx != null) {
+            try {
+                tx.removeAllEnhancers();
+            } catch (Exception ignore) {
+                // best-effort
+            }
+        }
+
+        // 4) Retransform classes we previously enhanced, best-effort.
+        if (inst != null && !enhanced.isEmpty()) {
+            try {
+                Class<?>[] loaded = inst.getAllLoadedClasses();
+                for (Class<?> c : loaded) {
+                    if (c == null) {
+                        continue;
+                    }
+                    if (!enhanced.contains(c.getName())) {
+                        continue;
+                    }
+                    if (!inst.isModifiableClass(c)) {
+                        continue;
+                    }
+                    try {
+                        inst.retransformClasses(c);
+                    } catch (Exception ignore) {
+                        // best-effort per-class
+                    }
+                }
+            } catch (Exception ignore) {
+                // best-effort
+            }
+        }
+
+        // 5) Unregister transformer.
+        if (tx != null && inst != null) {
+            try {
+                inst.removeTransformer(tx);
+            } catch (Exception e) {
+                System.err.println("Java-Sleuth: Failed to remove transformer: " + e.getMessage());
+            }
+        }
+
         ATTACHED.set(false);
         System.out.println("Java-Sleuth agent shutdown");
     }

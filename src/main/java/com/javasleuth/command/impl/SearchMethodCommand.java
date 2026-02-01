@@ -1,6 +1,7 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
+import com.javasleuth.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -47,20 +48,26 @@ public class SearchMethodCommand implements Command {
         StringBuilder sb = new StringBuilder();
         sb.append("=== Search Methods ===\n");
 
-        Pattern classRegex = Pattern.compile(classPattern.replace("*", ".*"), Pattern.CASE_INSENSITIVE);
-        Pattern methodRegex;
-
+        String normalizedClassPattern = normalizePattern(classPattern);
+        Pattern classRegex = WildcardMatcher.compile(normalizedClassPattern, Pattern.CASE_INSENSITIVE);
+        Pattern methodWildcardRegex = null;
+        com.google.re2j.Pattern methodRegex = null;
         if (useRegex) {
-            methodRegex = Pattern.compile(methodPattern, Pattern.CASE_INSENSITIVE);
+            try {
+                methodRegex = com.google.re2j.Pattern.compile(methodPattern, com.google.re2j.Pattern.CASE_INSENSITIVE);
+            } catch (com.google.re2j.PatternSyntaxException e) {
+                return "Invalid regex pattern: " + e.getMessage();
+            }
         } else {
-            methodRegex = Pattern.compile(methodPattern.replace("*", ".*"), Pattern.CASE_INSENSITIVE);
+            String normalizedMethodPattern = normalizePattern(methodPattern);
+            methodWildcardRegex = WildcardMatcher.compile(normalizedMethodPattern, Pattern.CASE_INSENSITIVE);
         }
 
         Class<?>[] loadedClasses = instrumentation.getAllLoadedClasses();
         List<Class<?>> matchedClasses = new ArrayList<>();
 
         for (Class<?> clazz : loadedClasses) {
-            if (classRegex.matcher(clazz.getName()).find()) {
+            if (classRegex.matcher(clazz.getName()).matches()) {
                 matchedClasses.add(clazz);
             }
         }
@@ -73,7 +80,10 @@ public class SearchMethodCommand implements Command {
             try {
                 Method[] methods = clazz.getDeclaredMethods();
                 for (Method method : methods) {
-                    if (methodRegex.matcher(method.getName()).find()) {
+                    boolean matched = useRegex
+                        ? methodRegex.matcher(method.getName()).find()
+                        : methodWildcardRegex.matcher(method.getName()).matches();
+                    if (matched) {
                         matchedMethods.add(method);
                         totalMethods++;
                     }
@@ -96,6 +106,17 @@ public class SearchMethodCommand implements Command {
         sb.insert(sb.indexOf("===") + 20, "\nFound " + totalMethods + " methods in " + matchedClasses.size() + " classes\n");
 
         return sb.toString();
+    }
+
+    private String normalizePattern(String pattern) {
+        if (pattern == null || pattern.trim().isEmpty()) {
+            return "*";
+        }
+        String p = pattern.trim();
+        if (!p.contains("*")) {
+            return "*" + p + "*";
+        }
+        return p;
     }
 
     private String formatMethod(Method method, boolean showDetails) {

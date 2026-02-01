@@ -24,6 +24,7 @@ public class AuditLogger {
     private final BlockingQueue<AuditEvent> auditQueue;
     private final AtomicBoolean running;
     private final AtomicLong eventCounter;
+    private final AtomicLong droppedCounter;
     private final Thread auditThread;
 
     private PrintWriter auditWriter;
@@ -37,6 +38,7 @@ public class AuditLogger {
         this.auditQueue = new LinkedBlockingQueue<>(1000);
         this.running = new AtomicBoolean(false);
         this.eventCounter = new AtomicLong(0);
+        this.droppedCounter = new AtomicLong(0);
         this.auditThread = new Thread(this::processAuditEvents, "sleuth-audit-logger");
 
         initializeWriters();
@@ -369,7 +371,14 @@ public class AuditLogger {
 
     private void queueEvent(AuditEvent event) {
         try {
-            auditQueue.offer(event);
+            boolean ok = auditQueue.offer(event);
+            if (!ok) {
+                droppedCounter.incrementAndGet();
+                long d = droppedCounter.get();
+                if (d % 100 == 1) {
+                    SleuthLogger.warn("Audit queue full; dropped events=" + d);
+                }
+            }
         } catch (Exception ignore) {
             // ignore
         }
@@ -477,6 +486,7 @@ public class AuditLogger {
         status.append("File Output: ").append(config.isAuditLogEnabled() ? "ENABLED" : "DISABLED").append("\n");
         status.append("Console Output: ").append(config.isAuditConsoleEnabled() ? "ENABLED" : "DISABLED").append("\n");
         status.append("Events Processed: ").append(eventCounter.get()).append("\n");
+        status.append("Events Dropped: ").append(droppedCounter.get()).append("\n");
         status.append("Queue Size: ").append(auditQueue.size()).append("/1000\n");
         status.append("Thread Status: ").append(auditThread.isAlive() ? "RUNNING" : "STOPPED").append("\n");
         status.append("Audit Log File: ").append(config.getAuditLogFilePath()).append("\n");
@@ -493,6 +503,10 @@ public class AuditLogger {
         }
 
         return status.toString();
+    }
+
+    public long getDroppedCount() {
+        return droppedCounter.get();
     }
 
     /**

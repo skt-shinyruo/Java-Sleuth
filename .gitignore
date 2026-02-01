@@ -84,6 +84,7 @@ temp/
 # Maven / build output
 /target/
 target/
+.m2_repo/
 
 # IDE
 .idea/

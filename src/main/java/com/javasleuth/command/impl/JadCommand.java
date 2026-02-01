@@ -1,16 +1,15 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
-import org.benf.cfr.reader.api.CfrDriver;
-import org.benf.cfr.reader.api.OutputSinkFactory;
-import org.benf.cfr.reader.api.SinkReturns;
+import com.javasleuth.util.CfrDecompiler;
+import com.javasleuth.util.StringUtils;
+import com.javasleuth.util.WildcardMatcher;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.instrument.Instrumentation;
 import java.util.*;
-import java.util.regex.Pattern;
 
 public class JadCommand implements Command {
     private final Instrumentation instrumentation;
@@ -101,9 +100,9 @@ public class JadCommand implements Command {
             }
 
             sb.append("Decompiled source:\n");
-            sb.append("=" .repeat(50)).append("\n");
+            sb.append(StringUtils.repeat('=', 50)).append("\n");
             sb.append(decompiled);
-            sb.append("\n").append("=".repeat(50)).append("\n");
+            sb.append("\n").append(StringUtils.repeat('=', 50)).append("\n");
 
         } catch (Exception e) {
             sb.append("Error decompiling class: ").append(e.getMessage()).append("\n");
@@ -175,8 +174,7 @@ public class JadCommand implements Command {
 
                 // Partial match if the input contains wildcards
                 if (className.contains("*")) {
-                    String regex = className.replace("*", ".*").replace("?", ".?");
-                    if (Pattern.matches(regex, clazzName)) {
+                    if (WildcardMatcher.matches(clazzName, className)) {
                         return clazz;
                     }
                 }
@@ -218,59 +216,7 @@ public class JadCommand implements Command {
     }
 
     private String decompileWithCfr(String className, byte[] bytecode, boolean showLineNumbers, boolean verbose) {
-        try {
-            Map<String, String> options = new HashMap<>();
-            options.put("showversion", "false");
-            options.put("hideutf", "false");
-            options.put("trackbytecodeloc", showLineNumbers ? "true" : "false");
-            options.put("comments", verbose ? "true" : "false");
-            options.put("forcetopsort", "true");
-            options.put("forloopaggcapture", "true");
-
-            StringBuilder output = new StringBuilder();
-
-            OutputSinkFactory mySink = new OutputSinkFactory() {
-                @Override
-                public List<SinkClass> getSupportedSinks(SinkType sinkType, Collection<SinkClass> collection) {
-                    return Arrays.asList(SinkClass.STRING, SinkClass.DECOMPILED, SinkClass.DECOMPILED_MULTIVER);
-                }
-
-                @Override
-                public <T> Sink<T> getSink(SinkType sinkType, SinkClass sinkClass) {
-                    return new Sink<T>() {
-                        @Override
-                        public void write(T sinkable) {
-                            if (sinkType == SinkType.JAVA && sinkable instanceof SinkReturns.Decompiled) {
-                                output.append(((SinkReturns.Decompiled) sinkable).getJava());
-                            }
-                        }
-                    };
-                }
-            };
-
-            CfrDriver driver = new CfrDriver.Builder()
-                .withOptions(options)
-                .withOutputSink(mySink)
-                .build();
-
-            // Create a temporary class source
-            Map<String, byte[]> classFiles = new HashMap<>();
-            classFiles.put(className, bytecode);
-
-            driver.analyse(Arrays.asList(className));
-
-            String result = output.toString();
-            if (result.isEmpty()) {
-                return "// CFR decompiler failed to produce output\n// Class: " + className;
-            }
-
-            return result;
-
-        } catch (Exception e) {
-            return "// CFR decompiler error: " + e.getMessage() + "\n" +
-                   "// Class: " + className + "\n" +
-                   "// Try using a different decompiler or check class accessibility";
-        }
+        return CfrDecompiler.decompileClassBytes(className, bytecode, showLineNumbers, verbose);
     }
 
     private String filterMethods(String decompiled, String methodFilter) {
@@ -278,11 +224,15 @@ public class JadCommand implements Command {
             return decompiled;
         }
 
+        String normalizedMethodFilter = methodFilter.trim();
+        if (!normalizedMethodFilter.contains("*")) {
+            normalizedMethodFilter = "*" + normalizedMethodFilter + "*";
+        }
+
         StringBuilder sb = new StringBuilder();
         String[] lines = decompiled.split("\n");
         boolean inTargetMethod = false;
         int braceCount = 0;
-        Pattern methodPattern = Pattern.compile(".*\\b" + methodFilter.replace("*", ".*") + "\\b.*", Pattern.CASE_INSENSITIVE);
 
         // Add class declaration and imports
         for (String line : lines) {
@@ -303,7 +253,7 @@ public class JadCommand implements Command {
 
             if (!inTargetMethod) {
                 // Check if this line starts a method that matches our filter
-                if (isMethodDeclaration(line) && methodPattern.matcher(line).matches()) {
+                if (isMethodDeclaration(line) && matchesMethodFilter(line, normalizedMethodFilter)) {
                     inTargetMethod = true;
                     braceCount = 0;
                     sb.append("    ").append(lines[i]).append("\n");
@@ -335,6 +285,28 @@ public class JadCommand implements Command {
         sb.append("}\n");
 
         return sb.toString();
+    }
+
+    private boolean matchesMethodFilter(String methodDeclarationLine, String methodFilter) {
+        if (methodDeclarationLine == null || methodFilter == null || methodFilter.trim().isEmpty()) {
+            return false;
+        }
+        String line = methodDeclarationLine.trim();
+        int idx = line.indexOf('(');
+        if (idx <= 0) {
+            return false;
+        }
+        String beforeParen = line.substring(0, idx).trim();
+        if (beforeParen.isEmpty()) {
+            return false;
+        }
+        // method name is usually the last token before '('
+        String[] parts = beforeParen.split("\\s+");
+        String name = parts.length == 0 ? null : parts[parts.length - 1];
+        if (name == null || name.isEmpty()) {
+            return false;
+        }
+        return WildcardMatcher.matches(name, methodFilter);
     }
 
     private boolean isMethodDeclaration(String line) {

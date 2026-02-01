@@ -3,6 +3,8 @@ package com.javasleuth.monitor;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.data.TtRecord;
 import com.javasleuth.util.RingBuffer;
+import com.javasleuth.util.SleuthValueFormatter;
+import com.javasleuth.util.SleuthValueSnapshotter;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,6 +21,13 @@ public final class TtInterceptor {
     private static final AtomicLong published = new AtomicLong(0);
     private static final AtomicLong dropped = new AtomicLong(0);
     private static final AtomicLong evicted = new AtomicLong(0);
+
+    private static final SleuthValueFormatter.Options SNAPSHOT_OPTIONS =
+        new SleuthValueFormatter.Options()
+            .withMaxDepth(2)
+            .withMaxStringLength(200)
+            .withMaxCollectionItems(20)
+            .withMaxMapEntries(20);
 
     private TtInterceptor() {}
 
@@ -92,9 +101,9 @@ public final class TtInterceptor {
             r.setClassName(className);
             r.setMethodName(methodName);
             r.setMethodDescriptor(methodDesc);
-            r.setParameters(parameters);
-            r.setReturnValue(returnValue);
-            r.setException(exception);
+            r.setParameters(SleuthValueSnapshotter.snapshotParameters(parameters, SNAPSHOT_OPTIONS));
+            r.setReturnValue(SleuthValueSnapshotter.snapshotValue(returnValue, SNAPSHOT_OPTIONS));
+            r.setException(SleuthValueSnapshotter.snapshotThrowable(exception, SNAPSHOT_OPTIONS));
             r.setStartTime(startTime);
             r.setDuration(duration);
             r.setTimestampMs(System.currentTimeMillis());

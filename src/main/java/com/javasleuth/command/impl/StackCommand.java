@@ -11,6 +11,7 @@ import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.enhancement.StackEnhancer;
 import com.javasleuth.monitor.StackInterceptor;
 import com.javasleuth.util.WildcardMatcher;
+import com.javasleuth.util.StringUtils;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
@@ -199,13 +200,43 @@ public class StackCommand implements StreamCommand {
 
         String stackId = UUID.randomUUID().toString();
         BlockingQueue<StackTraceResult> q = new LinkedBlockingQueue<>(config.getWatchQueueCapacity());
-        StackInterceptor.register(stackId, q);
 
         ClassEnhancer enhancer = new StackEnhancer(target.getName(), methodPattern, null, stackId, depth);
-        transformer.addEnhancer(target.getName(), enhancer);
-        instrumentation.retransformClasses(target);
+        boolean interceptorRegistered = false;
+        boolean enhancerAdded = false;
+        try {
+            StackInterceptor.register(stackId, q);
+            interceptorRegistered = true;
 
-        activeSessions.put(stackId, new StackSession(stackId, target, methodPattern, q, enhancer));
+            transformer.addEnhancer(target.getName(), enhancer);
+            enhancerAdded = true;
+
+            instrumentation.retransformClasses(target);
+
+            activeSessions.put(stackId, new StackSession(stackId, target, methodPattern, q, enhancer));
+        } catch (Exception e) {
+            // Rollback partial state best-effort.
+            if (enhancerAdded) {
+                try {
+                    transformer.removeEnhancer(target.getName(), enhancer);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+                try {
+                    instrumentation.retransformClasses(target);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+            }
+            if (interceptorRegistered) {
+                try {
+                    StackInterceptor.unregister(stackId);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+            }
+            throw e;
+        }
 
         StringBuilder banner = new StringBuilder();
         banner.append("Started stack trace ").append(target.getName()).append(".").append(methodPattern).append("\n");
@@ -488,7 +519,7 @@ public class StackCommand implements StreamCommand {
         sb.append("Top ").append(limit).append(" Stack Patterns by Frequency:\n");
         sb.append(String.format("%-60s %-10s %-10s %-15s\n",
                   "Pattern", "Count", "Percent", "Thread State"));
-        sb.append("-".repeat(100)).append("\n");
+        sb.append(StringUtils.repeat('-', 100)).append("\n");
 
         long totalSamples = samplingCount.get();
         for (StackTraceStats stats : sortedStats) {

@@ -1,6 +1,7 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
+import com.javasleuth.util.ReflectionUtils;
 import com.javasleuth.util.SleuthValueFormatter;
 import com.javasleuth.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
@@ -65,8 +66,8 @@ public class GetStaticCommand implements Command {
 
             Object v;
             try {
-                if (!f.canAccess(null)) {
-                    f.setAccessible(true);
+                if (!ReflectionUtils.canAccess(f, null)) {
+                    ReflectionUtils.trySetAccessible(f);
                 }
                 v = f.get(null);
             } catch (Throwable t) {

@@ -9,6 +9,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.nio.charset.StandardCharsets;
 
 public class AuthenticationManager {
     private static AuthenticationManager instance;
@@ -309,9 +310,9 @@ public class AuthenticationManager {
             return false;
         }
 
-        // Use MessageDigest.isEqual to prevent timing attacks
-        byte[] providedBytes = provided.getBytes();
-        byte[] expectedBytes = expected.getBytes();
+        // Use MessageDigest.isEqual to prevent timing attacks; pin UTF-8 to avoid platform default charset.
+        byte[] providedBytes = provided.getBytes(StandardCharsets.UTF_8);
+        byte[] expectedBytes = expected.getBytes(StandardCharsets.UTF_8);
 
         return MessageDigest.isEqual(providedBytes, expectedBytes);
     }

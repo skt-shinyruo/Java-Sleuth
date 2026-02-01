@@ -2,6 +2,7 @@ package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
 import com.javasleuth.util.PerformanceOptimizer;
+import com.javasleuth.util.StringUtils;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -282,7 +283,7 @@ public class ProfilerCommand implements Command {
 
         sb.append("Top ").append(limit).append(" Hot Spots:\n");
         sb.append(String.format("%-60s %-10s %-10s\n", "Method", "Samples", "Percent"));
-        sb.append("-".repeat(80)).append("\n");
+        sb.append(StringUtils.repeat('-', 80)).append("\n");
 
         long totalSamples = sampleCount.get();
         for (Map.Entry<String, ProfileSample> entry : sortedEntries) {

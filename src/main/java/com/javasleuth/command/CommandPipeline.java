@@ -6,6 +6,8 @@ import com.javasleuth.security.InputValidator;
 import com.javasleuth.util.PerformanceOptimizer;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -38,10 +40,18 @@ public class CommandPipeline {
     private final AuthorizationManager authorizationManager;
     private final ProductionConfig config;
 
+    // Dedicated executor for command execution (avoid ForkJoinPool contention).
+    private final Executor commandExecutor;
+
     public CommandPipeline(InputValidator inputValidator, AuthorizationManager authorizationManager, ProductionConfig config) {
         this.inputValidator = inputValidator;
         this.authorizationManager = authorizationManager;
         this.config = config;
+        this.commandExecutor = Executors.newCachedThreadPool(r -> {
+            Thread t = new Thread(r, "sleuth-cmd-exec");
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     public Result execute(CommandRegistry.Entry entry, String[] args, CommandContext context) {
@@ -57,7 +67,8 @@ public class CommandPipeline {
         long timeoutMs = config.getCommandTimeout();
         boolean cacheable = entry.getMeta().isCacheable() && isSafeToCache(commandName, args);
         if (cacheable) {
-            String cacheKey = commandName + ":" + String.join(":", args);
+            String clientKey = context != null && context.getClientId() != null ? context.getClientId() : "unknown";
+            String cacheKey = clientKey + ":" + commandName + ":" + String.join(":", args);
             try {
                 result = PerformanceOptimizer.getCachedResult(cacheKey, () -> {
                     try {
@@ -88,6 +99,10 @@ public class CommandPipeline {
         if (commandName == null) {
             return false;
         }
+        // Avoid caching context-sensitive commands.
+        if ("session".equals(commandName)) {
+            return false;
+        }
         // Avoid caching state-changing subcommands.
         if ("sysprop".equals(commandName) && args != null && args.length > 1) {
             if ("set".equalsIgnoreCase(args[1])) {
@@ -108,7 +123,7 @@ public class CommandPipeline {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-        });
+        }, commandExecutor);
 
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);

@@ -58,6 +58,13 @@
             <version>0.152</version>
         </dependency>
 
+        <!-- RE2/J for safe regular expressions (linear time, avoids ReDoS in regex mode) -->
+        <dependency>
+            <groupId>com.google.re2j</groupId>
+            <artifactId>re2j</artifactId>
+            <version>1.7</version>
+        </dependency>
+
         <!-- Async Profiler for performance profiling (optional) -->
         <!-- Note: async-profiler requires native libraries and specific setup -->
         <!-- For now, we'll implement a basic profiler that can be extended later -->
@@ -81,6 +88,39 @@
                     <source>8</source>
                     <target>8</target>
                 </configuration>
+            </plugin>
+
+            <!-- Enforce Java 8 API compatibility (detect accidental Java 9+/11+ API usage at build time) -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>animal-sniffer-maven-plugin</artifactId>
+                <version>1.23</version>
+                <configuration>
+                    <signature>
+                        <groupId>org.codehaus.mojo.signature</groupId>
+                        <artifactId>java18</artifactId>
+                        <version>1.0</version>
+                    </signature>
+                    <!--
+                      Java-Sleuth requires the Attach API:
+                      - Java 8: tools.jar (JDK only)
+                      - Java 9+: jdk.attach module
+                      These are intentionally NOT part of the Java SE 8 signature, so we ignore them here.
+                    -->
+                    <ignores>
+                        <ignore>com.sun.tools.attach.*</ignore>
+                        <ignore>sun.tools.attach.*</ignore>
+                    </ignores>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>check-java8-api</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
 
             <!-- Build agent jar -->
@@ -113,4 +153,5 @@
             </plugin>
         </plugins>
     </build>
+
 </project>

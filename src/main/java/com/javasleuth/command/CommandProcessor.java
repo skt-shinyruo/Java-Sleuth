@@ -53,6 +53,17 @@ public class CommandProcessor {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.config = ProductionConfig.getInstance();
+
+        // Configure JobManager retention from config (best-effort).
+        try {
+            JobManager.getInstance().configureRetention(
+                this.config.getJobsMax(),
+                this.config.getJobsTtlMs(),
+                this.config.getJobsOutputMaxBytes()
+            );
+        } catch (Exception ignore) {
+            // ignore
+        }
         this.auditLogger = AuditLogger.getInstance();
         this.inputValidator = new InputValidator();
         this.authenticationManager = AuthenticationManager.getInstance();
@@ -72,6 +83,12 @@ public class CommandProcessor {
             new ThreadPoolExecutor.CallerRunsPolicy()
         );
         this.metricsCollector = new MetricsCollector();
+        // Expose audit drop count via metrics/health.
+        try {
+            this.metricsCollector.recordAuditDropped(auditLogger.getDroppedCount());
+        } catch (Exception ignore) {
+            // ignore
+        }
         this.registry = new CommandRegistry(instrumentation, transformer, metricsCollector, config, auditLogger);
         this.pipeline = new CommandPipeline(inputValidator, authorizationManager, config);
 
@@ -367,6 +384,14 @@ public class CommandProcessor {
                         };
 
                         streamCommand.executeStream(parts, sink);
+                        // For legacy clients (non-framed), also emit END marker to support launcher improvements.
+                        if (!framedRequested) {
+                            try {
+                                Utf8LineCodec.writeLine(out, "END", true);
+                            } catch (Exception ignore) {
+                                // ignore
+                            }
+                        }
                         auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, true);
                     } else {
                         CommandPipeline.Result result = pipeline.execute(entry, parts, context);
@@ -617,11 +642,12 @@ public class CommandProcessor {
             selected = "legacy";
         }
 
-        Utf8LineCodec.writeLine(out, buildConfigLine(selected), true);
+        String connId = kv.get("connid");
+        Utf8LineCodec.writeLine(out, buildConfigLine(selected, connId), true);
         return selected;
     }
 
-    private String buildConfigLine(String protocol) {
+    private String buildConfigLine(String protocol, String connId) {
         return "CONFIG v=1" +
             " protocol=" + protocol +
             " streaming=" + config.isStreamingEnabled() +
@@ -629,7 +655,8 @@ public class CommandProcessor {
             " port=" + config.getServerPort() +
             " bind=" + config.getServerBindAddress() +
             " securityMode=" + config.getSecurityMode() +
-            " authorization=" + config.isAuthorizationEnabled();
+            " authorization=" + config.isAuthorizationEnabled() +
+            (connId != null ? " connId=" + connId : "");
     }
 
     private static Map<String, String> parseHandshakeKv(String line) {

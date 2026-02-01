@@ -17,7 +17,7 @@ public class TtRecord implements Serializable {
     private String methodDescriptor;
     private Object[] parameters;
     private Object returnValue;
-    private Throwable exception;
+    private Object exception;
     private long startTime;
     private long duration;
     private long timestampMs;
@@ -46,8 +46,8 @@ public class TtRecord implements Serializable {
     public Object getReturnValue() { return returnValue; }
     public void setReturnValue(Object returnValue) { this.returnValue = returnValue; }
 
-    public Throwable getException() { return exception; }
-    public void setException(Throwable exception) { this.exception = exception; }
+    public Object getException() { return exception; }
+    public void setException(Object exception) { this.exception = exception; }
 
     public long getStartTime() { return startTime; }
     public void setStartTime(long startTime) { this.startTime = startTime; }
@@ -67,4 +67,3 @@ public class TtRecord implements Serializable {
     public long getThreadId() { return threadId; }
     public void setThreadId(long threadId) { this.threadId = threadId; }
 }
-

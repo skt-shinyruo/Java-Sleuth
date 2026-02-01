@@ -61,7 +61,14 @@ public class TraceInterceptor {
         try {
             PerTraceState state = getOrCreateState(traceId);
             int depth = state.sampleStack.size();
-            boolean sampled = passesSampleRate(traceId);
+            boolean sampled;
+            if (state.sampleStack.isEmpty()) {
+                // Sample decision is made at root invocation, and inherited by nested calls.
+                sampled = passesSampleRate(traceId);
+            } else {
+                Boolean parent = state.sampleStack.peekFirst();
+                sampled = parent != null && parent;
+            }
             state.sampleStack.addFirst(sampled);
             if (!sampled) {
                 return;

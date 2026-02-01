@@ -1,5 +1,6 @@
 package com.javasleuth.monitoring;
 
+import com.javasleuth.config.ProductionConfig;
 import java.lang.management.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -11,6 +12,7 @@ import java.util.stream.Collectors;
 import javax.management.*;
 
 public class MetricsCollector implements MetricsCollectorMBean {
+    private final ProductionConfig config = ProductionConfig.getInstance();
     private final AtomicLong totalCommands = new AtomicLong(0);
     private final AtomicLong totalSessions = new AtomicLong(0);
     private final AtomicLong totalErrors = new AtomicLong(0);
@@ -22,6 +24,7 @@ public class MetricsCollector implements MetricsCollectorMBean {
     private final AtomicLong binaryUpgradeCount = new AtomicLong(0);
     private final AtomicLong pluginProviderCount = new AtomicLong(0);
     private final AtomicLong pluginCommandCount = new AtomicLong(0);
+    private final AtomicLong auditDroppedCount = new AtomicLong(0);
 
     private final ConcurrentHashMap<String, AtomicLong> commandCounts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicLong> commandDurations = new ConcurrentHashMap<>();
@@ -94,13 +97,14 @@ public class MetricsCollector implements MetricsCollectorMBean {
                 logPerformanceMetrics();
             }
         } catch (Exception e) {
-            System.err.println("Error collecting periodic metrics: " + e.getMessage());
+            if (isPerformanceLogEnabled()) {
+                System.err.println("Error collecting periodic metrics: " + e.getMessage());
+            }
         }
     }
 
     private boolean isPerformanceLogEnabled() {
-        // This could be controlled by configuration
-        return true; // For now, always enabled
+        return config.getBoolean("logging.performance.enabled", false);
     }
 
     private void logPerformanceMetrics() {
@@ -158,7 +162,9 @@ public class MetricsCollector implements MetricsCollectorMBean {
             metrics.recordExecution(durationMs, true);
 
             if (durationMs > SLOW_COMMAND_THRESHOLD) {
-                System.out.println("SLOW COMMAND: " + commandName + " took " + durationMs + "ms");
+                if (isPerformanceLogEnabled()) {
+                    System.out.println("SLOW COMMAND: " + commandName + " took " + durationMs + "ms");
+                }
             }
         }
     }
@@ -191,6 +197,12 @@ public class MetricsCollector implements MetricsCollectorMBean {
         pluginCommandCount.incrementAndGet();
     }
 
+    public void recordAuditDropped(long dropped) {
+        if (dropped > 0) {
+            auditDroppedCount.addAndGet(dropped);
+        }
+    }
+
     public String getHealthStatus() {
         MemoryUsage heapMemory = memoryBean.getHeapMemoryUsage();
         double heapUsedPercent = (double) heapMemory.getUsed() / heapMemory.getMax() * 100;
@@ -202,6 +214,7 @@ public class MetricsCollector implements MetricsCollectorMBean {
         health.append("Active Connections: ").append(activeConnections.get()).append("\n");
         health.append("Total Sessions: ").append(totalSessions.get()).append("\n");
         health.append("Heap Usage: ").append(String.format("%.1f%%", heapUsedPercent)).append("\n");
+        health.append("Audit Dropped: ").append(auditDroppedCount.get()).append("\n");
         health.append("Total Threads: ").append(threadBean.getThreadCount()).append("\n");
         health.append("Error Rate: ").append(calculateErrorRate()).append("%\n");
 
@@ -224,6 +237,7 @@ public class MetricsCollector implements MetricsCollectorMBean {
         metrics.append("Binary Upgrades: ").append(binaryUpgradeCount.get()).append("\n");
         metrics.append("Plugin Providers Loaded: ").append(pluginProviderCount.get()).append("\n");
         metrics.append("Plugin Commands Registered: ").append(pluginCommandCount.get()).append("\n");
+        metrics.append("Audit Dropped: ").append(auditDroppedCount.get()).append("\n");
 
         // Memory metrics
         metrics.append("\n-- Memory Usage --\n");
@@ -362,6 +376,7 @@ public class MetricsCollector implements MetricsCollectorMBean {
         metricsMap.put("binaryUpgrades", binaryUpgradeCount.get());
         metricsMap.put("pluginProvidersLoaded", pluginProviderCount.get());
         metricsMap.put("pluginCommandsRegistered", pluginCommandCount.get());
+        metricsMap.put("auditDropped", auditDroppedCount.get());
         metricsMap.put("activeConnections", getActiveConnections());
         metricsMap.put("threadCount", getThreadCount());
         metricsMap.put("heapUsagePercent", getHeapUsagePercent());

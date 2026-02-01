@@ -75,6 +75,13 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 插件目录加载默认关闭，并在 shutdown 释放 URLClassLoader（降低 Windows JAR 锁定风险）
 - AuthenticationManager 移除硬编码 demo 口令，改为显式配置/环境变量
 - AuditLogger 支持可配置落盘路径并减少对目标 JVM stdout/stderr 的污染
+- Java 8 运行时兼容性：移除 Java 11 `String.repeat` 与 Java 9 `Field.canAccess` 依赖，并在 `mvn verify` 阶段增加 Java 8 API 校验（避免“JDK 11 编译通过、Java 8 运行炸”）
+- jad 反编译可用性：将获取到的 `.class` bytecode 可靠传入 CFR（临时文件方式），避免“传了类名但无输入”导致的空输出
+- session 泄露/串线：`session` 命令默认不缓存、输出 token 默认脱敏（`--show-token` 显式开启）；命令缓存 key 增加 clientId 维度防止跨客户端串线
+- wildcard/regex 稳定性：通配符匹配改为转义正则元字符；`sm -E` 采用 RE2/J 避免 ReDoS 并提供更友好的语法错误提示
+- watch/tt 资源风险：采集阶段引入“值快照”（限深/限长），避免把参数/返回值/异常对象强引用驻留到队列/环形缓冲导致内存压力
+- trace 语义：同一类内“可被 trace 的方法调用”不再产生重复 SUB_METHOD_CALL；采样以根调用为单位并向子调用继承，降低碎片化树
+- stdout/stderr 污染：`logging.performance.enabled` 默认关闭（可配置开启）
 
 ## [1.0.0] - 2026-01-28
 

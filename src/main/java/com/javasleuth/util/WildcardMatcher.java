@@ -26,11 +26,15 @@ public final class WildcardMatcher {
     }
 
     public static Pattern compile(String wildcardPattern) {
+        return compile(wildcardPattern, 0);
+    }
+
+    public static Pattern compile(String wildcardPattern, int flags) {
         if (wildcardPattern == null) {
             return Pattern.compile("^$");
         }
         if ("*".equals(wildcardPattern)) {
-            return Pattern.compile(".*");
+            return flags == 0 ? Pattern.compile(".*") : Pattern.compile(".*", flags);
         }
 
         List<String> parts = splitByAsterisk(wildcardPattern);
@@ -41,7 +45,7 @@ public final class WildcardMatcher {
             }
             regex.append(Pattern.quote(parts.get(i)));
         }
-        return Pattern.compile(regex.toString());
+        return flags == 0 ? Pattern.compile(regex.toString()) : Pattern.compile(regex.toString(), flags);
     }
 
     private static List<String> splitByAsterisk(String pattern) {
@@ -57,4 +61,3 @@ public final class WildcardMatcher {
         return parts;
     }
 }
-

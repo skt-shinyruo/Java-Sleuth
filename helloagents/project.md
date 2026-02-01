@@ -4,7 +4,7 @@
 
 ## Tech Stack
 - **Core:** Java 8 / Maven 3
-- **Libraries:** ASM 9.x、JLine 3.x、Jackson 2.x
+- **Libraries:** ASM 9.x、JLine 3.x、Jackson 2.x、CFR（jad）、RE2/J（安全 regex）
 - **Runtime:** Attach API、JMX（可选）
 
 ---
@@ -12,6 +12,7 @@
 ## Development Conventions
 - **Code Standards:** 维持现有风格与命名习惯，避免引入新的格式化规则
 - **Naming Conventions:** Java 类/方法使用驼峰命名；命令名使用小写
+- **Java Baseline:** 运行时基线为 Java 8；构建期通过 `mvn verify` 的 Java 8 API 校验避免误用 Java 9+/11+ API
 
 ---
 
@@ -24,4 +25,3 @@
 ## Testing and Process
 - **Testing:** JUnit 4 单测为主；脚本覆盖命令回归
 - **Commit:** 未定义统一规范，建议保持简洁可追溯
-

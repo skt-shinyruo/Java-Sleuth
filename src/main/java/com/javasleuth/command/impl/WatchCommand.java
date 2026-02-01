@@ -164,21 +164,60 @@ public class WatchCommand implements StreamCommand {
         String watchId = UUID.randomUUID().toString();
         BlockingQueue<WatchResult> resultQueue = new LinkedBlockingQueue<>(config.getWatchQueueCapacity());
 
-        // Register the watch
-        WatchInterceptor.registerWatch(watchId, resultQueue);
+        // Use the actual loaded Class<?> instance to preserve classloader correctness.
+        Class<?> targetClass = null;
+        for (Class<?> c : loadedClasses) {
+            if (c != null && targetClassName.equals(c.getName())) {
+                targetClass = c;
+                break;
+            }
+        }
+        if (targetClass == null) {
+            return "Target class not found in loaded classes: " + targetClassName;
+        }
 
-        // Create and register enhancer
         WatchEnhancer enhancer = new WatchEnhancer(targetClassName, methodPattern, null,
-                                                  captureParams, captureReturn, captureException, watchId);
-        transformer.addEnhancer(targetClassName, enhancer);
+            captureParams, captureReturn, captureException, watchId);
+        boolean interceptorRegistered = false;
+        boolean enhancerAdded = false;
+        try {
+            // Register the watch
+            WatchInterceptor.registerWatch(watchId, resultQueue);
+            interceptorRegistered = true;
 
-        // Retransform the class
-        Class<?> targetClass = Class.forName(targetClassName);
-        instrumentation.retransformClasses(targetClass);
+            // Create and register enhancer
+            transformer.addEnhancer(targetClassName, enhancer);
+            enhancerAdded = true;
 
-        // Create watch session
-        WatchSession session = new WatchSession(watchId, targetClassName, methodPattern, resultQueue, enhancer);
-        activeSessions.put(watchId, session);
+            // Retransform the class
+            instrumentation.retransformClasses(targetClass);
+
+            // Create watch session
+            WatchSession session = new WatchSession(watchId, targetClassName, methodPattern, resultQueue, enhancer);
+            activeSessions.put(watchId, session);
+        } catch (Exception e) {
+            // Rollback partial state best-effort.
+            if (enhancerAdded) {
+                try {
+                    transformer.removeEnhancer(targetClassName, enhancer);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+                try {
+                    instrumentation.retransformClasses(targetClass);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+            }
+            if (interceptorRegistered) {
+                try {
+                    WatchInterceptor.unregisterWatch(watchId);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+            }
+            throw e;
+        }
 
         StringBuilder result = new StringBuilder();
         result.append("Started watching ").append(targetClassName).append(".").append(methodPattern).append("\n");
@@ -250,9 +289,11 @@ public class WatchCommand implements StreamCommand {
                 // Remove enhancer
                 transformer.removeEnhancer(session.getClassName(), session.getEnhancer());
 
-                // Retransform class back to original
-                Class<?> targetClass = Class.forName(session.getClassName());
-                instrumentation.retransformClasses(targetClass);
+                // Retransform class back to original (best-effort using loaded instance)
+                Class<?> targetClass = findLoadedClass(session.getClassName());
+                if (targetClass != null) {
+                    instrumentation.retransformClasses(targetClass);
+                }
 
                 // Unregister watch
                 WatchInterceptor.unregisterWatch(watchId);
@@ -307,7 +348,7 @@ public class WatchCommand implements StreamCommand {
             sb.append(" return=").append(SleuthValueFormatter.format(result.getReturnValue(), opt));
         }
         if ((keys.contains("throw") || keys.contains("exception")) && result.getEventType() == WatchResult.EventType.METHOD_EXCEPTION) {
-            sb.append(" throw=").append(SleuthValueFormatter.formatThrowable(result.getException(), opt));
+            sb.append(" throw=").append(SleuthValueFormatter.format(result.getException(), opt));
         }
         if (keys.contains("cost") && result.getEventType() != WatchResult.EventType.METHOD_ENTRY) {
             sb.append(" cost=").append(result.formatDuration());
@@ -328,6 +369,22 @@ public class WatchCommand implements StreamCommand {
 
     private boolean matchesPattern(String className, String pattern) {
         return WildcardMatcher.matches(className, pattern);
+    }
+
+    private Class<?> findLoadedClass(String className) {
+        if (className == null || className.isEmpty()) {
+            return null;
+        }
+        try {
+            for (Class<?> c : instrumentation.getAllLoadedClasses()) {
+                if (c != null && className.equals(c.getName())) {
+                    return c;
+                }
+            }
+        } catch (Exception ignore) {
+            // best-effort
+        }
+        return null;
     }
 
     private String getHelp() {

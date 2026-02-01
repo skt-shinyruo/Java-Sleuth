@@ -1,6 +1,7 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
+import com.javasleuth.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,10 +53,11 @@ public class RetransformCommand implements Command {
 
             // Find matching classes
             List<Class<?>> matchingClasses = new ArrayList<>();
-            Pattern pattern = Pattern.compile(classPattern.replace("*", ".*"), Pattern.CASE_INSENSITIVE);
+            String normalized = normalizePattern(classPattern);
+            Pattern pattern = WildcardMatcher.compile(normalized, Pattern.CASE_INSENSITIVE);
 
             for (Class<?> clazz : instrumentation.getAllLoadedClasses()) {
-                if (pattern.matcher(clazz.getName()).find()) {
+                if (pattern.matcher(clazz.getName()).matches()) {
                     if (instrumentation.isModifiableClass(clazz)) {
                         matchingClasses.add(clazz);
                     }
@@ -140,6 +142,17 @@ public class RetransformCommand implements Command {
             return "Bootstrap ClassLoader";
         }
         return classLoader.getClass().getSimpleName() + "@" + Integer.toHexString(classLoader.hashCode());
+    }
+
+    private String normalizePattern(String pattern) {
+        if (pattern == null || pattern.trim().isEmpty()) {
+            return "*";
+        }
+        String p = pattern.trim();
+        if (!p.contains("*")) {
+            return "*" + p + "*";
+        }
+        return p;
     }
 
     private String getHelp() {

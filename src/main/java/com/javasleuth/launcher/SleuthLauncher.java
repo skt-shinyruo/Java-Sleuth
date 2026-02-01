@@ -237,8 +237,11 @@ public class SleuthLauncher {
                 DataInputStream binaryIn = null;
                 DataOutputStream binaryOut = null;
 
+                String connId = null;
                 if (handshakeEnabled) {
-                    Utf8LineCodec.writeLine(out, buildHelloLine(protocol), true);
+                    // v2 signature binding: client proposes a per-connection connId; server mirrors it.
+                    connId = generateNonce();
+                    Utf8LineCodec.writeLine(out, buildHelloLine(protocol, connId), true);
                     String configLine = Utf8LineCodec.readLine(in, maxLineBytes);
                     if (configLine != null && configLine.startsWith("CONFIG")) {
                         Map<String, String> kv = parseHandshakeKv(configLine);
@@ -257,6 +260,9 @@ public class SleuthLauncher {
                             if (parsed != null && parsed > 0) {
                                 maxPayloadBytes = parsed;
                             }
+                        }
+                        if (kv.containsKey("connid")) {
+                            connId = kv.get("connid");
                         }
                     }
                 }
@@ -295,7 +301,7 @@ public class SleuthLauncher {
                                          ("watch".equals(commandName) || "trace".equals(commandName));
 
                         if (binary && binaryIn != null && binaryOut != null) {
-                            String signed = securityManager.signCommand(command, System.currentTimeMillis(), generateNonce());
+                            String signed = securityManager.signCommandV2(command, System.currentTimeMillis(), generateNonce(), connId);
                             BinaryFrameCodec.writeFrame(binaryOut, BinaryFrame.request(signed, stream), maxPayloadBytes);
                             while (true) {
                                 BinaryFrame frame = BinaryFrameCodec.readFrame(binaryIn, maxPayloadBytes);
@@ -311,7 +317,7 @@ public class SleuthLauncher {
                                 }
                             }
                         } else if (framed) {
-                            String signed = securityManager.signCommand(command, System.currentTimeMillis(), generateNonce());
+                            String signed = securityManager.signCommandV2(command, System.currentTimeMillis(), generateNonce(), connId);
                             String outbound = stream ? "STREAM " + signed : "CMD " + signed;
                             Utf8LineCodec.writeLine(out, outbound, true);
 
@@ -329,11 +335,14 @@ public class SleuthLauncher {
                                 }
                             }
                         } else {
-                            String signed = securityManager.signCommand(command, System.currentTimeMillis(), generateNonce());
+                            String signed = securityManager.signCommandV2(command, System.currentTimeMillis(), generateNonce(), connId);
                             Utf8LineCodec.writeLine(out, signed, true);
 
+                            // Legacy mode: prefer END marker when server emits it (newer agents);
+                            // otherwise fall back to short read-timeout heuristic for older agents.
                             StringBuilder response = new StringBuilder();
                             int originalTimeout = socket.getSoTimeout();
+                            boolean sawEnd = false;
                             try {
                                 socket.setSoTimeout(200);
                                 while (true) {
@@ -342,8 +351,16 @@ public class SleuthLauncher {
                                         if (line == null) {
                                             break;
                                         }
+                                        if ("END".equals(line)) {
+                                            sawEnd = true;
+                                            break;
+                                        }
                                         response.append(line).append("\n");
                                     } catch (java.net.SocketTimeoutException timeout) {
+                                        if (sawEnd) {
+                                            break;
+                                        }
+                                        // No END seen yet; assume server is legacy and response finished.
                                         break;
                                     }
                                 }
@@ -391,9 +408,13 @@ public class SleuthLauncher {
         return v;
     }
 
-    private static String buildHelloLine(String preferredProtocol) {
+    private static String buildHelloLine(String preferredProtocol, String connId) {
         String requested = preferredProtocol != null ? preferredProtocol.trim().toLowerCase() : "legacy";
-        return "HELLO v=1 protocols=binary,framed,legacy protocol=" + requested;
+        String base = "HELLO v=1 protocols=binary,framed,legacy protocol=" + requested;
+        if (connId != null && !connId.trim().isEmpty()) {
+            return base + " connId=" + connId.trim();
+        }
+        return base;
     }
 
     private static Map<String, String> parseHandshakeKv(String line) {

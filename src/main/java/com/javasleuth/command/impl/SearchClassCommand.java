@@ -1,6 +1,7 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
+import com.javasleuth.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
 import java.util.ArrayList;
 import java.util.List;
@@ -49,12 +50,13 @@ public class SearchClassCommand implements Command {
         StringBuilder sb = new StringBuilder();
         sb.append("=== Search Classes ===\n");
 
-        Pattern regex = Pattern.compile(pattern.replace("*", ".*"), Pattern.CASE_INSENSITIVE);
+        String normalized = normalizePattern(pattern);
+        Pattern regex = WildcardMatcher.compile(normalized, Pattern.CASE_INSENSITIVE);
         Class<?>[] loadedClasses = instrumentation.getAllLoadedClasses();
         List<Class<?>> matchedClasses = new ArrayList<>();
 
         for (Class<?> clazz : loadedClasses) {
-            if (regex.matcher(clazz.getName()).find()) {
+            if (regex.matcher(clazz.getName()).matches()) {
                 matchedClasses.add(clazz);
             }
         }
@@ -104,6 +106,17 @@ public class SearchClassCommand implements Command {
         }
 
         return sb.toString();
+    }
+
+    private String normalizePattern(String pattern) {
+        if (pattern == null || pattern.trim().isEmpty()) {
+            return "*";
+        }
+        String p = pattern.trim();
+        if (!p.contains("*")) {
+            return "*" + p + "*";
+        }
+        return p;
     }
 
     private String getClassLoaderName(ClassLoader classLoader) {

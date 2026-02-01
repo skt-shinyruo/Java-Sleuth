@@ -152,14 +152,44 @@ public class TtCommand implements StreamCommand {
 
         String ttId = UUID.randomUUID().toString();
         BlockingQueue<TtRecord> q = new LinkedBlockingQueue<>(config.getWatchQueueCapacity());
-        TtInterceptor.register(ttId, q);
 
         ClassEnhancer enhancer = new TtEnhancer(target.getName(), methodPattern, null, ttId);
-        transformer.addEnhancer(target.getName(), enhancer);
-        instrumentation.retransformClasses(target);
+        boolean interceptorRegistered = false;
+        boolean enhancerAdded = false;
+        try {
+            TtInterceptor.register(ttId, q);
+            interceptorRegistered = true;
 
-        TtSession session = new TtSession(ttId, target, methodPattern, q, enhancer);
-        activeSessions.put(ttId, session);
+            transformer.addEnhancer(target.getName(), enhancer);
+            enhancerAdded = true;
+
+            instrumentation.retransformClasses(target);
+
+            TtSession session = new TtSession(ttId, target, methodPattern, q, enhancer);
+            activeSessions.put(ttId, session);
+        } catch (Exception e) {
+            // Rollback partial state best-effort.
+            if (enhancerAdded) {
+                try {
+                    transformer.removeEnhancer(target.getName(), enhancer);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+                try {
+                    instrumentation.retransformClasses(target);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+            }
+            if (interceptorRegistered) {
+                try {
+                    TtInterceptor.unregister(ttId);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+            }
+            throw e;
+        }
 
         StringBuilder banner = new StringBuilder();
         banner.append("Started tt record ").append(target.getName()).append(".").append(methodPattern).append("\n");
@@ -256,7 +286,7 @@ public class TtCommand implements StreamCommand {
 
         sb.append("Params: ").append(SleuthValueFormatter.format(r.getParameters(), opt)).append("\n");
         if (r.getEventType() == TtRecord.EventType.METHOD_EXCEPTION) {
-            sb.append("Throw: ").append(SleuthValueFormatter.formatThrowable(r.getException(), opt)).append("\n");
+            sb.append("Throw: ").append(SleuthValueFormatter.format(r.getException(), opt)).append("\n");
         } else {
             sb.append("Return: ").append(SleuthValueFormatter.format(r.getReturnValue(), opt)).append("\n");
         }
@@ -421,7 +451,7 @@ public class TtCommand implements StreamCommand {
 
         sb.append("Params(summary): ").append(SleuthValueFormatter.format(params, opt)).append("\n");
         if (r.getEventType() == TtRecord.EventType.METHOD_EXCEPTION) {
-            sb.append("Throw(summary): ").append(SleuthValueFormatter.formatThrowable(r.getException(), opt)).append("\n");
+            sb.append("Throw(summary): ").append(SleuthValueFormatter.format(r.getException(), opt)).append("\n");
         } else {
             sb.append("Return(summary): ").append(SleuthValueFormatter.format(r.getReturnValue(), opt)).append("\n");
         }

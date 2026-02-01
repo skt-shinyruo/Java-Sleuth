@@ -59,6 +59,8 @@ N/A
 ## Notes
 - TraceAggregator 在命令侧将 TraceResult 聚合为“单次调用树”（简化版），便于快速定位耗时链路。
 - StackInterceptor 以“方法触发点”采集调用栈并写入队列，使用与 watch/tt 相同的队列容量与满队列策略（drop/evict），避免影响业务线程。
+- Watch/Tt 事件在采集阶段会对参数/返回值/异常做“值快照”（限深/限长），避免强引用复杂对象图造成 GC 压力或 OOM。
+- TraceEnhancer 对“同一类内可被 trace 的方法调用”跳过 SUB_METHOD_CALL 注入，避免出现 SUB + 子节点双份记录导致的语义重复。
 
 ## Dependencies
 - data
@@ -67,3 +69,4 @@ N/A
 - 202601281100_init_kb (planned)
 - 202601281207_sleuth_plugin_stream (history/2026-01/202601281207_sleuth_plugin_stream/) - 背压与采样策略
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - Trace 调用级采样一致性与默认采样调整
+- 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - watch/tt 值快照与 trace 语义去重

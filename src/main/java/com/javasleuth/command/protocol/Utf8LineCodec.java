@@ -20,13 +20,9 @@ public final class Utf8LineCodec {
     private Utf8LineCodec() {}
 
     /**
-     * Read a single line terminated by '\n'. The returned string excludes the trailing '\n' and optional '\r'.
-     *
-     * @param in stream to read
-     * @param maxBytes maximum bytes per line (<=0 means no limit)
-     * @return line string, or null on EOF with no data
+     * Read a single line terminated by '\n'. The returned bytes exclude the trailing '\n' and optional '\r'.
      */
-    public static String readLine(InputStream in, int maxBytes) throws IOException {
+    public static byte[] readLineBytes(InputStream in, int maxBytes) throws IOException {
         if (in == null) {
             return null;
         }
@@ -59,7 +55,27 @@ public final class Utf8LineCodec {
         if (len > 0 && bytes[len - 1] == '\r') {
             len -= 1;
         }
-        return new String(bytes, 0, len, StandardCharsets.UTF_8);
+        if (len == bytes.length) {
+            return bytes;
+        }
+        byte[] out = new byte[len];
+        System.arraycopy(bytes, 0, out, 0, len);
+        return out;
+    }
+
+    /**
+     * Read a single line terminated by '\n'. The returned string excludes the trailing '\n' and optional '\r'.
+     *
+     * @param in stream to read
+     * @param maxBytes maximum bytes per line (<=0 means no limit)
+     * @return line string, or null on EOF with no data
+     */
+    public static String readLine(InputStream in, int maxBytes) throws IOException {
+        byte[] bytes = readLineBytes(in, maxBytes);
+        if (bytes == null) {
+            return null;
+        }
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     public static void writeLine(OutputStream out, String line) throws IOException {
@@ -72,6 +88,19 @@ public final class Utf8LineCodec {
         }
         String v = line != null ? line : "";
         out.write(v.getBytes(StandardCharsets.UTF_8));
+        out.write('\n');
+        if (flush) {
+            out.flush();
+        }
+    }
+
+    public static void writeBytesLine(OutputStream out, byte[] bytes, int offset, int len, boolean flush) throws IOException {
+        if (out == null) {
+            return;
+        }
+        if (bytes != null && len > 0) {
+            out.write(bytes, offset, len);
+        }
         out.write('\n');
         if (flush) {
             out.flush();

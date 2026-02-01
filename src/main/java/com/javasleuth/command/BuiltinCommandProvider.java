@@ -106,7 +106,7 @@ public class BuiltinCommandProvider implements CommandProvider {
         meta.put("sysenv", CommandMeta.viewer(true, false));
         meta.put("vmoption", CommandMeta.operator(true, false));
         meta.put("mbean", CommandMeta.viewer(false, false));
-        meta.put("session", CommandMeta.viewer(true, false));
+        meta.put("session", CommandMeta.viewer(false, false));
         meta.put("perm", CommandMeta.viewer(true, false));
         meta.put("version", CommandMeta.viewer(true, false));
 

@@ -70,12 +70,70 @@ public final class JobManager {
     private final AtomicLong seq = new AtomicLong(1);
     private final ConcurrentHashMap<String, Job> jobs = new ConcurrentHashMap<>();
 
+    // Retention (best-effort) to limit memory.
+    private volatile int maxJobs = 200;
+    private volatile long jobTtlMs = 60L * 60L * 1000L; // 1 hour
+    private volatile int maxOutputBytesPerJob = 256 * 1024; // 256 KiB
+
     private JobManager() {}
+
+    public void configureRetention(int maxJobs, long jobTtlMs, int maxOutputBytesPerJob) {
+        if (maxJobs > 0) {
+            this.maxJobs = maxJobs;
+        }
+        if (jobTtlMs > 0) {
+            this.jobTtlMs = jobTtlMs;
+        }
+        if (maxOutputBytesPerJob > 0) {
+            this.maxOutputBytesPerJob = maxOutputBytesPerJob;
+        }
+    }
+
+    public void evictExpired() {
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, Job> e : jobs.entrySet()) {
+            Job j = e.getValue();
+            if (j == null) {
+                continue;
+            }
+            if (j.status == JobStatus.RUNNING) {
+                continue;
+            }
+            Long end = j.endEpochMs;
+            long base = end != null ? end : j.startEpochMs;
+            if (jobTtlMs > 0 && now - base > jobTtlMs) {
+                jobs.remove(e.getKey());
+            }
+        }
+
+        // Cap total jobs (prefer dropping oldest completed jobs).
+        if (maxJobs > 0 && jobs.size() > maxJobs) {
+            List<Job> all = new ArrayList<>(jobs.values());
+            all.sort((a, b) -> {
+                long ta = a.endEpochMs != null ? a.endEpochMs : a.startEpochMs;
+                long tb = b.endEpochMs != null ? b.endEpochMs : b.startEpochMs;
+                return Long.compare(ta, tb);
+            });
+            int toRemove = jobs.size() - maxJobs;
+            for (Job j : all) {
+                if (toRemove <= 0) {
+                    break;
+                }
+                if (j.status == JobStatus.RUNNING) {
+                    continue;
+                }
+                jobs.remove(j.id);
+                toRemove--;
+            }
+        }
+    }
 
     public String submitStreamJob(String name, String commandLine, StreamJob job) {
         Objects.requireNonNull(job, "job");
+        evictExpired();
+
         String id = String.format(Locale.ROOT, "job-%d", seq.getAndIncrement());
-        Job j = new Job(id, name, commandLine);
+        Job j = new Job(id, name, commandLine, maxOutputBytesPerJob);
         jobs.put(id, j);
 
         Thread t = new Thread(() -> runJob(j, job), "sleuth-job-" + id);
@@ -164,16 +222,22 @@ public final class JobManager {
         private volatile String error;
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
         private final RingBuffer<String> output = new RingBuffer<>(2000);
+        private final int maxOutputBytes;
+        private final AtomicLong outputBytes = new AtomicLong(0);
         private volatile Thread thread;
 
-        private Job(String id, String name, String commandLine) {
+        private Job(String id, String name, String commandLine, int maxOutputBytes) {
             this.id = id;
             this.name = name == null ? "job" : name;
             this.commandLine = commandLine == null ? "" : commandLine;
+            this.maxOutputBytes = Math.max(0, maxOutputBytes);
         }
 
         private void append(String line) {
             if (line == null) {
+                return;
+            }
+            if (maxOutputBytes > 0 && outputBytes.get() >= maxOutputBytes) {
                 return;
             }
             String[] parts = line.split("\n", -1);
@@ -182,9 +246,15 @@ public final class JobManager {
                     continue;
                 }
                 String trimmed = p.replace("\r", "");
-                if (!trimmed.isEmpty()) {
-                    output.add(trimmed);
+                if (trimmed.isEmpty()) {
+                    continue;
                 }
+                int bytes = trimmed.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+                long next = outputBytes.addAndGet(bytes);
+                if (maxOutputBytes > 0 && next > maxOutputBytes) {
+                    return;
+                }
+                output.add(trimmed);
             }
         }
 

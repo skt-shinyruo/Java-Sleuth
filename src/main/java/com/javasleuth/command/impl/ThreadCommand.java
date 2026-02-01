@@ -1,6 +1,7 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
+import com.javasleuth.util.StringUtils;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
@@ -105,7 +106,7 @@ public class ThreadCommand implements Command {
         sb.append("=== Thread Top CPU (delta) ===\n");
         sb.append("Interval: ").append(intervalMs).append(" ms\n\n");
         sb.append(String.format("%-5s %-12s %-12s %-15s %s\n", "ID", "CPU_DELTA", "CPU_TOTAL", "STATE", "NAME"));
-        sb.append("=".repeat(80)).append("\n");
+        sb.append(StringUtils.repeat('=', 80)).append("\n");
 
         int shown = 0;
         for (Map.Entry<Long, Long> e : sorted) {
@@ -152,7 +153,7 @@ public class ThreadCommand implements Command {
 
         sb.append(String.format("%-5s %-15s %-10s %-30s %s\n",
             "ID", "STATE", "PRIORITY", "NAME", "CPU TIME"));
-        sb.append("=".repeat(80)).append("\n");
+        sb.append(StringUtils.repeat('=', 80)).append("\n");
 
         for (ThreadInfo info : threadInfos) {
             if (info != null) {

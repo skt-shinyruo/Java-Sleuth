@@ -75,8 +75,12 @@ public final class MonitorEnhancer implements ClassEnhancer {
 
         @Override
         protected void onMethodEnter() {
-            mv.visitLabel(tryStart);
+            // Initialize locals used by the exception handler before tryStart to avoid VerifyError.
             startTimeVar = newLocal(Type.LONG_TYPE);
+            mv.visitInsn(LCONST_0);
+            mv.visitVarInsn(LSTORE, startTimeVar);
+
+            mv.visitLabel(tryStart);
             mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
             mv.visitVarInsn(LSTORE, startTimeVar);
         }
