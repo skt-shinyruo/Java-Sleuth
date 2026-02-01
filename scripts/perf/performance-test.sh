@@ -3,6 +3,24 @@
 # Performance test script for Java-Sleuth
 echo "=== Java-Sleuth Performance Testing ==="
 
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_DIR"
+
+AGENT_JAR="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+BASE_JAR="$(ls -1t "$PROJECT_DIR"/target/*.jar 2>/dev/null | grep -v 'jar-with-dependencies' | head -n 1 || true)"
+
+if [[ -z "${AGENT_JAR}" ]] || [[ ! -f "${AGENT_JAR}" ]]; then
+    echo "Please build the project first with: mvn clean package"
+    exit 1
+fi
+if [[ -z "${BASE_JAR}" ]] || [[ ! -f "${BASE_JAR}" ]]; then
+    echo "Base JAR not found under: $PROJECT_DIR/target/ (expected a non -jar-with-dependencies jar)"
+    exit 1
+fi
+
 # Test 1: Agent startup time
 echo "Test 1: Agent Startup Time"
 for i in {1..3}; do
@@ -11,7 +29,7 @@ for i in {1..3}; do
     sleep 1
 
     start_time=$(date +%s%N)
-    java -javaagent:target/java-sleuth-1.0.0-jar-with-dependencies.jar -cp target/java-sleuth-1.0.0.jar com.javasleuth.test.TestApplication > /dev/null 2>&1 &
+    java -javaagent:"$AGENT_JAR" -cp "$BASE_JAR" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
     APP_PID=$!
 
     # Wait for agent to be ready
@@ -28,7 +46,7 @@ for i in {1..3}; do
 done
 
 # Start application for command performance tests
-java -javaagent:target/java-sleuth-1.0.0-jar-with-dependencies.jar -cp target/java-sleuth-1.0.0.jar com.javasleuth.test.TestApplication > /dev/null 2>&1 &
+java -javaagent:"$AGENT_JAR" -cp "$BASE_JAR" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
 APP_PID=$!
 
 # Wait for agent to be ready

@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 命令解析、校验、执行、输出
 - **Status:** ✅Stable
-- **Last Updated:** 2026-01-29
+- **Last Updated:** 2026-02-01
 
 ## Specifications
 
@@ -55,8 +55,11 @@
 #### Scenario: 插件命令加载
 前置：CommandProcessor 启动  
 - SPI/插件目录加载
-- 冲突策略可配置
+- 插件目录加载需显式开启 `plugins.enabled=true`（默认关闭）
+- 支持 `plugins.allowlist.sha256`（可选）：不在 allowlist 或 sha256 不匹配的 jar 会被拒绝并记录审计
+- 冲突策略可配置（prefer-builtin / prefer-plugin / fail）
 - 插件命令动态注册到 AuthorizationManager（避免 unknown command 被拒绝）
+ - shutdown 时关闭插件 URLClassLoader，降低 Windows JAR 锁定与句柄泄露风险
 
 #### Scenario: 分帧与流式输出
 前置：客户端使用 framed 模式  
@@ -98,3 +101,4 @@ N/A
 - 202601281207_sleuth_plugin_stream (history/2026-01/202601281207_sleuth_plugin_stream/) - 插件化命令与分帧协议
 - 202601281301_sleuth_handshake_secure_frames (history/2026-01/202601281301_sleuth_handshake_secure_frames/) - 握手协商 + 严格二进制帧 + 插件授权治理
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 统一传输层/握手升级重构、连接/行长度/超时治理
+- 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - 插件默认关闭 + allowlist + classloader 释放

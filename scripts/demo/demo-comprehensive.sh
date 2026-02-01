@@ -3,6 +3,12 @@
 # Java-Sleuth Comprehensive Demo Script
 # Demonstrates all phases and features
 
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_DIR"
+
 echo "=========================="
 echo "Java-Sleuth Comprehensive Demo"
 echo "=========================="
@@ -20,7 +26,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Check if JAR exists
-if [ ! -f "target/java-sleuth-1.0.0-jar-with-dependencies.jar" ]; then
+JAR_FILE="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+if [ -z "${JAR_FILE}" ] || [ ! -f "${JAR_FILE}" ]; then
     echo -e "${RED}Please build the project first with: mvn clean package${NC}"
     exit 1
 fi

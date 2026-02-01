@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** JVM 选择、Attach、Socket 交互
 - **Status:** ✅Stable
-- **Last Updated:** 2026-01-29
+- **Last Updated:** 2026-02-01
 
 ## Specifications
 
@@ -57,6 +57,26 @@
 **Module:** launcher
 当启用 hmac 时，Launcher 会将命令封装为 `SIG ... cmd=<base64url>` 发送，以提供完整性校验与基础防重放。
 
+### Requirement: 启动/发布稳定化（JarLocator）
+**Module:** launcher / util
+避免 jar 名称/版本号硬编码与“必须从项目目录启动”的脆弱假设。
+
+#### Scenario: 任意工作目录启动并自动定位 agent jar
+前置：以 `java -jar` 运行 launcher（fat jar）或 IDE classpath 运行  
+- 优先使用 `-Dsleuth.agent.jar=<path>` / 环境变量 `SLEUTH_AGENT_JAR` 覆盖
+- 运行在 jar 内：基于 `CodeSource` 定位自身 jar
+- IDE/classpath：回退扫描 `target/*-jar-with-dependencies.jar` 或当前目录
+
+### Requirement: attach 时安全自举（HMAC secret 自动下发）
+**Module:** launcher / security
+在默认配置下避免“security.mode=off + 空 secret”的误用风险，并保证 Launcher 与 Agent 的安全配置一致。
+
+#### Scenario: attach 自动启用 HMAC 并同步会话角色
+前置：`security.bootstrap.hmac.on.attach=true`  
+- Launcher attach 时生成随机 `security.hmac.secret` 并通过 agentArgs 下发到目标 JVM
+- Launcher 本地同时启用 `security.mode=hmac` 并同步 `security.hmac.session.role`，保证后续命令发送会签名
+- 目标 JVM 侧按 `security.hmac.session.role` 自举初始会话角色（避免必须先 `auth`）
+
 ## API Interfaces
 N/A
 
@@ -72,3 +92,4 @@ N/A
 - 202601281207_sleuth_plugin_stream (history/2026-01/202601281207_sleuth_plugin_stream/) - framed/stream 协议支持
 - 202601281301_sleuth_handshake_secure_frames (history/2026-01/202601281301_sleuth_handshake_secure_frames/) - handshake + binary + 可选 SIG 签名
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 进程选择修复与连接地址解析增强
+- 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - jar 自动定位 + HMAC 自举与启动稳定性增强

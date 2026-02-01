@@ -3,25 +3,43 @@
 # Security and compatibility test script for Java-Sleuth
 echo "=== Java-Sleuth Security and Compatibility Testing ==="
 
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_DIR"
+
+AGENT_JAR="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+BASE_JAR="$(ls -1t "$PROJECT_DIR"/target/*.jar 2>/dev/null | grep -v 'jar-with-dependencies' | head -n 1 || true)"
+
+if [[ -z "${AGENT_JAR}" ]] || [[ ! -f "${AGENT_JAR}" ]]; then
+    echo "Please build the project first with: mvn clean package"
+    exit 1
+fi
+if [[ -z "${BASE_JAR}" ]] || [[ ! -f "${BASE_JAR}" ]]; then
+    echo "Base JAR not found under: $PROJECT_DIR/target/ (expected a non -jar-with-dependencies jar)"
+    exit 1
+fi
+
 echo "Test 1: Java Version Compatibility"
 java -version 2>&1
 echo ""
 
 echo "Test 2: Agent Manifest Security Configuration"
 echo "  Checking agent manifest entries:"
-jar -tf target/java-sleuth-1.0.0-jar-with-dependencies.jar | grep -E "META-INF/MANIFEST.MF"
+jar -tf "$AGENT_JAR" | grep -E "META-INF/MANIFEST.MF"
 echo ""
 
 echo "  Manifest content:"
-unzip -q -c target/java-sleuth-1.0.0-jar-with-dependencies.jar META-INF/MANIFEST.MF
+unzip -q -c "$AGENT_JAR" META-INF/MANIFEST.MF
 echo ""
 
 echo "Test 3: Security Manager Compatibility"
 echo "  Testing with security manager enabled:"
-java -javaagent:target/java-sleuth-1.0.0-jar-with-dependencies.jar \
+java -javaagent:"$AGENT_JAR" \
      -Djava.security.manager \
      -Djava.security.policy=all.policy \
-     -cp target/java-sleuth-1.0.0.jar \
+     -cp "$BASE_JAR" \
      com.javasleuth.test.TestApplication > /tmp/security-test.log 2>&1 &
 SEC_PID=$!
 
@@ -40,8 +58,8 @@ echo "Test 4: Input Validation Testing"
 echo "  Testing malicious input handling:"
 
 # Start clean test app
-java -javaagent:target/java-sleuth-1.0.0-jar-with-dependencies.jar \
-     -cp target/java-sleuth-1.0.0.jar \
+java -javaagent:"$AGENT_JAR" \
+     -cp "$BASE_JAR" \
      com.javasleuth.test.TestApplication > /dev/null 2>&1 &
 APP_PID=$!
 
@@ -76,8 +94,8 @@ echo "Test 5: File System Access Testing"
 echo "  Testing file operations:"
 
 # Test heap dump to various paths
-java -javaagent:target/java-sleuth-1.0.0-jar-with-dependencies.jar \
-     -cp target/java-sleuth-1.0.0.jar \
+java -javaagent:"$AGENT_JAR" \
+     -cp "$BASE_JAR" \
      com.javasleuth.test.TestApplication > /dev/null 2>&1 &
 APP_PID=$!
 
@@ -134,8 +152,8 @@ echo "  Initial file descriptors: $initial_fds"
 
 # Run multiple connection tests
 for i in {1..10}; do
-    java -javaagent:target/java-sleuth-1.0.0-jar-with-dependencies.jar \
-         -cp target/java-sleuth-1.0.0.jar \
+    java -javaagent:"$AGENT_JAR" \
+         -cp "$BASE_JAR" \
          com.javasleuth.test.TestApplication > /dev/null 2>&1 &
     APP_PID=$!
 

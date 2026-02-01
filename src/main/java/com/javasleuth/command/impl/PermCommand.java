@@ -13,7 +13,7 @@ public class PermCommand implements Command {
     public String execute(String[] args) {
         return "Roles: viewer < operator < admin\n" +
             "Use `session` to check current role.\n" +
-            "Use `auth <username> <password>` to upgrade role (default admin password is configured in AuthenticationManager).\n" +
+            "Use `auth <username> <password>` to upgrade role (requires security.auth.password.enabled=true and a configured password).\n" +
             "Note: dangerous commands (redefine/retransform/mc/heapdump/stop/reset/vmoption set) require admin.";
     }
 
@@ -22,4 +22,3 @@ public class PermCommand implements Command {
         return "Show permission model (roles) and how to authenticate";
     }
 }
-

@@ -7,10 +7,11 @@ set -euo pipefail
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BENCHMARK_DIR="$SCRIPT_DIR/benchmark-results"
 TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 REPORT_FILE="$BENCHMARK_DIR/benchmark_report_$TIMESTAMP.md"
-JAR_FILE="target/java-sleuth-1.0.0-jar-with-dependencies.jar"
+JAR_FILE=""
 TEST_PORT=3658
 CONCURRENT_CLIENTS=10
 TEST_DURATION=60
@@ -45,11 +46,13 @@ setup_benchmark() {
     mkdir -p "$BENCHMARK_DIR"
 
     # Check if JAR exists
-    if [[ ! -f "$JAR_FILE" ]]; then
+    JAR_FILE="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+    if [[ -z "$JAR_FILE" ]] || [[ ! -f "$JAR_FILE" ]]; then
         log "Building project..."
-        mvn clean package -DskipTests
-        if [[ ! -f "$JAR_FILE" ]]; then
-            error "Failed to build JAR file: $JAR_FILE"
+        (cd "$PROJECT_DIR" && mvn clean package -DskipTests)
+        JAR_FILE="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+        if [[ -z "$JAR_FILE" ]] || [[ ! -f "$JAR_FILE" ]]; then
+            error "Failed to build agent JAR under: $PROJECT_DIR/target/"
         fi
     fi
 }

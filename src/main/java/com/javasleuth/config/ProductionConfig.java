@@ -1,6 +1,7 @@
 package com.javasleuth.config;
 
 import java.io.*;
+import java.lang.management.ManagementFactory;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -91,6 +92,13 @@ public class ProductionConfig {
         properties.setProperty("security.hmac.secret", "");
         properties.setProperty("security.hmac.timestamp.window.ms", "30000");
         properties.setProperty("security.hmac.nonce.cache.size", "10000");
+        properties.setProperty("security.bootstrap.hmac.on.attach", "true");
+        properties.setProperty("security.bootstrap.hmac.secret.bytes", "32");
+        properties.setProperty("security.hmac.session.role", "operator");
+        properties.setProperty("security.auth.password.enabled", "false");
+        properties.setProperty("security.auth.admin.password", "");
+        properties.setProperty("security.auth.operator.password", "");
+        properties.setProperty("security.auth.viewer.password", "");
 
         // Protocol configuration
         properties.setProperty("protocol.mode", "legacy");
@@ -100,6 +108,8 @@ public class ProductionConfig {
         properties.setProperty("protocol.text.max.line.bytes", "8192");
 
         // Plugin configuration
+        properties.setProperty("plugins.enabled", "false");
+        properties.setProperty("plugins.allowlist.sha256", "");
         properties.setProperty("plugins.directory", "plugins");
         properties.setProperty("plugins.conflict.strategy", "prefer-builtin");
 
@@ -108,7 +118,8 @@ public class ProductionConfig {
         properties.setProperty("monitoring.watch.drop.on.full", "true");
         properties.setProperty("monitoring.trace.queue.capacity", "2000");
         properties.setProperty("monitoring.trace.drop.on.full", "true");
-        properties.setProperty("monitoring.trace.sample.rate", "1.0");
+        properties.setProperty("monitoring.trace.sample.rate", "0.1");
+        properties.setProperty("monitoring.monitor.sample.rate", "1.0");
 
         // Monitoring configuration
         properties.setProperty("monitoring.metrics.enabled", "true");
@@ -119,6 +130,9 @@ public class ProductionConfig {
         // Logging configuration
         properties.setProperty("logging.level", "INFO");
         properties.setProperty("logging.audit.enabled", "true");
+        properties.setProperty("logging.audit.console.enabled", "false");
+        properties.setProperty("logging.audit.file.path", "");
+        properties.setProperty("logging.security.file.path", "");
         properties.setProperty("logging.performance.enabled", "true");
 
         configLoaded = true;
@@ -199,6 +213,34 @@ public class ProductionConfig {
         return getInt("security.hmac.nonce.cache.size", 10000);
     }
 
+    public boolean isHmacBootstrapOnAttachEnabled() {
+        return getBoolean("security.bootstrap.hmac.on.attach", true);
+    }
+
+    public int getHmacBootstrapSecretBytes() {
+        return getInt("security.bootstrap.hmac.secret.bytes", 32);
+    }
+
+    public String getHmacSessionRole() {
+        return getString("security.hmac.session.role", "operator");
+    }
+
+    public boolean isPasswordAuthEnabled() {
+        return getBoolean("security.auth.password.enabled", false);
+    }
+
+    public String getAuthAdminPassword() {
+        return getString("security.auth.admin.password", "");
+    }
+
+    public String getAuthOperatorPassword() {
+        return getString("security.auth.operator.password", "");
+    }
+
+    public String getAuthViewerPassword() {
+        return getString("security.auth.viewer.password", "");
+    }
+
     // Protocol configuration
     public String getProtocolMode() {
         return getString("protocol.mode", "legacy");
@@ -230,6 +272,14 @@ public class ProductionConfig {
     }
 
     // Plugin configuration
+    public boolean isPluginsEnabled() {
+        return getBoolean("plugins.enabled", false);
+    }
+
+    public String getPluginsAllowlistSha256() {
+        return getString("plugins.allowlist.sha256", "");
+    }
+
     public String getPluginDirectory() {
         return getString("plugins.directory", "plugins");
     }
@@ -256,7 +306,11 @@ public class ProductionConfig {
     }
 
     public double getTraceSampleRate() {
-        return getDouble("monitoring.trace.sample.rate", 1.0);
+        return getDouble("monitoring.trace.sample.rate", 0.1);
+    }
+
+    public double getMonitorSampleRate() {
+        return getDouble("monitoring.monitor.sample.rate", 1.0);
     }
 
     // Monitoring configuration
@@ -283,6 +337,26 @@ public class ProductionConfig {
 
     public boolean isAuditLogEnabled() {
         return getBoolean("logging.audit.enabled", true);
+    }
+
+    public boolean isAuditConsoleEnabled() {
+        return getBoolean("logging.audit.console.enabled", false);
+    }
+
+    public String getAuditLogFilePath() {
+        String configured = getString("logging.audit.file.path", "");
+        if (configured != null && !configured.trim().isEmpty()) {
+            return configured.trim();
+        }
+        return defaultLogPath("sleuth-audit.log");
+    }
+
+    public String getSecurityLogFilePath() {
+        String configured = getString("logging.security.file.path", "");
+        if (configured != null && !configured.trim().isEmpty()) {
+            return configured.trim();
+        }
+        return defaultLogPath("sleuth-security.log");
     }
 
     public boolean isPerformanceLogEnabled() {
@@ -393,5 +467,41 @@ public class ProductionConfig {
             return value.substring(0, 2) + "***" + value.substring(value.length() - 2);
         }
         return value;
+    }
+
+    private static String defaultLogPath(String baseName) {
+        String tmp = System.getProperty("java.io.tmpdir");
+        if (tmp == null || tmp.trim().isEmpty()) {
+            tmp = ".";
+        }
+        String name = (baseName == null || baseName.trim().isEmpty()) ? "sleuth.log" : baseName.trim();
+        String pid = currentPid();
+        String fileName = appendPidSuffix(name, pid);
+        return new File(tmp, fileName).getAbsolutePath();
+    }
+
+    private static String currentPid() {
+        try {
+            String name = ManagementFactory.getRuntimeMXBean().getName();
+            if (name == null) {
+                return "unknown";
+            }
+            int idx = name.indexOf('@');
+            if (idx > 0) {
+                return name.substring(0, idx);
+            }
+            return name;
+        } catch (Exception ignore) {
+            return "unknown";
+        }
+    }
+
+    private static String appendPidSuffix(String fileName, String pid) {
+        String p = (pid == null || pid.trim().isEmpty()) ? "unknown" : pid.trim();
+        int dot = fileName.lastIndexOf('.');
+        if (dot > 0 && dot < fileName.length() - 1) {
+            return fileName.substring(0, dot) + "-" + p + fileName.substring(dot);
+        }
+        return fileName + "-" + p;
     }
 }

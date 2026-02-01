@@ -342,6 +342,13 @@ security.mode=hmac
 security.hmac.secret=<a-strong-random-secret>
 security.hmac.timestamp.window.ms=30000
 security.hmac.nonce.cache.size=10000
+security.hmac.session.role=operator
+
+# Optional password-based authentication (disabled by default)
+security.auth.password.enabled=false
+# security.auth.admin.password=<set-a-strong-password>
+# security.auth.operator.password=<set-a-strong-password>
+# security.auth.viewer.password=<set-a-strong-password>
 ```
 
 ### Audit Logging
@@ -352,7 +359,10 @@ security.hmac.nonce.cache.size=10000
 # Enable comprehensive audit logging
 security.audit.logging=true
 logging.audit.enabled=true
-monitoring.security.events=true
+logging.audit.console.enabled=false
+# Default file paths: if left empty, Java-Sleuth uses java.io.tmpdir with pid suffix.
+logging.audit.file.path=/opt/java-sleuth/logs/sleuth-audit.log
+logging.security.file.path=/opt/java-sleuth/logs/sleuth-security.log
 ```
 
 #### Log Monitoring
@@ -714,16 +724,16 @@ find /opt/java-sleuth/logs -name "*.log" -mtime +7 -ls
 
 ```bash
 # 1. Download new version
-wget https://releases.java-sleuth.com/v1.0.1/java-sleuth-1.0.1.jar
+wget https://releases.java-sleuth.com/vX.Y.Z/java-sleuth-X.Y.Z-jar-with-dependencies.jar
 
 # 2. Backup current version
-cp /opt/java-sleuth/lib/java-sleuth-1.0.0.jar /opt/java-sleuth/backup/
+cp /opt/java-sleuth/lib/java-sleuth-*-jar-with-dependencies.jar /opt/java-sleuth/backup/
 
 # 3. Stop service
 systemctl stop java-sleuth
 
 # 4. Replace JAR
-cp java-sleuth-1.0.1.jar /opt/java-sleuth/lib/
+cp java-sleuth-*-jar-with-dependencies.jar /opt/java-sleuth/lib/
 
 # 5. Update configuration if needed
 # Review release notes for configuration changes

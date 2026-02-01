@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -89,14 +90,14 @@ public final class MonitorInterceptor {
     }
 
     private static boolean passesSampleRate() {
-        double rate = config.getTraceSampleRate();
+        double rate = config.getMonitorSampleRate();
         if (rate >= 1.0) {
             return true;
         }
         if (rate <= 0.0) {
             return false;
         }
-        return Math.random() < rate;
+        return ThreadLocalRandom.current().nextDouble() < rate;
     }
 
     private static String buildMethodKey(String className, String methodName, String methodDesc) {
@@ -171,4 +172,3 @@ public final class MonitorInterceptor {
         }
     }
 }
-

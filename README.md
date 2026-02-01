@@ -90,7 +90,9 @@ help         - Show help information for all commands
 quit         - Exit the Java-Sleuth session
 ```
 
-> 重要提示（2026-01-29 起）：默认配置关闭匿名 viewer（`security.anonymous.viewer=false`）。新连接建立后，除 `auth` 外的命令可能会提示需要认证，请先执行 `auth <user> <password>`。
+> 重要提示：默认配置关闭匿名 viewer（`security.anonymous.viewer=false`），同时默认关闭口令认证（`security.auth.password.enabled=false`）。
+> 推荐使用 Launcher 的 HMAC 自举（attach 时自动下发 `security.hmac.secret`，并按 `security.hmac.session.role` 创建初始会话）以获得“默认安全 + 可用”的体验。
+> 如需启用口令认证，请显式配置 `security.auth.*.password` 或使用环境变量 `SLEUTH_AUTH_*_PASSWORD`。
 
 ## 安全与协议说明（2026-01-29 变更）
 
@@ -99,7 +101,8 @@ quit         - Exit the Java-Sleuth session
 - 默认仅允许本机访问：`server.bind.address=127.0.0.1`
 - 若配置为非回环地址（例如 `0.0.0.0` 或局域网 IP），且 `security.mode=off`，Agent 会拒绝启动并提示修复方式
 - 若启用 `security.mode=hmac`，必须配置非空的 `security.hmac.secret`，否则也会拒绝启动（避免误以为“已开启安全”但实际无签名校验）
-- 默认关闭匿名 viewer：`security.anonymous.viewer=false`，连接后需要通过 `auth` 建立会话
+- HMAC 模式下支持会话自举：按 `security.hmac.session.role` 创建初始会话（免口令），并以请求签名作为“持有 secret”的证明
+- 若仍使用 `security.mode=off` 且关闭匿名 viewer，则需开启口令认证并配置密码，或显式开启匿名 viewer（不推荐在多用户机器上使用）
 
 传输层与资源治理相关配置：
 
@@ -282,10 +285,12 @@ Maven configuration with key features:
 
 ### Agent JAR Not Found
 ```
-Agent JAR not found: java-sleuth-1.0.0-jar-with-dependencies.jar
+Agent JAR not found: target/java-sleuth-*-jar-with-dependencies.jar
 Please build the project first with: mvn clean package
 ```
-**Solution**: Run `mvn clean package` to build the project.
+**Solution**:
+- Run `mvn clean package` to build the project.
+- Or set `-Dsleuth.agent.jar=<path>` (or env `SLEUTH_AGENT_JAR`) to point to the agent jar directly.
 
 ### tools.jar Not Found (Java < 9)
 ```

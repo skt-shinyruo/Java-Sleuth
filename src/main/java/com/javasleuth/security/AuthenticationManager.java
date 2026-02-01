@@ -24,7 +24,6 @@ public class AuthenticationManager {
     private static final int MAX_LOGIN_ATTEMPTS = 5;
     private static final long LOCKOUT_DURATION_MINUTES = 15;
     private static final long SESSION_TIMEOUT_MINUTES = 60;
-    private static final String DEFAULT_ADMIN_PASSWORD = "sleuth_admin_2023!";
 
     private static class SessionInfo {
         final String sessionId;
@@ -103,6 +102,22 @@ public class AuthenticationManager {
         public String getName() { return name; }
         public int getLevel() { return level; }
 
+        public static UserRole fromName(String value, UserRole fallback) {
+            if (value == null) {
+                return fallback;
+            }
+            String v = value.trim().toLowerCase();
+            if (v.isEmpty()) {
+                return fallback;
+            }
+            for (UserRole role : values()) {
+                if (role.name.equals(v)) {
+                    return role;
+                }
+            }
+            return fallback;
+        }
+
         public boolean hasPermission(UserRole required) {
             return this.level >= required.level;
         }
@@ -127,6 +142,11 @@ public class AuthenticationManager {
      * Authenticate user with username and password
      */
     public AuthenticationResult authenticate(String username, String password, String clientInfo) {
+        if (!config.isPasswordAuthEnabled()) {
+            auditLogger.logAuthenticationAttempt(username, clientInfo, false, "Password authentication disabled");
+            return AuthenticationResult.failure("Password authentication is disabled");
+        }
+
         String clientKey = extractClientKey(clientInfo);
 
         // Check if client is locked out
@@ -247,22 +267,38 @@ public class AuthenticationManager {
      * Validate username and password
      */
     private UserRole validateCredentials(String username, String password) {
-        // In production, this would connect to LDAP, database, or other auth system
-        // For demo purposes, we have hardcoded credentials
-
-        if ("admin".equals(username) && validatePassword(password, DEFAULT_ADMIN_PASSWORD)) {
-            return UserRole.ADMIN;
+        if (username == null || password == null) {
+            return null;
+        }
+        String u = username.trim().toLowerCase();
+        if (u.isEmpty()) {
+            return null;
         }
 
-        if ("operator".equals(username) && validatePassword(password, "sleuth_op_2023!")) {
-            return UserRole.OPERATOR;
+        if ("admin".equals(u)) {
+            String configured = resolvePassword(config.getAuthAdminPassword(), "SLEUTH_AUTH_ADMIN_PASSWORD");
+            return validatePassword(password, configured) ? UserRole.ADMIN : null;
         }
 
-        if ("viewer".equals(username) && validatePassword(password, "sleuth_view_2023!")) {
-            return UserRole.VIEWER;
+        if ("operator".equals(u)) {
+            String configured = resolvePassword(config.getAuthOperatorPassword(), "SLEUTH_AUTH_OPERATOR_PASSWORD");
+            return validatePassword(password, configured) ? UserRole.OPERATOR : null;
+        }
+
+        if ("viewer".equals(u)) {
+            String configured = resolvePassword(config.getAuthViewerPassword(), "SLEUTH_AUTH_VIEWER_PASSWORD");
+            return validatePassword(password, configured) ? UserRole.VIEWER : null;
         }
 
         return null;
+    }
+
+    private String resolvePassword(String configured, String envKey) {
+        if (configured != null && !configured.trim().isEmpty()) {
+            return configured;
+        }
+        String env = envKey == null ? null : System.getenv(envKey);
+        return env != null && !env.trim().isEmpty() ? env.trim() : null;
     }
 
     /**

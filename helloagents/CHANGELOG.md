@@ -32,6 +32,13 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - `stack` 方法触发调用栈追踪（Arthas stack 简化版，支持 `--bg/--depth`），并在 status 输出 stack 事件统计
 - `tt replay <recordId>`：生成复现代码模板（lite，不在目标 JVM 执行）
 - 插桩健壮性回归：Watch/Tt 增强器的返回值/异常语义与字节码校验（VerifyError）测试
+- `JarLocator`：启动/发布不再依赖硬编码 jar 名称，支持 `-Dsleuth.agent.jar` / `SLEUTH_AGENT_JAR` 覆盖
+- 安全自举配置：`security.bootstrap.hmac.*`、`security.hmac.session.role`（attach 默认启用 hmac 并下发 secret）
+- 口令认证开关与配置：`security.auth.password.enabled` + `security.auth.*.password`（支持 `SLEUTH_AUTH_*_PASSWORD`）
+- 插件加固配置：`plugins.enabled`（默认关闭）+ `plugins.allowlist.sha256`
+- trace 调用级采样覆盖：`trace --sample <rate>`（支持按 trace 会话覆盖采样率）
+- 审计输出可控：`logging.audit.console.enabled`、`logging.audit.file.path`、`logging.security.file.path`（默认落盘到 tmp 并带 pid 后缀）
+- monitor 独立采样 key：`monitoring.monitor.sample.rate`
 
 ### Changed
 - CommandProcessor 改为注册表 + 统一执行管线
@@ -48,6 +55,9 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - Watch/Trace/Monitor/TT 方法匹配支持 `*` 通配符（例如 `execute*`），并修复异常路径退出事件捕获
 - WatchResult 输出改为使用安全格式化（SleuthValueFormatter：限深/限长/脱敏）
 - Monitor/VmOption 命令接口调整为更贴近 Arthas 的简化子命令模型
+- 默认 trace 采样率调整为更保守值（`monitoring.trace.sample.rate=0.1`），降低高 QPS 场景误用风险
+- Launcher/脚本启动方式去版本/目录硬编码：支持任意 cwd 启动与通配符定位 `*-jar-with-dependencies.jar`
+- 审计日志默认不再刷屏控制台（需显式开启 `logging.audit.console.enabled=true`）
 
 ### Fixed
 - watch/trace 队列增加背压与采样
@@ -60,6 +70,11 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 审计日志脱敏加强：auth/config/sysprop 等命令参数与 sessionId 不再以明文写入
 - server.max.connections 与 performance.command.timeout 配置落地生效
 - MemoryJavaCompiler 编译产物未落入 compiledClasses 的问题（通过 OutputStream.close 挂钩收集字节码）
+- HMAC 模式下新连接会话自举：避免“匿名 viewer 关闭 + 口令认证关闭”导致命令不可用
+- TraceInterceptor 采样改为调用级一致：entry/exit/subcall 配对与 depth 稳定
+- 插件目录加载默认关闭，并在 shutdown 释放 URLClassLoader（降低 Windows JAR 锁定风险）
+- AuthenticationManager 移除硬编码 demo 口令，改为显式配置/环境变量
+- AuditLogger 支持可配置落盘路径并减少对目标 JVM stdout/stderr 的污染
 
 ## [1.0.0] - 2026-01-28
 

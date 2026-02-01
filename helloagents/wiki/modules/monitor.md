@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** Watch/Trace/Monitor/TT 拦截器、事件分发与聚合
 - **Status:** ✅Stable
-- **Last Updated:** 2026-01-29
+- **Last Updated:** 2026-02-01
 
 ## Specifications
 
@@ -28,6 +28,25 @@
 - 队列上限生效
 - 采样率可配置
 
+### Requirement: Trace 采样一致性（调用级）
+**Module:** monitor
+避免“entry 被丢弃但 exit 被保留”的不配对问题，保证调用树/层级稳定。
+
+#### Scenario: entry/exit/subcall 采样一致
+前置：trace 已开启且存在采样  
+- 每次方法调用在 entry 时做一次采样决定并写入 ThreadLocal 栈
+- 同一次调用的 exit/subcall 复用该决定，保证配对与 depth 一致
+- `trace --sample <rate>` 可对单次 trace 会话覆盖采样率
+
+### Requirement: Monitor 独立采样 key
+**Module:** monitor / config
+避免 trace 与 monitor 共用采样 key 导致误调。
+
+#### Scenario: monitor.sample.rate 与 trace.sample.rate 解耦
+前置：需要单独调节 monitor 精度/开销  
+- trace 使用 `monitoring.trace.sample.rate`（默认更保守）
+- monitor 使用 `monitoring.monitor.sample.rate`（默认 1.0）
+
 ## API Interfaces
 N/A
 
@@ -47,3 +66,4 @@ N/A
 ## Change History
 - 202601281100_init_kb (planned)
 - 202601281207_sleuth_plugin_stream (history/2026-01/202601281207_sleuth_plugin_stream/) - 背压与采样策略
+- 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - Trace 调用级采样一致性与默认采样调整

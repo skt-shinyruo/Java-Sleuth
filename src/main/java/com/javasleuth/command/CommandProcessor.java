@@ -194,8 +194,17 @@ public class CommandProcessor {
         String clientInfo = clientSocket.getRemoteSocketAddress().toString();
         String sessionId = null;
 
+        AuthenticationManager.UserRole initialRole = AuthenticationManager.UserRole.VIEWER;
+        String securityMode = config.getSecurityMode();
+        if ("hmac".equalsIgnoreCase(securityMode)) {
+            initialRole = AuthenticationManager.UserRole.fromName(
+                config.getHmacSessionRole(),
+                AuthenticationManager.UserRole.OPERATOR
+            );
+        }
+
         AuthenticationManager.AuthenticationResult sessionResult =
-            authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, clientInfo);
+            authenticationManager.createSession(initialRole, clientInfo);
         if (sessionResult.isSuccess()) {
             sessionId = sessionResult.getSessionId();
             sessionByClient.put(clientId, sessionId);
@@ -301,7 +310,11 @@ public class CommandProcessor {
 
                 String currentSessionId = sessionByClient.getOrDefault(clientId, sessionId);
                 if (currentSessionId == null && !"auth".equals(commandName)) {
-                    sendError(out, framedRequested, "Authentication required. Use: auth <user> <password>");
+                    sendError(out, framedRequested,
+                        "Authentication required. " +
+                            "Use: auth <user> <password> (requires security.auth.password.enabled=true), " +
+                            "or set security.anonymous.viewer=true for viewer access."
+                    );
                     metricsCollector.recordError("unauthorized");
                     continue;
                 }
@@ -756,6 +769,13 @@ public class CommandProcessor {
             Thread.currentThread().interrupt();
         }
 
+        // Release plugin classloader resources (important on Windows to avoid JAR locks)
+        try {
+            registry.shutdown();
+        } catch (Exception ignore) {
+            // ignore
+        }
+
         // 4. Shutdown performance optimizer
         System.out.println("Step 4/6: Shutting down performance optimizer...");
         PerformanceOptimizer.shutdown();
@@ -796,6 +816,11 @@ public class CommandProcessor {
         }
 
         clientExecutor.shutdownNow();
+        try {
+            registry.shutdown();
+        } catch (Exception ignore) {
+            // ignore
+        }
         PerformanceOptimizer.shutdown();
         metricsCollector.shutdown();
         auditLogger.shutdown();

@@ -4,7 +4,20 @@ setlocal enabledelayedexpansion
 REM Java-Sleuth Startup Script for Windows
 
 set SCRIPT_DIR=%~dp0
-set JAR_FILE=%SCRIPT_DIR%target\java-sleuth-1.0.0-jar-with-dependencies.jar
+set JAR_FILE=
+
+for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%target\*-jar-with-dependencies.jar" 2^>nul') do (
+    set JAR_FILE=%SCRIPT_DIR%target\%%f
+    goto :jar_found
+)
+
+:jar_found
+
+if "%JAR_FILE%"=="" (
+    echo Java-Sleuth JAR file not found under: %SCRIPT_DIR%target\
+    echo Please build the project first with: mvn clean package
+    exit /b 1
+)
 
 if not exist "%JAR_FILE%" (
     echo Java-Sleuth JAR file not found: %JAR_FILE%

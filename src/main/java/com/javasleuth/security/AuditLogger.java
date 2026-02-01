@@ -3,6 +3,7 @@ package com.javasleuth.security;
 import com.javasleuth.config.ProductionConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.javasleuth.util.SleuthLogger;
 
 import java.io.*;
 import java.time.Instant;
@@ -15,8 +16,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class AuditLogger {
-    private static final String AUDIT_LOG_FILE = "sleuth-audit.log";
-    private static final String SECURITY_LOG_FILE = "sleuth-security.log";
     private static final DateTimeFormatter TIMESTAMP_FORMATTER =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
 
@@ -52,14 +51,32 @@ public class AuditLogger {
     }
 
     private void initializeWriters() {
-        try {
-            if (config.isAuditLogEnabled()) {
-                auditWriter = new PrintWriter(new FileWriter(AUDIT_LOG_FILE, true));
-            }
-            securityWriter = new PrintWriter(new FileWriter(SECURITY_LOG_FILE, true));
-        } catch (IOException e) {
-            System.err.println("Failed to initialize audit log writers: " + e.getMessage());
+        if (!config.isAuditLogEnabled()) {
+            return;
         }
+        try {
+            String auditPath = config.getAuditLogFilePath();
+            String securityPath = config.getSecurityLogFilePath();
+            auditWriter = openWriter(auditPath);
+            securityWriter = openWriter(securityPath);
+        } catch (IOException e) {
+            SleuthLogger.warn("Failed to initialize audit log writers: " + e.getMessage());
+        } catch (Exception e) {
+            SleuthLogger.warn("Failed to initialize audit log writers: " + e.getMessage());
+        }
+    }
+
+    private PrintWriter openWriter(String path) throws IOException {
+        if (path == null || path.trim().isEmpty()) {
+            return null;
+        }
+        File file = new File(path.trim());
+        File parent = file.getParentFile();
+        if (parent != null && !parent.exists()) {
+            // Best-effort; ignore mkdir failures (permission/readonly)
+            parent.mkdirs();
+        }
+        return new PrintWriter(new FileWriter(file, true));
     }
 
     private void start() {
@@ -80,7 +97,7 @@ public class AuditLogger {
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
-                System.err.println("Error processing audit event: " + e.getMessage());
+                SleuthLogger.warn("Error processing audit event: " + e.getMessage());
             }
         }
     }
@@ -90,24 +107,34 @@ public class AuditLogger {
         String logEntry = String.format("[%s] [%s] [%s] %s - %s",
             timestamp, event.getLevel(), event.getCategory(), event.getAction(), event.getDetails());
 
-        // Write to console for immediate visibility
-        if ("SECURITY".equals(event.getCategory()) || "ERROR".equals(event.getLevel())) {
-            System.err.println("AUDIT: " + logEntry);
-        } else {
-            System.out.println("AUDIT: " + logEntry);
+        // Optional: mirror audit events to console (disabled by default to avoid polluting target JVM stdout/stderr)
+        if (config.isAuditConsoleEnabled()) {
+            if ("SECURITY".equals(event.getCategory()) || "ERROR".equals(event.getLevel())) {
+                System.err.println("AUDIT: " + logEntry);
+            } else {
+                System.out.println("AUDIT: " + logEntry);
+            }
         }
 
-        // Write to appropriate log file
-        if ("SECURITY".equals(event.getCategory()) && securityWriter != null) {
-            securityWriter.println(logEntry);
-            securityWriter.flush();
-        } else if (auditWriter != null && config.isAuditLogEnabled()) {
-            auditWriter.println(logEntry);
-            auditWriter.flush();
+        // Write to appropriate log file(s)
+        if (config.isAuditLogEnabled()) {
+            if ("SECURITY".equals(event.getCategory()) && securityWriter != null) {
+                securityWriter.println(logEntry);
+                securityWriter.flush();
+            } else if (auditWriter != null) {
+                auditWriter.println(logEntry);
+                auditWriter.flush();
+            }
         }
 
         // Also write as JSON for structured logging
         try {
+            if (!config.isAuditLogEnabled()) {
+                return;
+            }
+            if (auditWriter == null && securityWriter == null) {
+                return;
+            }
             ObjectNode jsonEvent = objectMapper.createObjectNode();
             jsonEvent.put("id", eventCounter.incrementAndGet());
             jsonEvent.put("timestamp", timestamp);
@@ -125,11 +152,13 @@ public class AuditLogger {
             String jsonLog = objectMapper.writeValueAsString(jsonEvent);
             if ("SECURITY".equals(event.getCategory()) && securityWriter != null) {
                 securityWriter.println("JSON: " + jsonLog);
-            } else if (auditWriter != null && config.isAuditLogEnabled()) {
+                securityWriter.flush();
+            } else if (auditWriter != null) {
                 auditWriter.println("JSON: " + jsonLog);
+                auditWriter.flush();
             }
         } catch (Exception e) {
-            System.err.println("Failed to write JSON audit event: " + e.getMessage());
+            SleuthLogger.warn("Failed to write JSON audit event: " + e.getMessage());
         }
     }
 
@@ -340,11 +369,9 @@ public class AuditLogger {
 
     private void queueEvent(AuditEvent event) {
         try {
-            if (!auditQueue.offer(event)) {
-                System.err.println("Audit queue is full, dropping event: " + event.getAction());
-            }
-        } catch (Exception e) {
-            System.err.println("Failed to queue audit event: " + e.getMessage());
+            auditQueue.offer(event);
+        } catch (Exception ignore) {
+            // ignore
         }
     }
 
@@ -416,7 +443,6 @@ public class AuditLogger {
         running.set(false);
 
         // Process remaining events
-        System.out.println("Processing remaining audit events...");
         while (!auditQueue.isEmpty() && auditThread.isAlive()) {
             try {
                 Thread.sleep(100);
@@ -442,20 +468,19 @@ public class AuditLogger {
             securityWriter.flush();
             securityWriter.close();
         }
-
-        System.out.println("Audit logger shutdown complete. Total events logged: " + eventCounter.get());
     }
 
     public String getAuditStatus() {
         StringBuilder status = new StringBuilder();
         status.append("=== AUDIT LOGGING STATUS ===\n");
-        status.append("Audit Logging: ").append(config.isAuditLogEnabled() ? "ENABLED" : "DISABLED").append("\n");
-        status.append("Security Logging: ENABLED\n");
+        status.append("Audit Logging: ").append(config.isAuditLoggingEnabled() ? "ENABLED" : "DISABLED").append("\n");
+        status.append("File Output: ").append(config.isAuditLogEnabled() ? "ENABLED" : "DISABLED").append("\n");
+        status.append("Console Output: ").append(config.isAuditConsoleEnabled() ? "ENABLED" : "DISABLED").append("\n");
         status.append("Events Processed: ").append(eventCounter.get()).append("\n");
         status.append("Queue Size: ").append(auditQueue.size()).append("/1000\n");
         status.append("Thread Status: ").append(auditThread.isAlive() ? "RUNNING" : "STOPPED").append("\n");
-        status.append("Audit Log File: ").append(AUDIT_LOG_FILE).append("\n");
-        status.append("Security Log File: ").append(SECURITY_LOG_FILE).append("\n");
+        status.append("Audit Log File: ").append(config.getAuditLogFilePath()).append("\n");
+        status.append("Security Log File: ").append(config.getSecurityLogFilePath()).append("\n");
 
         // Queue health
         int queueSize = auditQueue.size();
@@ -476,10 +501,10 @@ public class AuditLogger {
     public String getRecentEvents(int count) {
         StringBuilder events = new StringBuilder();
         events.append("=== RECENT AUDIT EVENTS ===\n");
-        events.append("Note: Showing last ").append(count).append(" events from console output\n");
+        events.append("Note: Java-Sleuth does not keep an in-memory audit history.\n");
         events.append("For complete audit trail, check log files:\n");
-        events.append("- ").append(AUDIT_LOG_FILE).append("\n");
-        events.append("- ").append(SECURITY_LOG_FILE).append("\n\n");
+        events.append("- ").append(config.getAuditLogFilePath()).append("\n");
+        events.append("- ").append(config.getSecurityLogFilePath()).append("\n\n");
         events.append("Total events logged: ").append(eventCounter.get()).append("\n");
         return events.toString();
     }
@@ -489,7 +514,9 @@ public class AuditLogger {
      */
     public void enableEmergencyAuditMode() {
         logSystemEvent("EMERGENCY_AUDIT_MODE", "Emergency audit mode enabled - all events will be logged");
-        System.out.println("🚨 EMERGENCY AUDIT MODE ENABLED - All activities are being logged");
+        if (config.isAuditConsoleEnabled()) {
+            System.out.println("🚨 EMERGENCY AUDIT MODE ENABLED - All activities are being logged");
+        }
     }
 
     // Inner class for audit events

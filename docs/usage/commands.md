@@ -1,6 +1,6 @@
 # Java-Sleuth Command Reference
 
-Java-Sleuth provides 20 comprehensive diagnostic and monitoring commands for Java applications.
+Java-Sleuth 提供多种诊断与监控命令，且会随版本演进。完整且权威的命令列表请以运行时 `help` 输出为准；本文档侧重常用命令与关键选项。
 
 ## Core System Commands
 
@@ -16,7 +16,8 @@ Exits the Java-Sleuth session.
 
 ## 认证与配置命令
 
-> 说明：从 2026-01-29 起，默认配置关闭匿名 viewer（`security.anonymous.viewer=false`）。因此新连接建立后，除 `auth` 外的命令可能会提示需要认证。
+> 说明：默认配置关闭匿名 viewer（`security.anonymous.viewer=false`），同时默认关闭口令认证（`security.auth.password.enabled=false`）。
+> 推荐使用 Launcher 的 HMAC 自举（`security.bootstrap.hmac.on.attach=true`）获得安全且可用的默认会话；或显式开启口令认证并配置密码。
 
 ### `auth`
 对当前连接进行认证，并将会话角色升级为对应用户角色。
@@ -24,7 +25,9 @@ Exits the Java-Sleuth session.
 - **Description**: Authenticate current session and upgrade role
 - **Notes**:
   - 认证成功后不会回显 sessionId（避免泄露 bearer token）
-  - 默认账号口令为演示用途，具体见 `AuthenticationManager`（建议仅在受控环境使用）
+  - 口令认证默认关闭：需设置 `security.auth.password.enabled=true`，并通过配置项或环境变量设置密码：
+    - 配置项：`security.auth.admin.password` / `security.auth.operator.password` / `security.auth.viewer.password`
+    - 环境变量：`SLEUTH_AUTH_ADMIN_PASSWORD` / `SLEUTH_AUTH_OPERATOR_PASSWORD` / `SLEUTH_AUTH_VIEWER_PASSWORD`
 
 ### `config`
 管理运行时配置（优先级高于默认配置与外部文件），并对敏感值进行脱敏输出。
@@ -161,19 +164,34 @@ Monitor method calls in real-time.
 
 ### `trace`
 Trace method call paths and timing.
-- **Usage**: `trace <class-pattern> <method-pattern>`
+- **Usage**: `trace <class-pattern> <method-pattern> [options]`
 - **Description**: Method call tracing with timing analysis
 - **Features**:
   - Call stack visualization
   - Performance bottleneck identification
   - Nested call tracking
+- **Common options**:
+  - `-d, --depth <num>`: 最大展示深度（默认 10）
+  - `-n, --count <num>`: 最大捕获调用次数（默认 20）
+  - `-t, --timeout <sec>`: 超时时间（默认 30s）
+  - `--sample <rate>`: 覆盖采样率（0.0..1.0），默认由 `monitoring.trace.sample.rate` 控制
+
+### `tt` (Time Tunnel - lite)
+记录方法调用现场，用于后续查看与生成 replay 模板（lite：不执行回放）。
+- **Usage**: `tt record <class-pattern> <method-pattern> [options]`
+- **Common subcommands**:
+  - `tt list [n]`
+  - `tt detail <recordId>`
+  - `tt replay <recordId>`（仅生成模板，不执行）
 
 ## Hot Reload Commands
 
 ### `mc` (Memory Compiler)
 Compile Java source code in memory.
-- **Usage**: `mc <source-code>`
+- **Usage**: `mc <source-file-path> [options]`
 - **Description**: Runtime Java compilation
+- **Notes**:
+  - 第一个参数是 `.java` 源文件路径（会做基础校验与过滤）
 - **Features**:
   - In-memory compilation
   - Dynamic class generation
@@ -277,12 +295,12 @@ jad com.example.UserService
 
 ## Command Categories Summary
 
-1. **Monitoring** (5): `dashboard`, `jvm`, `thread`, `memory`, `mbean`
-2. **System Info** (3): `sysprop`, `sysenv`, `vmoption`
-3. **Class Analysis** (3): `sc`, `sm`, `jad`
-4. **Instrumentation** (2): `watch`, `trace`
-5. **Hot Reload** (3): `mc`, `redefine`, `retransform`
-6. **Advanced** (2): `classloader`, `heapdump`
-7. **Core** (2): `help`, `quit`
-
-**Total: 20 Commands** - All production-ready with performance optimization and security hardening.
+- Monitoring/Status: `dashboard`, `health`, `metrics`, `status`, `jvm`, `thread`, `memory`, `mbean`
+- System Info: `sysprop`, `sysenv`, `vmoption`
+- Class Analysis: `sc`, `sm`, `jad`, `classloader`
+- Instrumentation: `watch`, `trace`, `monitor`, `stack`, `tt`, `profiler`
+- Hot Reload: `mc`, `redefine`, `retransform`, `reset`
+- Data/Debug: `dump`, `getstatic`, `heapdump`, `logger`
+- Session/Security: `auth`, `session`, `perm`, `audit`, `config`
+- Job Control: `jobs`
+- Core: `help`, `quit`, `stop`

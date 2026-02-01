@@ -2,6 +2,7 @@ package com.javasleuth.agent;
 
 import com.javasleuth.command.CommandProcessor;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.util.SleuthLogger;
 import java.lang.instrument.Instrumentation;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -38,8 +39,7 @@ public class SleuthAgent {
             commandThread.start();
 
         } catch (Exception e) {
-            System.err.println("Failed to start Java-Sleuth agent: " + e.getMessage());
-            e.printStackTrace();
+            SleuthLogger.error("Failed to start Java-Sleuth agent: " + e.getMessage(), e);
         }
     }
 

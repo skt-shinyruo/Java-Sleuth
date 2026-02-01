@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** InputValidator/AuditLogger/Auth/AuthZ/SecurityValidator
 - **Status:** ✅Stable
-- **Last Updated:** 2026-01-29
+- **Last Updated:** 2026-02-01
 
 ## Specifications
 
@@ -25,8 +25,10 @@
 
 #### Scenario: 匿名会话与登录升级
 前置：新连接建立  
-- 默认关闭匿名 viewer（`security.anonymous.viewer=false`），连接后需要先执行 `auth`
-- auth 命令升级角色
+- 默认关闭匿名 viewer（`security.anonymous.viewer=false`）
+- 口令认证默认关闭（`security.auth.password.enabled=false`），且不再提供任何硬编码默认口令；如需启用需显式配置密码或使用环境变量
+- 当 `security.mode=hmac` 时，连接会按 `security.hmac.session.role` 自举会话角色（免口令），并依赖请求签名作为“持有 secret”证明
+- `auth` 命令用于在开启口令认证后升级会话角色
 - 高危命令强制授权
 
 ### Requirement: 安全默认策略收敛（非回环绑定保护）
@@ -47,6 +49,16 @@
 - `auth` 命令的 password 以 `***` 记录  
 - `config set` / `sysprop set` 对敏感 key 的 value 以 `***` 记录  
 - sessionId 在结构化日志中也会被脱敏（避免 token 外泄）
+
+### Requirement: 审计输出可控（文件路径/控制台）
+**Module:** security
+避免默认写入工作目录/刷屏 stdout/stderr，并允许在生产环境落盘到受控目录。
+
+#### Scenario: 审计落盘与控制台输出可配置
+前置：需要审计日志且希望可控输出  
+- `logging.audit.console.enabled=false`（默认）避免污染目标 JVM stdout/stderr
+- `logging.audit.file.path` / `logging.security.file.path` 可指定绝对路径
+- 若路径留空：默认落到 `java.io.tmpdir` 并带 pid 后缀，降低权限/覆盖风险
 
 ### Requirement: 可选请求签名与防重放（security.mode=hmac）
 **Module:** security
@@ -76,3 +88,4 @@ N/A
 - 202601281207_sleuth_plugin_stream (history/2026-01/202601281207_sleuth_plugin_stream/) - 会话认证与授权接入
 - 202601281301_sleuth_handshake_secure_frames (history/2026-01/202601281301_sleuth_handshake_secure_frames/) - 可选 HMAC+nonce 防重放与协议安全默认
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 默认匿名策略收敛、非回环绑定保护、审计脱敏加强
+- 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - 移除硬编码口令、HMAC 会话自举与审计输出可控

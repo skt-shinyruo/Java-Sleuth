@@ -9,6 +9,7 @@ import com.javasleuth.command.protocol.Frame;
 import com.javasleuth.command.protocol.FrameCodec;
 import com.javasleuth.command.protocol.Utf8LineCodec;
 import com.javasleuth.security.RequestSecurityManager;
+import com.javasleuth.util.JarLocator;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
 import org.jline.terminal.Terminal;
@@ -24,7 +25,6 @@ import java.util.List;
 import java.util.Map;
 
 public class SleuthLauncher {
-    private static final String AGENT_JAR_NAME = "java-sleuth-1.0.0-jar-with-dependencies.jar";
     private static final SecureRandom NONCE_RANDOM = new SecureRandom();
 
     public static void main(String[] args) {
@@ -33,7 +33,9 @@ public class SleuthLauncher {
             launcher.start();
         } catch (Exception e) {
             System.err.println("Failed to start Java-Sleuth: " + e.getMessage());
-            e.printStackTrace();
+            if (Boolean.getBoolean("sleuth.launcher.debug")) {
+                e.printStackTrace();
+            }
             System.exit(1);
         }
     }
@@ -43,9 +45,19 @@ public class SleuthLauncher {
         System.out.println("Inspired by Arthas");
         System.out.println();
 
-        if (!isAgentJarAvailable()) {
-            System.err.println("Agent JAR not found: " + AGENT_JAR_NAME);
+        File agentJar = JarLocator.locateAgentJar(SleuthLauncher.class);
+        if (agentJar == null) {
+            String override = System.getProperty(JarLocator.AGENT_JAR_OVERRIDE_PROPERTY);
+            if (override == null || override.trim().isEmpty()) {
+                override = System.getenv(JarLocator.AGENT_JAR_OVERRIDE_ENV);
+            }
+            if (override != null && !override.trim().isEmpty()) {
+                System.err.println("Agent JAR not found at override path: " + override.trim());
+            } else {
+                System.err.println("Agent JAR not found on classpath/CodeSource/target/.");
+            }
             System.err.println("Please build the project first with: mvn clean package");
+            System.err.println("Or set -D" + JarLocator.AGENT_JAR_OVERRIDE_PROPERTY + "=<path> (or env " + JarLocator.AGENT_JAR_OVERRIDE_ENV + ")");
             return;
         }
 
@@ -55,13 +67,8 @@ public class SleuthLauncher {
             return;
         }
 
-        attachToJvm(selectedVm);
+        attachToJvm(selectedVm, agentJar);
         startInteractiveSession(selectedVm);
-    }
-
-    private boolean isAgentJarAvailable() {
-        File agentJar = new File("target/" + AGENT_JAR_NAME);
-        return agentJar.exists();
     }
 
     private VirtualMachineDescriptor selectTargetJvm() throws IOException {
@@ -127,20 +134,41 @@ public class SleuthLauncher {
         }
     }
 
-    private void attachToJvm(VirtualMachineDescriptor vmDesc) throws Exception {
+    private void attachToJvm(VirtualMachineDescriptor vmDesc, File agentJar) throws Exception {
         System.out.println("Attaching to JVM: " + vmDesc.displayName() + " (PID: " + vmDesc.id() + ")");
 
         VirtualMachine vm = null;
         try {
             vm = VirtualMachine.attach(vmDesc);
 
-            String agentPath = new File("target/" + AGENT_JAR_NAME).getAbsolutePath();
+            String agentPath = agentJar.getAbsolutePath();
             ProductionConfig config = ProductionConfig.getInstance();
             String configFile = System.getProperty("sleuth.config.file");
             if (configFile == null || configFile.trim().isEmpty()) {
                 File local = new File("sleuth.properties");
                 if (local.exists()) {
                     configFile = local.getAbsolutePath();
+                }
+            }
+
+            String securityMode = config.getSecurityMode();
+            String hmacSecret = config.getSecurityHmacSecret();
+            String hmacSessionRole = config.getHmacSessionRole();
+            if (config.isHmacBootstrapOnAttachEnabled()) {
+                securityMode = "hmac";
+                if (hmacSecret == null || hmacSecret.trim().isEmpty()) {
+                    int bytes = config.getHmacBootstrapSecretBytes();
+                    hmacSecret = generateHmacSecret(bytes);
+                    config.setRuntimeConfig("security.hmac.secret", hmacSecret);
+                }
+                config.setRuntimeConfig("security.mode", "hmac");
+                config.setRuntimeConfig("security.hmac.session.role", hmacSessionRole);
+            }
+            if ("hmac".equalsIgnoreCase(securityMode)) {
+                if (hmacSecret == null || hmacSecret.trim().isEmpty()) {
+                    System.err.println("SECURITY ERROR: security.mode=hmac but empty security.hmac.secret");
+                    System.err.println("Fix: set security.hmac.secret in configuration, or enable security.bootstrap.hmac.on.attach=true");
+                    return;
                 }
             }
 
@@ -151,6 +179,11 @@ public class SleuthLauncher {
             agentArgs.append("server.port=").append(config.getServerPort()).append(";");
             agentArgs.append("protocol.mode=").append(config.getProtocolMode()).append(";");
             agentArgs.append("protocol.streaming.enabled=").append(config.isStreamingEnabled()).append(";");
+            agentArgs.append("security.mode=").append(securityMode).append(";");
+            if ("hmac".equalsIgnoreCase(securityMode)) {
+                agentArgs.append("security.hmac.secret=").append(hmacSecret).append(";");
+                agentArgs.append("security.hmac.session.role=").append(hmacSessionRole).append(";");
+            }
 
             vm.loadAgent(agentPath, agentArgs.toString());
 
@@ -403,5 +436,12 @@ public class SleuthLauncher {
         byte[] bytes = new byte[12];
         NONCE_RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private static String generateHmacSecret(int bytes) {
+        int size = bytes <= 0 ? 32 : Math.min(bytes, 128);
+        byte[] buf = new byte[size];
+        NONCE_RANDOM.nextBytes(buf);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
     }
 }

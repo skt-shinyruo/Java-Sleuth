@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 默认配置、外部配置、系统属性覆盖
 - **Status:** ✅Stable
-- **Last Updated:** 2026-01-29
+- **Last Updated:** 2026-02-01
 
 ## Specifications
 
@@ -30,9 +30,19 @@
 - `protocol.text.max.line.bytes`：文本协议单行最大字节数上限
 - `security.mode`：off|hmac（默认 off）
 - `security.anonymous.viewer`：默认 false（要求先 auth）
+- `security.bootstrap.hmac.on.attach` / `security.bootstrap.hmac.secret.bytes`：Launcher attach 时 HMAC 自举开关与 secret 长度
+- `security.hmac.session.role`：HMAC 模式下新连接的自举会话角色（viewer|operator|admin）
+- `security.auth.password.enabled`：口令认证开关（默认 false）
+- `security.auth.{admin|operator|viewer}.password`：口令认证密码（也可用环境变量 `SLEUTH_AUTH_*_PASSWORD`）
 - `security.hmac.*`：HMAC 签名与防重放参数
 - `performance.command.timeout`：命令执行超时
 - `performance.maintenance.force_gc`：维护线程是否强制 `System.gc()`（默认 false）
+- `plugins.enabled`：插件目录加载开关（默认 false）
+- `plugins.allowlist.sha256`：插件 allowlist（jarName:sha256hex）
+- `logging.audit.console.enabled`：审计事件是否镜像到控制台（默认 false）
+- `logging.audit.file.path` / `logging.security.file.path`：审计/安全日志落盘路径（留空默认落到 tmp 并带 pid 后缀）
+- `monitoring.trace.sample.rate`：trace 采样率（默认更保守）
+- `monitoring.monitor.sample.rate`：monitor 采样率（默认 1.0，避免与 trace 误联动）
 
 ### Requirement: 运行时覆盖（Runtime Overrides）
 **Module:** config
@@ -57,3 +67,4 @@ N/A
 - 202601281100_init_kb (planned)
 - 202601281301_sleuth_handshake_secure_frames (history/2026-01/202601281301_sleuth_handshake_secure_frames/) - 新增 bind/handshake/security.mode 配置项
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 安全默认/资源治理/运行时覆写扩展与文档一致性修复
+- 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - 启动稳定化与安全自举相关配置项补齐

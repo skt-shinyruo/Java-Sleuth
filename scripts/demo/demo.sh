@@ -2,12 +2,19 @@
 
 # Java-Sleuth Demo Script
 
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_DIR"
+
 echo "=== Java-Sleuth Demo ==="
 echo "This script demonstrates Java-Sleuth Phase 1 functionality"
 echo
 
 # Check if JAR exists
-if [ ! -f "target/java-sleuth-1.0.0-jar-with-dependencies.jar" ]; then
+JAR_FILE="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+if [ -z "${JAR_FILE}" ] || [ ! -f "${JAR_FILE}" ]; then
     echo "Please build the project first with: mvn clean package"
     exit 1
 fi
