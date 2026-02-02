@@ -929,6 +929,12 @@ performance.cache.ttl=10000
 performance.thread.pool.core=8
 performance.thread.pool.max=32
 performance.command.timeout=120000
+performance.command.timeout.max=300000
+
+# Jobs Configuration
+jobs.max=200
+jobs.ttl.ms=3600000
+jobs.output.max.bytes=262144
 
 # Security Configuration
 security.input.validation=true
@@ -947,10 +953,12 @@ logging.level=INFO
 logging.audit.enabled=true
 logging.performance.enabled=false
 
-# Production Configuration
-production.mode=true
-production.detailed.errors=false
-production.dev.features=false
+# Protocol Configuration
+protocol.mode=legacy
+protocol.streaming.enabled=true
+protocol.frame.max.payload=4096
+protocol.handshake.enabled=true
+protocol.text.max.line.bytes=8192
 ```
 
 ### C. Security Checklist

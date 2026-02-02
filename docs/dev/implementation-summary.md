@@ -8,7 +8,7 @@ Successfully implemented **Phase 4** and **Phase 5** enhancements for Java-Sleut
 ### Phase 4 - High Priority Commands
 
 #### 1. Enhanced JVM Command (`jvm`)
-- **Location**: `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/JvmCommand.java`
+- **Location**: `src/main/java/com/javasleuth/command/impl/JvmCommand.java`
 - **Features**:
   - Comprehensive VM information (name, version, vendor, specifications)
   - Operating system details with CPU and memory metrics
@@ -20,7 +20,7 @@ Successfully implemented **Phase 4** and **Phase 5** enhancements for Java-Sleut
 - **Usage**: `jvm [--help]`
 
 #### 2. System Property Command (`sysprop`)
-- **Location**: `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/SysPropCommand.java`
+- **Location**: `src/main/java/com/javasleuth/command/impl/SysPropCommand.java`
 - **Features**:
   - View all system properties
   - Get specific property values
@@ -30,7 +30,7 @@ Successfully implemented **Phase 4** and **Phase 5** enhancements for Java-Sleut
 - **Usage**: `sysprop [key] [value]` or `sysprop <pattern>`
 
 #### 3. System Environment Command (`sysenv`)
-- **Location**: `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/SysEnvCommand.java`
+- **Location**: `src/main/java/com/javasleuth/command/impl/SysEnvCommand.java`
 - **Features**:
   - List all environment variables
   - Search with wildcard patterns
@@ -40,7 +40,7 @@ Successfully implemented **Phase 4** and **Phase 5** enhancements for Java-Sleut
 - **Usage**: `sysenv [key]` or `sysenv <pattern>`
 
 #### 4. VM Options Command (`vmoption`)
-- **Location**: `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/VmOptionCommand.java`
+- **Location**: `src/main/java/com/javasleuth/command/impl/VmOptionCommand.java`
 - **Features**:
   - Categorized display of JVM options (Memory, GC, Performance, Debug, etc.)
   - Pattern-based search through VM arguments
@@ -49,7 +49,7 @@ Successfully implemented **Phase 4** and **Phase 5** enhancements for Java-Sleut
 - **Usage**: `vmoption [pattern]`
 
 #### 5. Enhanced Memory Command (`memory`)
-- **Location**: `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/MemoryCommand.java`
+- **Location**: `src/main/java/com/javasleuth/command/impl/MemoryCommand.java`
 - **Features**:
   - Comprehensive memory overview
   - Detailed memory pool analysis
@@ -60,7 +60,7 @@ Successfully implemented **Phase 4** and **Phase 5** enhancements for Java-Sleut
 - **Usage**: `memory [overview|pools|gc|heap|nonheap|direct]`
 
 #### 6. Heap Dump Command (`heapdump`)
-- **Location**: `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/HeapDumpCommand.java`
+- **Location**: `src/main/java/com/javasleuth/command/impl/HeapDumpCommand.java`
 - **Features**:
   - Create heap dumps for memory analysis
   - Support for live-only or all-objects dumps
@@ -72,7 +72,7 @@ Successfully implemented **Phase 4** and **Phase 5** enhancements for Java-Sleut
 ### Phase 5 - Critical Production Commands
 
 #### 7. Class Decompilation Command (`jad`)
-- **Location**: `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/JadCommand.java`
+- **Location**: `src/main/java/com/javasleuth/command/impl/JadCommand.java`
 - **Features**:
   - Uses CFR decompiler for modern Java support
   - Decompiles loaded classes to readable source
@@ -83,7 +83,7 @@ Successfully implemented **Phase 4** and **Phase 5** enhancements for Java-Sleut
 - **Usage**: `jad <classname> [--lines] [--verbose] [--method=<pattern>]`
 
 #### 8. Enhanced ClassLoader Analysis Command (`classloader`)
-- **Location**: `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/ClassLoaderCommand.java`
+- **Location**: `src/main/java/com/javasleuth/command/impl/ClassLoaderCommand.java`
 - **Features**:
   - Hierarchical ClassLoader tree visualization
   - Class distribution statistics
@@ -94,7 +94,7 @@ Successfully implemented **Phase 4** and **Phase 5** enhancements for Java-Sleut
 - **Usage**: `classloader [list|tree|stats|classes|urls|find] [options]`
 
 #### 9. MBean Inspector (`mbean`)
-- **Location**: `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/MBeanCommand.java`
+- **Location**: `src/main/java/com/javasleuth/command/impl/MBeanCommand.java`
 - **Features**:
   - Complete JMX MBean integration
   - List and search MBeans by pattern
@@ -108,11 +108,11 @@ Successfully implemented **Phase 4** and **Phase 5** enhancements for Java-Sleut
 
 ### Dependencies Added
 - **CFR Decompiler**: `org.benf:cfr:0.152` - High-quality Java decompiler
-- Added to `/home/feng/code/java/Java-Sleuth/pom.xml`
+- Added to `pom.xml`
 
 ### Architecture Integration
 - All commands follow existing `Command` interface pattern
-- Registered in `CommandProcessor.initializeCommands()`
+- Registered in `com.javasleuth.command.BuiltinCommandProvider` and loaded by `com.javasleuth.command.CommandRegistry`
 - Consistent error handling and help system
 - Thread-safe implementations
 - Compatible with existing bytecode enhancement framework
@@ -192,18 +192,18 @@ mbean invoke java.lang:type=Memory gc
 ## Files Modified/Created
 
 ### New Command Files
-- `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/JvmCommand.java`
-- `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/SysPropCommand.java`
-- `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/SysEnvCommand.java`
-- `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/VmOptionCommand.java`
-- `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/MemoryCommand.java`
-- `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/HeapDumpCommand.java`
-- `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/JadCommand.java`
-- `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/ClassLoaderCommand.java`
-- `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/impl/MBeanCommand.java`
+- `src/main/java/com/javasleuth/command/impl/JvmCommand.java`
+- `src/main/java/com/javasleuth/command/impl/SysPropCommand.java`
+- `src/main/java/com/javasleuth/command/impl/SysEnvCommand.java`
+- `src/main/java/com/javasleuth/command/impl/VmOptionCommand.java`
+- `src/main/java/com/javasleuth/command/impl/MemoryCommand.java`
+- `src/main/java/com/javasleuth/command/impl/HeapDumpCommand.java`
+- `src/main/java/com/javasleuth/command/impl/JadCommand.java`
+- `src/main/java/com/javasleuth/command/impl/ClassLoaderCommand.java`
+- `src/main/java/com/javasleuth/command/impl/MBeanCommand.java`
 
 ### Modified Files
-- `/home/feng/code/java/Java-Sleuth/pom.xml` - Added CFR dependency
-- `/home/feng/code/java/Java-Sleuth/src/main/java/com/javasleuth/command/CommandProcessor.java` - Registered new commands
+- `pom.xml` - Added CFR dependency
+- `src/main/java/com/javasleuth/command/BuiltinCommandProvider.java` - Registered new commands
 
 The implementation successfully enhances Java-Sleuth with production-ready diagnostic capabilities that provide comprehensive insight into JVM internals, memory management, class loading, and runtime behavior.

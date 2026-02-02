@@ -16,6 +16,7 @@ This file records index of all completed changes for traceability and query.
 | 202601291520 | arthas_stack_tt_replay_simplified | Feature | ✅Completed | history/2026-01/202601291520_arthas_stack_tt_replay_simplified/ |
 | 202602011222 | sleuth_hardening_bootstrap | Refactor | ✅Completed | history/2026-02/202602011222_sleuth_hardening_bootstrap/ |
 | 202602011706 | core_fixes_java8_jad_session_regex_trace | Refactor | ✅Completed | history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/ |
+| 202602021233 | quality_audit_more_issues | Refactor | ✅Completed | history/2026-02/202602021233_quality_audit_more_issues/ |
 
 ---
 
@@ -34,3 +35,4 @@ This file records index of all completed changes for traceability and query.
 
 - 202602011222_sleuth_hardening_bootstrap (2026-02/202602011222_sleuth_hardening_bootstrap/) - 启动/安全/插件/Trace 综合加固（Hardening & Bootstrap）
 - 202602011706_core_fixes_java8_jad_session_regex_trace (2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - Java 8 兼容 + jad/session/regex/trace/watch/tt 稳定性与安全加固
+- 202602021233_quality_audit_more_issues (2026-02/202602021233_quality_audit_more_issues/) - 配置/打包/危险命令分级与关键边界测试补齐

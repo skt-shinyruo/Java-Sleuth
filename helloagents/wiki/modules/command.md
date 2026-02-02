@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 命令解析、校验、执行、输出
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-01
+- **Last Updated:** 2026-02-02
 
 ## Specifications
 
@@ -118,3 +118,4 @@ N/A
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 统一传输层/握手升级重构、连接/行长度/超时治理
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - 插件默认关闭 + allowlist + classloader 释放
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - 缓存隔离、session 脱敏与诊断命令稳定性加固
+- 202602021233_quality_audit_more_issues (history/2026-02/202602021233_quality_audit_more_issues/) - 协议上限/危险命令元信息与关键边界单测补齐

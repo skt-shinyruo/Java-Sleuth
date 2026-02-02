@@ -24,8 +24,8 @@ import java.util.stream.Collectors;
 /**
  * ProfilerCommand provides basic performance profiling capabilities
  *
- * Note: This is a basic implementation using JMX. For production use, consider integrating
- * with async-profiler or other advanced profiling tools.
+ * 说明：当前实现基于 ThreadMXBean/JMX 的采样统计，不依赖也不内置 async-profiler（native）。
+ * 如需更精确的火焰图或更低开销的采样，请在生产环境使用外部专业工具（例如 async-profiler）。
  *
  * Usage:
  * profiler start [type] [duration] - Start profiling

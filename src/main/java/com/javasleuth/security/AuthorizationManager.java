@@ -94,7 +94,7 @@ public class AuthorizationManager {
         addPermission("trace", UserRole.OPERATOR, true, 10, false);
         addPermission("monitor", UserRole.OPERATOR, true, 10, false);
         addPermission("profiler", UserRole.OPERATOR, true, 5, false);
-        addPermission("stack", UserRole.OPERATOR, false, 10, false);
+        addPermission("stack", UserRole.OPERATOR, true, 10, false);
         addPermission("jad", UserRole.OPERATOR, true, 5, false);
         addPermission("mbean", UserRole.OPERATOR, true, 10, false);
         addPermission("vmoption", UserRole.OPERATOR, true, 5, false);

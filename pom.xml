@@ -134,6 +134,7 @@
                     </descriptorRefs>
                     <archive>
                         <manifestEntries>
+                            <Main-Class>com.javasleuth.launcher.SleuthLauncher</Main-Class>
                             <Agent-Class>com.javasleuth.agent.SleuthAgent</Agent-Class>
                             <Can-Redefine-Classes>true</Can-Redefine-Classes>
                             <Can-Retransform-Classes>true</Can-Retransform-Classes>

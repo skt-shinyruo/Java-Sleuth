@@ -117,6 +117,25 @@ public class CommandProcessorTest {
     }
 
     @Test
+    public void testBinaryFrameCodecRejectsOversizeRequestFrame() throws Exception {
+        int max = 16;
+        byte[] payload = new byte[max + 1];
+        BinaryFrame request = new BinaryFrame(BinaryFrame.Type.REQUEST, (byte) 0, payload);
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        DataOutputStream dos = new DataOutputStream(baos);
+        BinaryFrameCodec.writeFrame(dos, request, max);
+
+        DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()));
+        try {
+            BinaryFrameCodec.readFrame(dis, max);
+            fail("Expected IOException for oversize frame payload");
+        } catch (IOException expected) {
+            assertTrue(String.valueOf(expected.getMessage()).toLowerCase().contains("payload too large"));
+        }
+    }
+
+    @Test
     public void testCommandTimeoutInPipeline() {
         String oldAuthz = System.getProperty("sleuth.security.authorization.enabled");
         String oldValidation = System.getProperty("sleuth.security.input.validation");

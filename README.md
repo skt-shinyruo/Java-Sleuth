@@ -53,6 +53,9 @@ mvn clean package
 
 # Windows
 sleuth.bat
+
+# Or run the fat-jar directly (Launcher entrypoint)
+java -jar target/java-sleuth-*-jar-with-dependencies.jar
 ```
 
 ### 3. Select Target JVM

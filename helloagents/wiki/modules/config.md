@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 默认配置、外部配置、系统属性覆盖
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-01
+- **Last Updated:** 2026-02-02
 
 ## Specifications
 
@@ -28,6 +28,7 @@
 - `protocol.handshake.enabled`：默认 true
 - `protocol.mode`：legacy|framed|binary
 - `protocol.text.max.line.bytes`：文本协议单行最大字节数上限
+- `protocol.frame.max.payload`：分帧/二进制协议单帧 payload 最大字节数
 - `security.mode`：off|hmac（默认 off）
 - `security.anonymous.viewer`：默认 false（要求先 auth）
 - `security.bootstrap.hmac.on.attach` / `security.bootstrap.hmac.secret.bytes`：Launcher attach 时 HMAC 自举开关与 secret 长度
@@ -36,7 +37,9 @@
 - `security.auth.{admin|operator|viewer}.password`：口令认证密码（也可用环境变量 `SLEUTH_AUTH_*_PASSWORD`）
 - `security.hmac.*`：HMAC 签名与防重放参数
 - `performance.command.timeout`：命令执行超时
+- `performance.command.timeout.max`：命令超时的上限护栏（避免被 runtime config 放大到不可控）
 - `performance.maintenance.force_gc`：维护线程是否强制 `System.gc()`（默认 false）
+- `jobs.max` / `jobs.ttl.ms` / `jobs.output.max.bytes`：后台任务（jobs/流式命令）保留数量、TTL 与单任务输出上限
 - `plugins.enabled`：插件目录加载开关（默认 false）
 - `plugins.allowlist.sha256`：插件 allowlist（jarName:sha256hex）
 - `logging.audit.console.enabled`：审计事件是否镜像到控制台（默认 false）
@@ -72,3 +75,4 @@ N/A
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 安全默认/资源治理/运行时覆写扩展与文档一致性修复
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - 启动稳定化与安全自举相关配置项补齐
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - logging.performance.enabled 默认关闭与监控队列策略文档补齐
+- 202602021233_quality_audit_more_issues (history/2026-02/202602021233_quality_audit_more_issues/) - 默认配置/生产模板对齐与协议上限文档补齐

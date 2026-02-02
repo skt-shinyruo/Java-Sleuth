@@ -489,7 +489,8 @@ public class TtCommand implements StreamCommand {
 
             sb.append("\n");
             sb.append("        // Option B: 实例方法（通常需要从业务上下文/容器获取实例）\n");
-            sb.append("        ").append(className).append(" target = /* TODO: obtain instance */ null;\n");
+            sb.append("        // 注意：Java-Sleuth 无法自动定位实例，请自行从业务上下文/容器/单例等方式获取对象后赋值。\n");
+            sb.append("        ").append(className).append(" target = null; // 例如：从 Spring 容器获取或使用单例持有者\n");
             if (!"void".equals(retJava)) {
                 sb.append("        ").append(retJava).append(" resultB = target.").append(methodName).append("(").append(joined).append(");\n");
             } else {

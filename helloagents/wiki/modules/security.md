@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** InputValidator/AuditLogger/Auth/AuthZ/SecurityValidator
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-01
+- **Last Updated:** 2026-02-02
 
 ## Specifications
 
@@ -89,3 +89,4 @@ N/A
 - 202601281301_sleuth_handshake_secure_frames (history/2026-01/202601281301_sleuth_handshake_secure_frames/) - 可选 HMAC+nonce 防重放与协议安全默认
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 默认匿名策略收敛、非回环绑定保护、审计脱敏加强
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - 移除硬编码口令、HMAC 会话自举与审计输出可控
+- 202602021233_quality_audit_more_issues (history/2026-02/202602021233_quality_audit_more_issues/) - 危险命令标记/限流与关键安全边界单测补齐

@@ -39,6 +39,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - trace 调用级采样覆盖：`trace --sample <rate>`（支持按 trace 会话覆盖采样率）
 - 审计输出可控：`logging.audit.console.enabled`、`logging.audit.file.path`、`logging.security.file.path`（默认落盘到 tmp 并带 pid 后缀）
 - monitor 独立采样 key：`monitoring.monitor.sample.rate`
+- 关键边界单测补齐：非回环 bind + `security.mode=off` 拒绝启动、`security.mode=hmac` 但 secret 为空拒绝启动、协议上限异常路径
 
 ### Changed
 - CommandProcessor 改为注册表 + 统一执行管线
@@ -58,6 +59,8 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 默认 trace 采样率调整为更保守值（`monitoring.trace.sample.rate=0.1`），降低高 QPS 场景误用风险
 - Launcher/脚本启动方式去版本/目录硬编码：支持任意 cwd 启动与通配符定位 `*-jar-with-dependencies.jar`
 - 审计日志默认不再刷屏控制台（需显式开启 `logging.audit.console.enabled=true`）
+- fat-jar Manifest 补齐 `Main-Class`，支持 `java -jar` 直接启动 Launcher（不破坏 Agent 能力）
+- 默认配置与实现对齐：移除无效 `production.*`，补齐 `jobs.*`/`protocol.frame.max.payload` 等关键默认项并同步文档
 
 ### Fixed
 - watch/trace 队列增加背压与采样
@@ -82,6 +85,8 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - watch/tt 资源风险：采集阶段引入“值快照”（限深/限长），避免把参数/返回值/异常对象强引用驻留到队列/环形缓冲导致内存压力
 - trace 语义：同一类内“可被 trace 的方法调用”不再产生重复 SUB_METHOD_CALL；采样以根调用为单位并向子调用继承，降低碎片化树
 - stdout/stderr 污染：`logging.performance.enabled` 默认关闭（可配置开启）
+- `tt replay` 模板输出移除 TODO 占位，改为明确限制说明与更可复制的 Java 模板
+- `profiler` 文案澄清当前实现不依赖 async-profiler（避免误导）
 
 ## [1.0.0] - 2026-01-28
 

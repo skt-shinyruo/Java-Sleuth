@@ -92,7 +92,7 @@ public class BuiltinCommandProvider implements CommandProvider {
         meta.put("help", CommandMeta.viewer(true, false));
         meta.put("sc", CommandMeta.viewer(true, false));
         meta.put("sm", CommandMeta.viewer(true, false));
-        meta.put("jad", CommandMeta.viewer(true, false));
+        meta.put("jad", CommandMeta.operator(true, false));
         meta.put("classloader", CommandMeta.viewer(true, false));
 
         meta.put("dashboard", CommandMeta.viewer(false, false));
@@ -105,7 +105,7 @@ public class BuiltinCommandProvider implements CommandProvider {
         meta.put("sysprop", CommandMeta.viewer(true, false));
         meta.put("sysenv", CommandMeta.viewer(true, false));
         meta.put("vmoption", CommandMeta.operator(true, false));
-        meta.put("mbean", CommandMeta.viewer(false, false));
+        meta.put("mbean", CommandMeta.operator(false, false));
         meta.put("session", CommandMeta.viewer(false, false));
         meta.put("perm", CommandMeta.viewer(true, false));
         meta.put("version", CommandMeta.viewer(true, false));
@@ -121,15 +121,15 @@ public class BuiltinCommandProvider implements CommandProvider {
         meta.put("profiler", CommandMeta.operator(false, false));
         meta.put("stack", CommandMeta.operator(false, false));
 
-        meta.put("redefine", CommandMeta.admin(false, false));
-        meta.put("retransform", CommandMeta.admin(false, false));
-        meta.put("mc", CommandMeta.admin(false, false));
-        meta.put("heapdump", CommandMeta.admin(false, false));
-        meta.put("reset", CommandMeta.admin(false, false).withDangerous(true));
-        meta.put("stop", CommandMeta.admin(false, false).withDangerous(true));
+        meta.put("redefine", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(3));
+        meta.put("retransform", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(3));
+        meta.put("mc", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(3));
+        meta.put("heapdump", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(2));
+        meta.put("reset", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(1));
+        meta.put("stop", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(1));
 
         meta.put("config", CommandMeta.admin(false, false));
-        meta.put("audit", CommandMeta.admin(false, false));
+        meta.put("audit", CommandMeta.admin(false, false).withAudit(false));
         meta.put("quit", CommandMeta.viewer(false, false));
         meta.put("auth", CommandMeta.viewer(false, false));
 

@@ -103,13 +103,7 @@ public class CommandProcessor {
 
         try {
             int port = config.getServerPort();
-            serverSocket = new ServerSocket();
             String bindAddress = config.getServerBindAddress();
-            serverSocket.bind(new InetSocketAddress(bindAddress, port));
-            serverSocket.setSoTimeout(config.getSocketTimeout());
-            System.out.println("🚀 Java-Sleuth listening on " + bindAddress + ":" + port);
-            metricsCollector.recordServerStartup();
-            auditLogger.logSystemEvent("SERVER_START", "Server started on port " + port);
 
             if (!isLoopbackBind(bindAddress) && "off".equalsIgnoreCase(config.getSecurityMode())) {
                 System.err.println("❌ SECURITY ERROR: Refusing to start with non-loopback bind and security.mode=off");
@@ -117,11 +111,7 @@ public class CommandProcessor {
                 auditLogger.logSystemEvent("SERVER_START_BLOCKED",
                     "Refused to start: security.mode=off with non-loopback bind=" + bindAddress);
                 running.set(false);
-                try {
-                    serverSocket.close();
-                } catch (Exception ignore) {
-                    // ignore
-                }
+                serverSocket = null;
                 return;
             }
 
@@ -132,14 +122,17 @@ public class CommandProcessor {
                     auditLogger.logSystemEvent("SERVER_START_BLOCKED",
                         "Refused to start: security.mode=hmac but security.hmac.secret is empty");
                     running.set(false);
-                    try {
-                        serverSocket.close();
-                    } catch (Exception ignore) {
-                        // ignore
-                    }
+                    serverSocket = null;
                     return;
                 }
             }
+
+            serverSocket = new ServerSocket();
+            serverSocket.bind(new InetSocketAddress(bindAddress, port));
+            serverSocket.setSoTimeout(config.getSocketTimeout());
+            System.out.println("🚀 Java-Sleuth listening on " + bindAddress + ":" + port);
+            metricsCollector.recordServerStartup();
+            auditLogger.logSystemEvent("SERVER_START", "Server started on port " + port);
 
             // Add shutdown hook for graceful termination
             addShutdownHook();
