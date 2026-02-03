@@ -52,6 +52,8 @@
 **Module:** command
 命令缓存必须显式考虑“上下文维度”（client/session），避免把会话/身份信息缓存为“公共结果”。
 
+补充约束：缓存开关以 `CommandMeta.cacheable` + `CommandPipeline` 为唯一入口（SSOT），命令实现不应自行调用 `PerformanceOptimizer.getCachedResult`，避免“全局缓存/会话缓存混用”的语义漂移。
+
 #### Scenario: 缓存 key 含 clientId，避免跨客户端串线
 前置：命令被标记为可缓存  
 - 缓存 key 至少包含 `commandName + args + clientId`
@@ -81,15 +83,20 @@
 - DATA/END/ERR 分帧输出
 - watch/trace/monitor/tt/stack 可流式推送
 
-### Requirement: 危险命令二次确认（防误触）
+### Requirement: 高风险命令二次确认（防误触 + 可审计）
 **Module:** command / security
-危险命令默认启用一次性 token 二次确认，降低误触/脚本误用风险。
+高风险命令默认启用一次性 token 二次确认，降低误触/脚本误用风险。
 
 #### Scenario: redefine/heapdump 等需确认 token
 前置：命令 meta 标记 dangerous  
 - 第一次执行：返回 challenge token（不执行）
 - 第二次执行：追加 `--confirm <token>` 且 token 校验通过才执行
 - `--confirm` 参数会在执行前从 args 中剥离，避免影响原命令参数解析
+
+#### Scenario: impact=HIGH 命令治理（确认 + 并发限制）
+前置：命令 meta 标记 `impact=HIGH`（例如 heapdump/redefine/retransform/mc/reset/stop/jad/dump）  
+- 默认同样需要 `--confirm <token>`（可通过 `security.impact.high.confirm.enabled` 关闭）
+- 默认同一时刻仅允许有限并发（`security.impact.high.concurrent.limit`，默认 1），避免多个重型操作叠加导致停顿/峰值
 
 ### Requirement: Arthas-like 命令集（简化版）
 **Module:** command

@@ -21,6 +21,17 @@ flowchart TD
 - **CLI:** JLine
 - **Monitoring:** JMX（可选）
 
+## Resource Governance / Backpressure
+- **连接侧背压**：`CommandProcessor` 使用有界队列处理新连接，队列满会拒绝新连接（避免无限排队导致内存上涨）
+  - `server.max.connections`：并发连接上限
+  - `server.executor.queue.capacity`：连接处理线程池排队上限
+- **命令执行侧背压**：`CommandPipeline` 使用有界命令执行线程池替代 `Executors.newCachedThreadPool`
+  - `performance.command.executor.core/max/queue.capacity`：命令执行线程池与队列上限
+  - 队列满时返回明确错误（避免线程膨胀与排队失控）
+- **重型命令治理**：对 `impact=HIGH` 的命令统一二次确认与并发限制
+  - `security.impact.high.confirm.enabled`
+  - `security.impact.high.concurrent.limit`
+
 ## Core Flow
 ```mermaid
 sequenceDiagram

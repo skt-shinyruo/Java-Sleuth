@@ -177,8 +177,15 @@ ls -la /opt/java-sleuth/config/
    free -h
 
    # Reduce heap size temporarily
-   export JAVA_OPTS="-Xms512m -Xmx1g"
-   ```
+	   export JAVA_OPTS="-Xms512m -Xmx1g"
+	   ```
+
+5. **Security Mode Misconfiguration**
+   - Symptoms: logs contain `SECURITY ERROR: Refusing to start ...`
+   - Checks:
+     - 非回环 bind（例如 `0.0.0.0`）下禁止 `security.mode=off`
+     - 非回环 bind 且 `security.mode=hmac` 时必须配置 `security.hmac.secret` 非空
+     - 回环 bind 下可启用 `security.hmac.secret.autogen.on.loopback=true` 进行临时自洽启动（生产不推荐）
 
 ### Scenario 2: High Memory Usage
 
@@ -280,6 +287,7 @@ iostat -x 1 5
 - Cannot connect to port 3658
 - Connection refused
 - Intermittent connectivity
+- 连接建立后立即返回 `ERROR: server busy ...`（服务端过载保护触发）
 
 **Investigation**:
 ```bash
@@ -316,6 +324,11 @@ iptables -L | grep 3658
    ```bash
    grep "server.port" /opt/java-sleuth/config/sleuth.properties
    ```
+
+4. **If overloaded, tune backpressure / executors**
+   - 连接侧过载：调大 `server.executor.queue.capacity` 或降低 `server.max.connections`
+   - 命令侧过载：调大 `performance.command.executor.queue.capacity` / `performance.command.executor.max`
+   - 生产建议：保持 `security.impact.high.concurrent.limit=1`，避免高影响命令并发导致停顿/峰值叠加
 
 ### Scenario 5: Security Alerts
 

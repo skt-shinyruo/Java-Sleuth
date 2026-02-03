@@ -1,7 +1,6 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
-import com.javasleuth.util.PerformanceOptimizer;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.*;
 import java.text.DecimalFormat;
@@ -28,22 +27,21 @@ public class MemoryCommand implements Command {
         }
 
         String subCommand = args.length > 1 ? args[1].toLowerCase() : "overview";
-        String cacheKey = "memory_" + subCommand;
 
         switch (subCommand) {
             case "overview":
             case "all":
-                return PerformanceOptimizer.getCachedResult(cacheKey, this::getMemoryOverview);
+                return getMemoryOverview();
             case "pools":
-                return PerformanceOptimizer.getCachedResult(cacheKey, this::getMemoryPools);
+                return getMemoryPools();
             case "gc":
-                return PerformanceOptimizer.getCachedResult(cacheKey, this::getGarbageCollectionInfo);
+                return getGarbageCollectionInfo();
             case "heap":
-                return PerformanceOptimizer.getCachedResult(cacheKey, this::getHeapInfo);
+                return getHeapInfo();
             case "nonheap":
-                return PerformanceOptimizer.getCachedResult(cacheKey, this::getNonHeapInfo);
+                return getNonHeapInfo();
             case "direct":
-                return PerformanceOptimizer.getCachedResult(cacheKey, this::getDirectMemoryInfo);
+                return getDirectMemoryInfo();
             default:
                 return "Unknown subcommand: " + subCommand + ". Use: memory --help for available options";
         }

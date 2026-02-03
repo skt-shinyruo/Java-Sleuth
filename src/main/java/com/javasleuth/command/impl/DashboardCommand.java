@@ -1,7 +1,6 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
-import com.javasleuth.util.PerformanceOptimizer;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.*;
 import java.text.DecimalFormat;
@@ -28,17 +27,29 @@ public class DashboardCommand implements Command {
     @Override
     public String execute(String[] args) throws Exception {
         // Parse optional arguments for detailed view
-        boolean detailed = args.length > 1 && "detailed".equals(args[1]);
-        boolean realtime = args.length > 1 && "realtime".equals(args[1]);
-
-        if (realtime) {
-            // Skip cache for real-time data
-            return generateDashboard(true);
-        } else {
-            // Use cache for standard dashboard
-            String cacheKey = detailed ? "dashboard-detailed" : "dashboard";
-            return PerformanceOptimizer.getCachedResult(cacheKey, () -> generateDashboard(detailed));
+        boolean detailed = false;
+        boolean realtime = false;
+        if (args != null) {
+            for (int i = 1; i < args.length; i++) {
+                String a = args[i];
+                if (a == null) {
+                    continue;
+                }
+                String v = a.trim().toLowerCase();
+                if ("detailed".equals(v)) {
+                    detailed = true;
+                } else if ("realtime".equals(v)) {
+                    realtime = true;
+                }
+            }
         }
+
+        // Backward compatible: "realtime" implies detailed view. Cache policy is enforced by CommandPipeline.
+        if (realtime) {
+            detailed = true;
+        }
+
+        return generateDashboard(detailed);
     }
 
     private String generateDashboard(boolean detailed) {

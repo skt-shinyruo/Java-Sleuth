@@ -2,7 +2,6 @@ package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
 import com.javasleuth.security.SecurityValidator;
-import com.javasleuth.util.PerformanceOptimizer;
 import java.lang.instrument.Instrumentation;
 import java.util.Map;
 import java.util.Properties;
@@ -24,7 +23,7 @@ public class SysPropCommand implements Command {
         }
 
         if (args.length == 1) {
-            return PerformanceOptimizer.getCachedResult("sysprop_all", this::listAllProperties);
+            return listAllProperties();
         }
 
         if (args.length >= 2 && "set".equalsIgnoreCase(args[1])) {
@@ -48,9 +47,9 @@ public class SysPropCommand implements Command {
         if (args.length == 2) {
             String key = args[1];
             if (key.contains("*")) {
-                return PerformanceOptimizer.getCachedResult("sysprop_search_" + key, () -> searchProperties(key));
+                return searchProperties(key);
             }
-            return PerformanceOptimizer.getCachedResult("sysprop_" + key, () -> getProperty(key));
+            return getProperty(key);
         }
 
         return "Invalid arguments. Use: sysprop [key|pattern] | sysprop set <key> <value> | sysprop --help";

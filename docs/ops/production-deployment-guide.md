@@ -200,14 +200,19 @@ spec:
 
 ```properties
 # Production configuration template
+server.bind.address=127.0.0.1
 server.port=3658
 server.max.connections=50
+server.executor.queue.capacity=50
 server.connection.timeout=60000
 
 # Performance settings
 performance.cache.ttl=10000
 performance.thread.pool.core=8
 performance.thread.pool.max=32
+performance.command.executor.core=8
+performance.command.executor.max=32
+performance.command.executor.queue.capacity=200
 
 # Security settings
 security.input.validation=true
@@ -331,24 +336,31 @@ sudo chmod 640 /opt/java-sleuth/config/*.properties
 
 Configure role-based access in the application:
 
-```properties
-# Security configuration（以当前代码实现为准）
-# - 当前版本未实现 security.authentication.enabled / security.session.timeout 这类配置项
-# - 默认关闭匿名 viewer：仅在 off + viewer 会话场景会要求先 auth；推荐使用 hmac 会话自举
-# - 非回环绑定时禁止 security.mode=off（会拒绝启动），建议启用 hmac 并设置强随机 secret
-security.authorization.enabled=true
-security.anonymous.viewer=false
-security.mode=hmac
-security.hmac.secret=<a-strong-random-secret>
-security.hmac.timestamp.window.ms=30000
-security.hmac.nonce.cache.size=10000
-security.hmac.session.role=operator
+	```properties
+	# Security configuration（以当前代码实现为准）
+	# - 当前版本未实现 security.authentication.enabled / security.session.timeout 这类配置项
+	# - 默认关闭匿名 viewer：仅在 off + viewer 会话场景会要求先 auth；推荐使用 hmac 会话自举
+	# - 非回环绑定时禁止 security.mode=off（会拒绝启动），建议启用 hmac 并设置强随机 secret
+	security.authorization.enabled=true
+	security.anonymous.viewer=false
+	security.mode=hmac
+	security.hmac.secret=<a-strong-random-secret>
+	# Loopback 自洽启动（生产建议明确配置 secret，并关闭打印）
+	security.hmac.secret.autogen.on.loopback=false
+	security.hmac.secret.autogen.print=false
+	security.hmac.timestamp.window.ms=30000
+	security.hmac.nonce.cache.size=10000
+	security.hmac.session.role=operator
 
 # Dangerous command confirmation (recommended)
 security.dangerous.confirm.enabled=true
-security.dangerous.confirm.ttl.ms=60000
-security.dangerous.confirm.token.bytes=12
-security.dangerous.confirm.cache.size=2000
+	security.dangerous.confirm.ttl.ms=60000
+	security.dangerous.confirm.token.bytes=12
+	security.dangerous.confirm.cache.size=2000
+
+	# High impact commands governance (recommended)
+	security.impact.high.confirm.enabled=true
+	security.impact.high.concurrent.limit=1
 
 # Optional password-based authentication (disabled by default)
 security.auth.password.enabled=false
@@ -534,8 +546,17 @@ performance.cache.ttl=300000  # Static data
 
 ```properties
 # Adjust based on CPU cores and workload
+# Client connection handling threads (accept + per-connection IO)
 performance.thread.pool.core=8   # Number of CPU cores
 performance.thread.pool.max=32   # 4x CPU cores
+
+# Command execution threads (non-stream commands)
+performance.command.executor.core=8
+performance.command.executor.max=32
+performance.command.executor.queue.capacity=200
+
+# Backpressure for connection acceptance
+server.executor.queue.capacity=50
 ```
 
 ### Network Tuning
@@ -928,8 +949,10 @@ jmap -histo <PID>
 
 ```properties
 # Server Configuration
+server.bind.address=127.0.0.1
 server.port=3658
 server.max.connections=50
+server.executor.queue.capacity=50
 server.connection.timeout=60000
 server.socket.timeout=2000
 
@@ -937,6 +960,9 @@ server.socket.timeout=2000
 performance.cache.ttl=10000
 performance.thread.pool.core=8
 performance.thread.pool.max=32
+performance.command.executor.core=8
+performance.command.executor.max=32
+performance.command.executor.queue.capacity=200
 performance.command.timeout=120000
 performance.command.timeout.max=300000
 
@@ -954,6 +980,8 @@ security.authorization.enabled=true
 security.anonymous.viewer=false
 security.mode=hmac
 security.hmac.secret=<a-strong-random-secret>
+security.hmac.secret.autogen.on.loopback=false
+security.hmac.secret.autogen.print=false
 security.hmac.timestamp.window.ms=30000
 security.hmac.nonce.cache.size=10000
 security.hmac.session.role=operator
@@ -961,6 +989,8 @@ security.dangerous.confirm.enabled=true
 security.dangerous.confirm.ttl.ms=60000
 security.dangerous.confirm.token.bytes=12
 security.dangerous.confirm.cache.size=2000
+security.impact.high.confirm.enabled=true
+security.impact.high.concurrent.limit=1
 
 # Monitoring Configuration
 monitoring.metrics.enabled=true

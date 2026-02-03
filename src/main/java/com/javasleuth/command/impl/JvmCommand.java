@@ -1,7 +1,6 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
-import com.javasleuth.util.PerformanceOptimizer;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.*;
 import java.text.DecimalFormat;
@@ -34,18 +33,16 @@ public class JvmCommand implements Command {
             return getHelpText();
         }
 
-        return PerformanceOptimizer.getCachedResult("jvm", () -> {
-            StringBuilder sb = new StringBuilder();
-            sb.append("=== JVM Information ===\n");
-            sb.append(getVmDetails()).append("\n");
-            sb.append(getOperatingSystemInfo()).append("\n");
-            sb.append(getRuntimeInfo()).append("\n");
-            sb.append(getClassLoadingInfo()).append("\n");
-            sb.append(getCompilationInfo()).append("\n");
-            sb.append(getMemorySummary()).append("\n");
-            sb.append(getJvmArguments()).append("\n");
-            return sb.toString();
-        });
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== JVM Information ===\n");
+        sb.append(getVmDetails()).append("\n");
+        sb.append(getOperatingSystemInfo()).append("\n");
+        sb.append(getRuntimeInfo()).append("\n");
+        sb.append(getClassLoadingInfo()).append("\n");
+        sb.append(getCompilationInfo()).append("\n");
+        sb.append(getMemorySummary()).append("\n");
+        sb.append(getJvmArguments()).append("\n");
+        return sb.toString();
     }
 
     private String getVmDetails() {

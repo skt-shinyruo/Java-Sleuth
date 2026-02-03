@@ -17,6 +17,8 @@ This file records index of all completed changes for traceability and query.
 | 202602011222 | sleuth_hardening_bootstrap | Refactor | ✅Completed | history/2026-02/202602011222_sleuth_hardening_bootstrap/ |
 | 202602011706 | core_fixes_java8_jad_session_regex_trace | Refactor | ✅Completed | history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/ |
 | 202602021233 | quality_audit_more_issues | Refactor | ✅Completed | history/2026-02/202602021233_quality_audit_more_issues/ |
+| 202602022232 | security_auth_protocol_trace_refactor | Refactor | ✅Completed | history/2026-02/202602022232_security_auth_protocol_trace_refactor/ |
+| 202602031122 | event_driven_upgrade | Refactor | ✅Completed | history/2026-02/202602031122_event_driven_upgrade/ |
 
 ---
 
@@ -36,5 +38,5 @@ This file records index of all completed changes for traceability and query.
 - 202602011222_sleuth_hardening_bootstrap (2026-02/202602011222_sleuth_hardening_bootstrap/) - 启动/安全/插件/Trace 综合加固（Hardening & Bootstrap）
 - 202602011706_core_fixes_java8_jad_session_regex_trace (2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - Java 8 兼容 + jad/session/regex/trace/watch/tt 稳定性与安全加固
 - 202602021233_quality_audit_more_issues (2026-02/202602021233_quality_audit_more_issues/) - 配置/打包/危险命令分级与关键边界测试补齐
-## 2026-02
-- [202602022232_security_auth_protocol_trace_refactor](2026-02/202602022232_security_auth_protocol_trace_refactor) - 默认 HMAC 安全姿态 / 授权 SSOT / 危险命令二次确认 / 断连回收
+- 202602022232_security_auth_protocol_trace_refactor (2026-02/202602022232_security_auth_protocol_trace_refactor/) - 默认 HMAC 安全姿态 / 授权 SSOT / 危险命令二次确认 / 断连回收
+- 202602031122_event_driven_upgrade (2026-02/202602031122_event_driven_upgrade/) - 并发背压/缓存语义统一/高影响命令治理/HMAC 启动自洽（Netty 双栈延期）

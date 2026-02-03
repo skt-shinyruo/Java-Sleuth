@@ -22,12 +22,13 @@ import java.lang.instrument.Instrumentation;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -35,11 +36,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class CommandProcessor {
+    private static final SecureRandom SECRET_RANDOM = new SecureRandom();
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicLong commandCounter = new AtomicLong(0);
-    private final ExecutorService clientExecutor;
+    private final ThreadPoolExecutor clientExecutor;
     private final MetricsCollector metricsCollector;
     private final ProductionConfig config;
     private final AuditLogger auditLogger;
@@ -78,7 +80,7 @@ public class CommandProcessor {
             config.getThreadPoolCoreSize(),
             config.getThreadPoolMaxSize(),
             60L, TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(50),
+            new LinkedBlockingQueue<>(config.getServerExecutorQueueCapacity()),
             r -> {
                 Thread t = new Thread(r, "sleuth-client-" + commandCounter.incrementAndGet());
                 t.setDaemon(true);
@@ -122,12 +124,32 @@ public class CommandProcessor {
             if ("hmac".equalsIgnoreCase(config.getSecurityMode())) {
                 String secret = config.getSecurityHmacSecret();
                 if (secret == null || secret.trim().isEmpty()) {
-                    System.err.println("❌ SECURITY ERROR: Refusing to start with security.mode=hmac but empty security.hmac.secret");
-                    auditLogger.logSystemEvent("SERVER_START_BLOCKED",
-                        "Refused to start: security.mode=hmac but security.hmac.secret is empty");
-                    running.set(false);
-                    serverSocket = null;
-                    return;
+                    if (isLoopbackBind(bindAddress) && config.isHmacSecretAutogenOnLoopbackEnabled()) {
+                        int bytes = config.getHmacBootstrapSecretBytes();
+                        String generated = generateHmacSecret(bytes);
+                        config.setRuntimeConfig("security.hmac.secret", generated);
+                        auditLogger.logSystemEvent("HMAC_SECRET_AUTOGEN",
+                            "Generated temporary HMAC secret for loopback bind=" + bindAddress);
+                        if (config.isHmacSecretAutogenPrintEnabled()) {
+                            System.err.println("⚠️ SECURITY NOTICE: security.mode=hmac but security.hmac.secret is empty.");
+                            System.err.println("Generated a temporary HMAC secret for loopback-only listener.");
+                            System.err.println("To persist, set security.hmac.secret in your config file.");
+                            if (System.console() != null) {
+                                System.err.println("Temporary security.hmac.secret = " + generated);
+                            } else {
+                                System.err.println("Temporary security.hmac.secret was generated but NOT printed (no interactive console).");
+                                System.err.println("Fix: set security.hmac.secret explicitly in config, or run in interactive console to print it.");
+                            }
+                        }
+                    } else {
+                        System.err.println("❌ SECURITY ERROR: Refusing to start with security.mode=hmac but empty security.hmac.secret");
+                        System.err.println("Fix: set security.hmac.secret, or bind to 127.0.0.1/::1 to enable autogen");
+                        auditLogger.logSystemEvent("SERVER_START_BLOCKED",
+                            "Refused to start: security.mode=hmac but security.hmac.secret is empty");
+                        running.set(false);
+                        serverSocket = null;
+                        return;
+                    }
                 }
             }
 
@@ -167,9 +189,47 @@ public class CommandProcessor {
                         continue;
                     }
 
-                    metricsCollector.recordClientConnection();
+                    if (isClientExecutorSaturated()) {
+                        String remote = String.valueOf(clientSocket.getRemoteSocketAddress());
+                        auditLogger.logSystemEvent("SERVER_OVERLOADED",
+                            "Rejected connection due to executor saturation: remote=" + remote);
+                        metricsCollector.recordError("server_overload");
+                        try {
+                            BufferedOutputStream out = new BufferedOutputStream(clientSocket.getOutputStream());
+                            Utf8LineCodec.writeLine(out, "ERROR: server busy (executor queue full)", true);
+                        } catch (Exception ignore) {
+                            // ignore
+                        } finally {
+                            try {
+                                clientSocket.close();
+                            } catch (Exception ignore) {
+                                // ignore
+                            }
+                        }
+                        continue;
+                    }
 
-                    clientExecutor.submit(() -> handleClient(clientSocket));
+                    try {
+                        clientExecutor.execute(() -> handleClient(clientSocket));
+                        metricsCollector.recordClientConnection();
+                    } catch (java.util.concurrent.RejectedExecutionException rejected) {
+                        String remote = String.valueOf(clientSocket.getRemoteSocketAddress());
+                        auditLogger.logSystemEvent("SERVER_OVERLOADED",
+                            "Rejected connection due to executor rejection: remote=" + remote);
+                        metricsCollector.recordError("server_overload");
+                        try {
+                            BufferedOutputStream out = new BufferedOutputStream(clientSocket.getOutputStream());
+                            Utf8LineCodec.writeLine(out, "ERROR: server busy (executor rejected)", true);
+                        } catch (Exception ignore) {
+                            // ignore
+                        } finally {
+                            try {
+                                clientSocket.close();
+                            } catch (Exception ignore) {
+                                // ignore
+                            }
+                        }
+                    }
                 } catch (java.net.SocketTimeoutException e) {
                     // Normal timeout, continue
                 } catch (java.net.SocketException e) {
@@ -381,6 +441,7 @@ public class CommandProcessor {
                     if (streamRequested && config.isStreamingEnabled() && entry.getMeta().isStreamable()
                         && entry.getCommand() instanceof StreamCommand) {
                         StreamCommand streamCommand = (StreamCommand) entry.getCommand();
+                        boolean streamSuccess = false;
                         StreamSink sink = new StreamSink() {
                             @Override
                             public void send(String data) {
@@ -434,6 +495,7 @@ public class CommandProcessor {
                         };
 
                         streamCommand.executeStream(execArgs, sink);
+                        streamSuccess = true;
                         // For legacy clients (non-framed), also emit END marker to support launcher improvements.
                         if (!framedRequested) {
                             try {
@@ -443,6 +505,12 @@ public class CommandProcessor {
                             }
                         }
                         auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, true);
+                        long duration = System.currentTimeMillis() - commandStart;
+                        if (streamSuccess) {
+                            metricsCollector.recordCommandComplete(commandName, duration);
+                        } else {
+                            metricsCollector.recordCommandError(commandName, duration);
+                        }
                     } else {
                         CommandPipeline.Result result = pipeline.executePrechecked(entry, execArgs, context);
                         if (result.isSuccess()) {
@@ -451,14 +519,15 @@ public class CommandProcessor {
                                 FrameCodec.writeFrame(out, Frame.end(), config.getFrameMaxPayload());
                             }
                             auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, true);
+                            long duration = System.currentTimeMillis() - commandStart;
+                            metricsCollector.recordCommandComplete(commandName, duration);
                         } else {
                             sendError(out, framedRequested, result.getError());
                             auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, false);
+                            long duration = System.currentTimeMillis() - commandStart;
+                            metricsCollector.recordCommandError(commandName, duration);
                         }
                     }
-
-                    long duration = System.currentTimeMillis() - commandStart;
-                    metricsCollector.recordCommandComplete(commandName, duration);
 
                     if ("quit".equals(commandName)) {
                         break;
@@ -498,6 +567,23 @@ public class CommandProcessor {
             } catch (IOException e) {
                 // Ignore close errors
             }
+        }
+    }
+
+    private boolean isClientExecutorSaturated() {
+        try {
+            if (clientExecutor == null) {
+                return false;
+            }
+            int active = clientExecutor.getActiveCount();
+            int max = clientExecutor.getMaximumPoolSize();
+            if (max <= 0) {
+                return false;
+            }
+            int remaining = clientExecutor.getQueue() != null ? clientExecutor.getQueue().remainingCapacity() : Integer.MAX_VALUE;
+            return active >= max && remaining <= 0;
+        } catch (Exception ignore) {
+            return false;
         }
     }
 
@@ -605,6 +691,7 @@ public class CommandProcessor {
                 if (streamRequested && config.isStreamingEnabled() && entry.getMeta().isStreamable()
                     && entry.getCommand() instanceof StreamCommand) {
                     StreamCommand streamCommand = (StreamCommand) entry.getCommand();
+                    boolean streamSuccess = false;
                     StreamSink sink = new StreamSink() {
                         @Override
                         public void send(String data) {
@@ -656,21 +743,29 @@ public class CommandProcessor {
                     };
 
                     streamCommand.executeStream(execArgs, sink);
+                    streamSuccess = true;
                     auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, true);
+                    long duration = System.currentTimeMillis() - commandStart;
+                    if (streamSuccess) {
+                        metricsCollector.recordCommandComplete(commandName, duration);
+                    } else {
+                        metricsCollector.recordCommandError(commandName, duration);
+                    }
                 } else {
                     CommandPipeline.Result result = pipeline.executePrechecked(entry, execArgs, context);
                     if (result.isSuccess()) {
                         sendDataBinary(out, result.getOutput(), maxPayloadBytes);
                         BinaryFrameCodec.writeFrame(out, BinaryFrame.end(), maxPayloadBytes);
                         auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, true);
+                        long duration = System.currentTimeMillis() - commandStart;
+                        metricsCollector.recordCommandComplete(commandName, duration);
                     } else {
                         sendErrorBinary(out, result.getError(), maxPayloadBytes);
                         auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, false);
+                        long duration = System.currentTimeMillis() - commandStart;
+                        metricsCollector.recordCommandError(commandName, duration);
                     }
                 }
-
-                long duration = System.currentTimeMillis() - commandStart;
-                metricsCollector.recordCommandComplete(commandName, duration);
 
                 if ("quit".equals(commandName)) {
                     break;
@@ -803,6 +898,13 @@ public class CommandProcessor {
             return true;
         }
         return "127.0.0.1".equals(v) || "localhost".equals(v) || "::1".equals(v);
+    }
+
+    private static String generateHmacSecret(int bytes) {
+        int size = bytes <= 0 ? 32 : Math.min(bytes, 128);
+        byte[] buf = new byte[size];
+        SECRET_RANDOM.nextBytes(buf);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
     }
 
     private void sendData(OutputStream out, boolean framed, String data) throws IOException {

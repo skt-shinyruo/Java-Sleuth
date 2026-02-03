@@ -90,15 +90,15 @@ public class BuiltinCommandProvider implements CommandProvider {
         Map<String, CommandMeta> meta = new HashMap<>();
 
         meta.put("help", CommandMeta.viewer(true, false));
-        meta.put("sc", CommandMeta.viewer(true, false));
-        meta.put("sm", CommandMeta.viewer(true, false));
-        meta.put("jad", CommandMeta.operator(true, false));
-        meta.put("classloader", CommandMeta.viewer(true, false));
+        meta.put("sc", CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM));
+        meta.put("sm", CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM));
+        meta.put("jad", CommandMeta.operator(false, false).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(5));
+        meta.put("classloader", CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM));
 
-        meta.put("dashboard", CommandMeta.viewer(false, false));
+        meta.put("dashboard", CommandMeta.viewer(true, false));
         meta.put("thread", CommandMeta.viewer(false, false));
-        meta.put("memory", CommandMeta.viewer(false, false));
-        meta.put("jvm", CommandMeta.viewer(false, false));
+        meta.put("memory", CommandMeta.viewer(true, false));
+        meta.put("jvm", CommandMeta.viewer(true, false));
         meta.put("health", CommandMeta.viewer(false, false));
         meta.put("metrics", CommandMeta.viewer(false, false));
         meta.put("status", CommandMeta.viewer(false, false));
@@ -115,18 +115,18 @@ public class BuiltinCommandProvider implements CommandProvider {
         meta.put("monitor", CommandMeta.operator(false, true));
         meta.put("tt", CommandMeta.operator(false, true));
         meta.put("jobs", CommandMeta.operator(true, false));
-        meta.put("dump", CommandMeta.operator(false, false));
+        meta.put("dump", CommandMeta.operator(false, false).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(5));
         meta.put("getstatic", CommandMeta.operator(false, false));
         meta.put("logger", CommandMeta.operator(true, false));
         meta.put("profiler", CommandMeta.operator(false, false));
         meta.put("stack", CommandMeta.operator(false, true));
 
-        meta.put("redefine", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(3));
-        meta.put("retransform", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(3));
-        meta.put("mc", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(3));
-        meta.put("heapdump", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(2));
-        meta.put("reset", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(1));
-        meta.put("stop", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(1));
+        meta.put("redefine", CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(3));
+        meta.put("retransform", CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(3));
+        meta.put("mc", CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(3));
+        meta.put("heapdump", CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(2));
+        meta.put("reset", CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(1));
+        meta.put("stop", CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(1));
 
         meta.put("config", CommandMeta.admin(false, false));
         meta.put("audit", CommandMeta.admin(false, false).withAudit(false));

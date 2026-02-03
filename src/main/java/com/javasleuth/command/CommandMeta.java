@@ -6,12 +6,19 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class CommandMeta {
+    public enum ImpactLevel {
+        LOW,
+        MEDIUM,
+        HIGH
+    }
+
     private final UserRole requiredRole;
     private final boolean cacheable;
     private final boolean streamable;
     private final boolean requiresAudit;
     private final int maxExecutionsPerMinute;
     private final boolean dangerous;
+    private final ImpactLevel impact;
     private final Map<String, UserRole> subcommandRoles;
 
     public CommandMeta(UserRole requiredRole, boolean cacheable, boolean streamable) {
@@ -19,6 +26,7 @@ public class CommandMeta {
             defaultRequiresAudit(requiredRole),
             defaultRateLimit(requiredRole),
             false,
+            defaultImpact(false),
             Collections.emptyMap());
     }
 
@@ -28,7 +36,9 @@ public class CommandMeta {
                        boolean requiresAudit,
                        int maxExecutionsPerMinute,
                        boolean dangerous) {
-        this(requiredRole, cacheable, streamable, requiresAudit, maxExecutionsPerMinute, dangerous, Collections.emptyMap());
+        this(requiredRole, cacheable, streamable, requiresAudit, maxExecutionsPerMinute, dangerous,
+            defaultImpact(dangerous),
+            Collections.emptyMap());
     }
 
     private CommandMeta(UserRole requiredRole,
@@ -37,6 +47,7 @@ public class CommandMeta {
                         boolean requiresAudit,
                         int maxExecutionsPerMinute,
                         boolean dangerous,
+                        ImpactLevel impact,
                         Map<String, UserRole> subcommandRoles) {
         this.requiredRole = requiredRole;
         this.cacheable = cacheable;
@@ -44,6 +55,7 @@ public class CommandMeta {
         this.requiresAudit = requiresAudit;
         this.maxExecutionsPerMinute = maxExecutionsPerMinute;
         this.dangerous = dangerous;
+        this.impact = impact != null ? impact : ImpactLevel.LOW;
         this.subcommandRoles = subcommandRoles != null ? subcommandRoles : Collections.emptyMap();
     }
 
@@ -84,16 +96,30 @@ public class CommandMeta {
         return dangerous;
     }
 
+    public ImpactLevel getImpactLevel() {
+        return impact;
+    }
+
     public CommandMeta withAudit(boolean requiresAudit) {
-        return new CommandMeta(requiredRole, cacheable, streamable, requiresAudit, maxExecutionsPerMinute, dangerous, subcommandRoles);
+        return new CommandMeta(requiredRole, cacheable, streamable, requiresAudit, maxExecutionsPerMinute, dangerous, impact, subcommandRoles);
     }
 
     public CommandMeta withRateLimit(int maxExecutionsPerMinute) {
-        return new CommandMeta(requiredRole, cacheable, streamable, requiresAudit, maxExecutionsPerMinute, dangerous, subcommandRoles);
+        return new CommandMeta(requiredRole, cacheable, streamable, requiresAudit, maxExecutionsPerMinute, dangerous, impact, subcommandRoles);
     }
 
     public CommandMeta withDangerous(boolean dangerous) {
-        return new CommandMeta(requiredRole, cacheable, streamable, requiresAudit, maxExecutionsPerMinute, dangerous, subcommandRoles);
+        ImpactLevel nextImpact = impact;
+        if (dangerous && (nextImpact == null || nextImpact == ImpactLevel.LOW)) {
+            nextImpact = ImpactLevel.HIGH;
+        }
+        return new CommandMeta(requiredRole, cacheable, streamable, requiresAudit, maxExecutionsPerMinute, dangerous, nextImpact, subcommandRoles);
+    }
+
+    public CommandMeta withImpact(ImpactLevel impact) {
+        return new CommandMeta(requiredRole, cacheable, streamable, requiresAudit, maxExecutionsPerMinute, dangerous,
+            impact != null ? impact : ImpactLevel.LOW,
+            subcommandRoles);
     }
 
     public CommandMeta withSubcommandRole(String subcommand, UserRole role) {
@@ -102,7 +128,7 @@ public class CommandMeta {
         }
         Map<String, UserRole> next = new HashMap<>(subcommandRoles);
         next.put(subcommand.trim().toLowerCase(), role);
-        return new CommandMeta(requiredRole, cacheable, streamable, requiresAudit, maxExecutionsPerMinute, dangerous,
+        return new CommandMeta(requiredRole, cacheable, streamable, requiresAudit, maxExecutionsPerMinute, dangerous, impact,
             Collections.unmodifiableMap(next));
     }
 
@@ -120,6 +146,10 @@ public class CommandMeta {
 
     private static boolean defaultRequiresAudit(UserRole role) {
         return role != null && role != UserRole.VIEWER;
+    }
+
+    private static ImpactLevel defaultImpact(boolean dangerous) {
+        return dangerous ? ImpactLevel.HIGH : ImpactLevel.LOW;
     }
 
     private static int defaultRateLimit(UserRole role) {

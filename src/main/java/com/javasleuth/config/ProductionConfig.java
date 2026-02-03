@@ -71,6 +71,8 @@ public class ProductionConfig {
         properties.setProperty("server.bind.address", "127.0.0.1");
         properties.setProperty("server.port", "3658");
         properties.setProperty("server.max.connections", "10");
+        // Client accept/handling executor queue (backpressure + memory bound)
+        properties.setProperty("server.executor.queue.capacity", "50");
         properties.setProperty("server.connection.timeout", "30000");
         properties.setProperty("server.socket.timeout", "1000");
 
@@ -78,6 +80,10 @@ public class ProductionConfig {
         properties.setProperty("performance.cache.ttl", "5000");
         properties.setProperty("performance.thread.pool.core", "4");
         properties.setProperty("performance.thread.pool.max", "16");
+        // Dedicated command execution executor (avoid unbounded newCachedThreadPool)
+        properties.setProperty("performance.command.executor.core", properties.getProperty("performance.thread.pool.core", "4"));
+        properties.setProperty("performance.command.executor.max", properties.getProperty("performance.thread.pool.max", "16"));
+        properties.setProperty("performance.command.executor.queue.capacity", "200");
         properties.setProperty("performance.command.timeout", "60000");
         properties.setProperty("performance.command.timeout.max", "300000");
         properties.setProperty("performance.maintenance.force_gc", "false");
@@ -96,12 +102,18 @@ public class ProductionConfig {
         properties.setProperty("security.anonymous.viewer", "false");
         properties.setProperty("security.mode", "hmac");
         properties.setProperty("security.hmac.secret", "");
+        // Loopback self-contained startup: auto-generate temporary secret if empty.
+        properties.setProperty("security.hmac.secret.autogen.on.loopback", "true");
+        properties.setProperty("security.hmac.secret.autogen.print", "true");
         properties.setProperty("security.hmac.timestamp.window.ms", "30000");
         properties.setProperty("security.hmac.nonce.cache.size", "10000");
         properties.setProperty("security.dangerous.confirm.enabled", "true");
         properties.setProperty("security.dangerous.confirm.ttl.ms", "60000");
         properties.setProperty("security.dangerous.confirm.token.bytes", "12");
         properties.setProperty("security.dangerous.confirm.cache.size", "2000");
+        // High impact commands governance (non-privileged but performance-risky operations)
+        properties.setProperty("security.impact.high.confirm.enabled", "true");
+        properties.setProperty("security.impact.high.concurrent.limit", "1");
         properties.setProperty("security.bootstrap.hmac.on.attach", "true");
         properties.setProperty("security.bootstrap.hmac.secret.bytes", "32");
         properties.setProperty("security.hmac.session.role", "operator");
@@ -162,6 +174,14 @@ public class ProductionConfig {
         return getInt("server.max.connections", 10);
     }
 
+    public int getServerExecutorQueueCapacity() {
+        int v = getInt("server.executor.queue.capacity", 50);
+        if (v <= 0) {
+            v = 50;
+        }
+        return v;
+    }
+
     public int getConnectionTimeout() {
         return getInt("server.connection.timeout", 30000);
     }
@@ -181,6 +201,30 @@ public class ProductionConfig {
 
     public int getThreadPoolMaxSize() {
         return getInt("performance.thread.pool.max", 16);
+    }
+
+    public int getCommandExecutorCoreSize() {
+        int v = getInt("performance.command.executor.core", getThreadPoolCoreSize());
+        if (v <= 0) {
+            v = getThreadPoolCoreSize();
+        }
+        return v;
+    }
+
+    public int getCommandExecutorMaxSize() {
+        int v = getInt("performance.command.executor.max", getThreadPoolMaxSize());
+        if (v <= 0) {
+            v = getThreadPoolMaxSize();
+        }
+        return v;
+    }
+
+    public int getCommandExecutorQueueCapacity() {
+        int v = getInt("performance.command.executor.queue.capacity", 200);
+        if (v <= 0) {
+            v = 200;
+        }
+        return v;
     }
 
     public long getCommandTimeout() {
@@ -237,12 +281,32 @@ public class ProductionConfig {
         return getString("security.hmac.secret", "");
     }
 
+    public boolean isHmacSecretAutogenOnLoopbackEnabled() {
+        return getBoolean("security.hmac.secret.autogen.on.loopback", true);
+    }
+
+    public boolean isHmacSecretAutogenPrintEnabled() {
+        return getBoolean("security.hmac.secret.autogen.print", true);
+    }
+
     public long getSecurityHmacTimestampWindowMs() {
         return getLong("security.hmac.timestamp.window.ms", 30000);
     }
 
     public int getSecurityHmacNonceCacheSize() {
         return getInt("security.hmac.nonce.cache.size", 10000);
+    }
+
+    public boolean isHighImpactConfirmEnabled() {
+        return getBoolean("security.impact.high.confirm.enabled", true);
+    }
+
+    public int getHighImpactConcurrentLimit() {
+        int v = getInt("security.impact.high.concurrent.limit", 1);
+        if (v <= 0) {
+            v = 0;
+        }
+        return v;
     }
 
     public boolean isHmacBootstrapOnAttachEnabled() {

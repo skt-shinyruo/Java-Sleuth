@@ -97,13 +97,21 @@ public class DangerousCommandConfirmationManager {
                                                String[] args,
                                                CommandMeta meta) {
         String[] normalized = normalizeArgs(args);
-        if (meta == null || !meta.isDangerous()) {
+        boolean requireDangerous = meta != null && meta.isDangerous();
+        boolean requireImpactHigh = meta != null &&
+            meta.getImpactLevel() == CommandMeta.ImpactLevel.HIGH &&
+            config.isHighImpactConfirmEnabled();
+
+        if (!requireDangerous && !requireImpactHigh) {
             return ConfirmationResult.allowed(normalized);
         }
 
-        boolean enabled = config.getBoolean("security.dangerous.confirm.enabled", true);
-        if (!enabled) {
+        boolean dangerousEnabled = config.getBoolean("security.dangerous.confirm.enabled", true);
+        if (!dangerousEnabled && !requireImpactHigh) {
             return ConfirmationResult.allowed(normalized);
+        }
+        if (!dangerousEnabled && requireImpactHigh) {
+            // Continue: impact-high confirmation is separately configurable.
         }
 
         String provided = extractConfirmToken(args);
@@ -116,10 +124,14 @@ public class DangerousCommandConfirmationManager {
         String key = buildKey(sessionId, normalized);
         pruneIfNeeded(now);
 
+        String reason =
+            requireDangerous && requireImpactHigh ? "dangerous+impact_high" :
+                (requireDangerous ? "dangerous" : "impact_high");
+
         if (provided == null || provided.trim().isEmpty()) {
             Pending p = issueToken(now, ttlMs);
             pending.put(key, p);
-            auditLogger.logPrivilegedOperation(sessionId, commandName, "confirm_required ttlMs=" + ttlMs);
+            auditLogger.logPrivilegedOperation(sessionId, commandName, reason + " confirm_required ttlMs=" + ttlMs);
             return ConfirmationResult.denied(buildChallengeMessage(normalized, p.token, ttlMs), normalized);
         }
 
@@ -128,7 +140,7 @@ public class DangerousCommandConfirmationManager {
             pending.remove(key);
             Pending p = issueToken(now, ttlMs);
             pending.put(key, p);
-            auditLogger.logPrivilegedOperation(sessionId, commandName, "confirm_expired_or_missing ttlMs=" + ttlMs);
+            auditLogger.logPrivilegedOperation(sessionId, commandName, reason + " confirm_expired_or_missing ttlMs=" + ttlMs);
             return ConfirmationResult.denied(buildChallengeMessage(normalized, p.token, ttlMs), normalized);
         }
 
@@ -138,7 +150,7 @@ public class DangerousCommandConfirmationManager {
         }
 
         pending.remove(key);
-        auditLogger.logPrivilegedOperation(sessionId, commandName, "confirm_accepted");
+        auditLogger.logPrivilegedOperation(sessionId, commandName, reason + " confirm_accepted");
         return ConfirmationResult.allowed(normalized);
     }
 
@@ -227,7 +239,7 @@ public class DangerousCommandConfirmationManager {
     private static String buildChallengeMessage(String[] normalizedArgs, String token, long ttlMs) {
         long seconds = Math.max(1, ttlMs / 1000);
         String base = joinArgs(normalizedArgs);
-        return "⚠️ 危险命令需要二次确认（有效期 " + seconds + "s）。\n" +
+        return "⚠️ 高风险命令需要二次确认（有效期 " + seconds + "s）。\n" +
             "请重新执行并追加：--confirm <token>\n" +
             "示例：\n" +
             "  " + base + " --confirm " + token;

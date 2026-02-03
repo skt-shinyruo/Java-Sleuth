@@ -40,6 +40,13 @@
 - 若 `security.mode=off`，服务端拒绝启动并提示修复方式  
 - 若 `security.mode=hmac`，要求 `security.hmac.secret` 非空，否则同样拒绝启动
 
+#### Scenario: 回环 bind + security.mode=hmac 且 secret 为空的自洽启动
+前置：`server.bind.address` 为回环地址（127.0.0.1/::1/localhost）  
+- 若 `security.mode=hmac` 且 `security.hmac.secret` 为空：
+  - 默认会自动生成临时 secret（避免“直接启动 Agent/服务端”失败；明文 secret 仅在交互控制台打印）
+  - 可通过 `security.hmac.secret.autogen.on.loopback=false` 恢复严格拒绝策略
+  - 生产环境建议显式配置强随机 secret，并关闭打印（`security.hmac.secret.autogen.print=false`）
+
 ### Requirement: 审计日志脱敏（password/secret/session）
 **Module:** security
 审计事件不应泄露口令、secret 或 bearer token。
@@ -71,9 +78,9 @@
 - 对 nonce 做去重与窗口期校验，拒绝重放
 - 当 `protocol.handshake.enabled=true` 时，服务端会要求先完成 `HELLO/CONFIG` 握手，并强制使用 `v=2`（sid 绑定到握手协商的 connId）
 
-### Requirement: 危险命令二次确认（防误触 + 可审计）
+### Requirement: 高风险命令二次确认（防误触 + 可审计）
 **Module:** security / command
-对标“手术刀级别能力”的工程实践：危险命令默认需要一次性确认 token，降低误触与脚本误用风险。
+对标“手术刀级别能力”的工程实践：危险命令与高影响命令默认需要一次性确认 token，降低误触与脚本误用风险。
 
 #### Scenario: 危险命令需 --confirm <token>
 前置：命令被标记为 dangerous（例如 redefine/retransform/mc/heapdump/reset/stop）  
@@ -85,6 +92,14 @@
 - `security.dangerous.confirm.ttl.ms`
 - `security.dangerous.confirm.token.bytes`
 - `security.dangerous.confirm.cache.size`
+
+#### Scenario: 高影响命令（impact=HIGH）同样需要确认与并发限制
+前置：命令 impact=HIGH（例如 heapdump/redefine/retransform/mc/reset/stop/jad/dump）  
+- 首次执行：返回一次性确认 token（同上）
+- 同一时刻仅允许有限并发（默认 1），避免多个重型操作叠加导致停顿/峰值
+配置项：
+- `security.impact.high.confirm.enabled`（默认 true）
+- `security.impact.high.concurrent.limit`（默认 1）
 
 ### Requirement: 安全默认边界
 **Module:** security

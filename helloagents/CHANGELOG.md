@@ -65,6 +65,10 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 审计日志默认不再刷屏控制台（需显式开启 `logging.audit.console.enabled=true`）
 - fat-jar Manifest 补齐 `Main-Class`，支持 `java -jar` 直接启动 Launcher（不破坏 Agent 能力）
 - 默认配置与实现对齐：移除无效 `production.*`，补齐 `jobs.*`/`protocol.frame.max.payload` 等关键默认项并同步文档
+- 连接侧背压与可配置上限：`server.executor.queue.capacity`（连接处理线程池队列有界化，过载时拒绝新连接并返回明确错误）
+- 命令执行侧背压与可配置上限：`performance.command.executor.core/max/queue.capacity`（替代 `Executors.newCachedThreadPool`，避免线程膨胀与无限排队）
+- loopback 自洽启动：当 `security.mode=hmac` 且 `security.hmac.secret` 为空时，回环绑定下可自动生成临时 secret（明文 secret 仅在交互控制台打印，`security.hmac.secret.autogen.*` 控制）
+- 高影响命令治理：`CommandMeta.impact=LOW|MEDIUM|HIGH` + `security.impact.high.*`（二次确认 + 并发限制，默认同一时刻仅允许 1 条高影响命令执行）
 
 ### Fixed
 - watch/trace 队列增加背压与采样
@@ -77,6 +81,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - AuthenticationManager 锁定窗口与客户端标识解析修复（支持 /ip:port、IPv6、unknown）
 - 审计日志脱敏加强：auth/config/sysprop 等命令参数与 sessionId 不再以明文写入
 - server.max.connections 与 performance.command.timeout 配置落地生效
+- 缓存语义一致性：移除命令内部“自建缓存”，以 `CommandMeta.cacheable` + `CommandPipeline` 作为缓存唯一入口（避免全局缓存与会话缓存混用导致实时性/边界误判）
 - MemoryJavaCompiler 编译产物未落入 compiledClasses 的问题（通过 OutputStream.close 挂钩收集字节码）
 - HMAC 模式下新连接会话自举：避免“匿名 viewer 关闭 + 口令认证关闭”导致命令不可用
 - TraceInterceptor 采样改为调用级一致：entry/exit/subcall 配对与 depth 稳定

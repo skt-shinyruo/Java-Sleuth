@@ -7,12 +7,17 @@ import com.javasleuth.security.InputValidator;
 import com.javasleuth.util.PerformanceOptimizer;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class CommandPipeline {
     public static class PrecheckResult {
@@ -81,18 +86,38 @@ public class CommandPipeline {
     private final ProductionConfig config;
 
     // Dedicated executor for command execution (avoid ForkJoinPool contention).
-    private final Executor commandExecutor;
+    private final ThreadPoolExecutor commandExecutor;
+
+    private static final Object HIGH_IMPACT_LOCK = new Object();
+    private static volatile Semaphore HIGH_IMPACT_SEMAPHORE;
+    private static volatile int HIGH_IMPACT_LIMIT = -1;
 
     public CommandPipeline(InputValidator inputValidator, AuthorizationManager authorizationManager, ProductionConfig config) {
         this.inputValidator = inputValidator;
         this.authorizationManager = authorizationManager;
         this.config = config;
         this.dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
-        this.commandExecutor = Executors.newCachedThreadPool(r -> {
-            Thread t = new Thread(r, "sleuth-cmd-exec");
-            t.setDaemon(true);
-            return t;
-        });
+        final int coreSize = config.getCommandExecutorCoreSize();
+        final int maxSize = config.getCommandExecutorMaxSize();
+        final int queueCapacity = config.getCommandExecutorQueueCapacity();
+
+        BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(queueCapacity);
+        AtomicLong threadSeq = new AtomicLong(0);
+        ThreadPoolExecutor tpe = new ThreadPoolExecutor(
+            coreSize,
+            Math.max(coreSize, maxSize),
+            60L,
+            TimeUnit.SECONDS,
+            queue,
+            r -> {
+                Thread t = new Thread(r, "sleuth-cmd-exec-" + threadSeq.incrementAndGet());
+                t.setDaemon(true);
+                return t;
+            },
+            new ThreadPoolExecutor.AbortPolicy()
+        );
+        tpe.allowCoreThreadTimeOut(true);
+        this.commandExecutor = tpe;
     }
 
     public Result execute(CommandRegistry.Entry entry, String[] args, CommandContext context) {
@@ -111,16 +136,23 @@ public class CommandPipeline {
         String commandName = args[0].toLowerCase();
 
         Command command = entry.getCommand();
+        CommandMeta meta = entry.getMeta();
         String result;
         long timeoutMs = config.getCommandTimeout();
-        boolean cacheable = entry.getMeta().isCacheable() && isSafeToCache(commandName, args);
+        boolean cacheable = meta != null && meta.isCacheable() && isSafeToCache(commandName, args);
         if (cacheable) {
             String clientKey = context != null && context.getClientId() != null ? context.getClientId() : "unknown";
             String cacheKey = clientKey + ":" + commandName + ":" + String.join(":", args);
             try {
                 result = PerformanceOptimizer.getCachedResult(cacheKey, () -> {
+                    ImpactPermit permit;
                     try {
-                        return executeWithTimeout(command, args, timeoutMs);
+                        permit = acquireImpactPermit(meta);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                    try {
+                        return executeWithTimeout(command, args, timeoutMs, permit);
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
@@ -132,7 +164,8 @@ public class CommandPipeline {
             }
         } else {
             try {
-                result = executeWithTimeout(command, args, timeoutMs);
+                ImpactPermit permit = acquireImpactPermit(meta);
+                result = executeWithTimeout(command, args, timeoutMs, permit);
             } catch (Exception e) {
                 return new Result(false, null, e.getMessage());
             }
@@ -151,6 +184,18 @@ public class CommandPipeline {
         if ("session".equals(commandName)) {
             return false;
         }
+        // dashboard realtime explicitly requests no caching (still allow cached default dashboard).
+        if ("dashboard".equals(commandName) && args != null) {
+            for (int i = 1; i < args.length; i++) {
+                String a = args[i];
+                if (a == null) {
+                    continue;
+                }
+                if ("realtime".equalsIgnoreCase(a.trim())) {
+                    return false;
+                }
+            }
+        }
         // Avoid caching state-changing subcommands.
         if ("sysprop".equals(commandName) && args != null && args.length > 1) {
             if ("set".equalsIgnoreCase(args[1])) {
@@ -160,23 +205,122 @@ public class CommandPipeline {
         return true;
     }
 
-    private String executeWithTimeout(Command command, String[] args, long timeoutMs) throws Exception {
-        if (timeoutMs <= 0) {
-            return command.execute(args);
+    private static final class ImpactPermit {
+        private final Semaphore semaphore;
+        private final AtomicBoolean released = new AtomicBoolean(false);
+
+        private ImpactPermit(Semaphore semaphore) {
+            this.semaphore = semaphore;
         }
 
-        CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+        static ImpactPermit none() {
+            return new ImpactPermit(null);
+        }
+
+        void release() {
+            if (semaphore == null) {
+                return;
+            }
+            if (released.compareAndSet(false, true)) {
+                semaphore.release();
+            }
+        }
+    }
+
+    private static final class PermitFutureTask extends FutureTask<String> {
+        private final ImpactPermit permit;
+
+        private PermitFutureTask(ImpactPermit permit, java.util.concurrent.Callable<String> callable) {
+            super(callable);
+            this.permit = permit;
+        }
+
+        @Override
+        public void run() {
+            try {
+                super.run();
+            } finally {
+                if (permit != null) {
+                    permit.release();
+                }
+            }
+        }
+    }
+
+    private ImpactPermit acquireImpactPermit(CommandMeta meta) throws Exception {
+        if (meta == null || meta.getImpactLevel() != CommandMeta.ImpactLevel.HIGH) {
+            return ImpactPermit.none();
+        }
+
+        int limit = config.getHighImpactConcurrentLimit();
+        if (limit <= 0) {
+            return ImpactPermit.none();
+        }
+
+        Semaphore sem = getOrCreateHighImpactSemaphore(limit);
+        if (sem == null) {
+            return ImpactPermit.none();
+        }
+
+        if (!sem.tryAcquire()) {
+            throw new Exception("High impact command is already running; please retry later");
+        }
+
+        return new ImpactPermit(sem);
+    }
+
+    private Semaphore getOrCreateHighImpactSemaphore(int limit) {
+        if (limit <= 0) {
+            return null;
+        }
+        Semaphore existing = HIGH_IMPACT_SEMAPHORE;
+        if (existing != null && HIGH_IMPACT_LIMIT == limit) {
+            return existing;
+        }
+        synchronized (HIGH_IMPACT_LOCK) {
+            if (HIGH_IMPACT_SEMAPHORE == null || HIGH_IMPACT_LIMIT != limit) {
+                HIGH_IMPACT_SEMAPHORE = new Semaphore(limit, true);
+                HIGH_IMPACT_LIMIT = limit;
+            }
+            return HIGH_IMPACT_SEMAPHORE;
+        }
+    }
+
+    private String executeWithTimeout(Command command, String[] args, long timeoutMs, ImpactPermit permit) throws Exception {
+        if (timeoutMs <= 0) {
             try {
                 return command.execute(args);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
+            } finally {
+                if (permit != null) {
+                    permit.release();
+                }
             }
-        }, commandExecutor);
+        }
+
+        PermitFutureTask task = new PermitFutureTask(permit, () -> command.execute(args));
+        try {
+            commandExecutor.execute(task);
+        } catch (RejectedExecutionException rejected) {
+            if (permit != null) {
+                permit.release();
+            }
+            throw new Exception("Server is busy: command execution queue is full");
+        }
 
         try {
-            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
+            return task.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
-            future.cancel(true);
+            task.cancel(true);
+            boolean removed = false;
+            try {
+                removed = commandExecutor.remove(task);
+            } catch (Exception ignore) {
+                // ignore
+            }
+            if (removed && permit != null) {
+                // Task won't run: PermitFutureTask.run() won't execute, release here.
+                permit.release();
+            }
             throw new Exception("Command timed out after " + timeoutMs + "ms");
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
@@ -189,6 +333,16 @@ public class CommandPipeline {
             throw new Exception(cause != null ? cause.getMessage() : "Command execution failed");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            task.cancel(true);
+            boolean removed = false;
+            try {
+                removed = commandExecutor.remove(task);
+            } catch (Exception ignore) {
+                // ignore
+            }
+            if (removed && permit != null) {
+                permit.release();
+            }
             throw new Exception("Command interrupted");
         }
     }

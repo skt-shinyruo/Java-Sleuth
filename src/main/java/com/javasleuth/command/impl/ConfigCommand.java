@@ -68,8 +68,10 @@ public class ConfigCommand implements Command {
                 StringBuilder show = new StringBuilder();
                 show.append("=== CURRENT CONFIGURATION ===\n");
                 show.append("\n-- Server Settings --\n");
+                show.append("server.bind.address = ").append(config.getServerBindAddress()).append("\n");
                 show.append("server.port = ").append(config.getServerPort()).append("\n");
                 show.append("server.max.connections = ").append(config.getMaxConnections()).append("\n");
+                show.append("server.executor.queue.capacity = ").append(config.getServerExecutorQueueCapacity()).append("\n");
                 show.append("server.connection.timeout = ").append(config.getConnectionTimeout()).append("\n");
                 show.append("server.socket.timeout = ").append(config.getSocketTimeout()).append("\n");
 
@@ -77,6 +79,9 @@ public class ConfigCommand implements Command {
                 show.append("performance.cache.ttl = ").append(config.getCacheTTL()).append("\n");
                 show.append("performance.thread.pool.core = ").append(config.getThreadPoolCoreSize()).append("\n");
                 show.append("performance.thread.pool.max = ").append(config.getThreadPoolMaxSize()).append("\n");
+                show.append("performance.command.executor.core = ").append(config.getCommandExecutorCoreSize()).append("\n");
+                show.append("performance.command.executor.max = ").append(config.getCommandExecutorMaxSize()).append("\n");
+                show.append("performance.command.executor.queue.capacity = ").append(config.getCommandExecutorQueueCapacity()).append("\n");
                 show.append("performance.command.timeout = ").append(config.getCommandTimeout()).append("\n");
 
                 show.append("\n-- Security Settings --\n");
@@ -87,6 +92,10 @@ public class ConfigCommand implements Command {
                 show.append("security.mode = ").append(config.getSecurityMode()).append("\n");
                 String maskedSecret = SecurityValidator.maskSensitiveValue("security.hmac.secret", config.getSecurityHmacSecret());
                 show.append("security.hmac.secret = ").append(maskedSecret).append("\n");
+                show.append("security.hmac.secret.autogen.on.loopback = ").append(config.isHmacSecretAutogenOnLoopbackEnabled()).append("\n");
+                show.append("security.hmac.secret.autogen.print = ").append(config.isHmacSecretAutogenPrintEnabled()).append("\n");
+                show.append("security.impact.high.confirm.enabled = ").append(config.isHighImpactConfirmEnabled()).append("\n");
+                show.append("security.impact.high.concurrent.limit = ").append(config.getHighImpactConcurrentLimit()).append("\n");
                 show.append("security.max.command.length = ").append(config.getMaxCommandLength()).append("\n");
                 show.append("security.allowed.commands = ").append(config.getAllowedCommands()).append("\n");
 
