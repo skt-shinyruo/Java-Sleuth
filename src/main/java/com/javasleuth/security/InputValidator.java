@@ -28,7 +28,7 @@ public class InputValidator {
 
     // Commands that require special permission validation
     private static final Set<String> PRIVILEGED_COMMANDS = new HashSet<>(Arrays.asList(
-        "redefine", "retransform", "heapdump", "mc"
+        "redefine", "retransform", "heapdump", "mc", "reset", "stop"
     ));
 
     private final ProductionConfig config;

@@ -186,6 +186,9 @@ Trace method call paths and timing.
 
 ## Hot Reload Commands
 
+> ⚠️ 提示：`mc` / `redefine` / `retransform` / `heapdump` / `reset` / `stop` 属于危险命令。
+> 默认启用二次确认：首次执行会返回一次性 token，需要在短 TTL 内追加 `--confirm <token>` 重试后才会真正执行。
+
 ### `mc` (Memory Compiler)
 Compile Java source code in memory.
 - **Usage**: `mc <source-file-path> [options]`
@@ -214,6 +217,19 @@ Re-transform classes using current transformers.
   - Apply new transformations
   - Update instrumentation
   - Refresh monitoring
+
+### `reset`
+Reset all active enhancements/sessions and best-effort retransform back to original bytecode.
+- **Usage**: `reset`
+- **Notes**:
+  - 危险命令：默认需要二次确认 token（`--confirm <token>`）
+  - 会停止后台 jobs，并清空 watch/trace/monitor/tt/stack 等拦截器会话
+
+### `stop`
+Stop Java-Sleuth agent inside target JVM (shutdown command server and transformer).
+- **Usage**: `stop`
+- **Notes**:
+  - 危险命令：默认需要二次确认 token（`--confirm <token>`）
 
 ## Advanced Analysis Commands
 

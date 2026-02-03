@@ -94,10 +94,14 @@ public class ProductionConfig {
         properties.setProperty("security.allowed.commands", "*");
         properties.setProperty("security.authorization.enabled", "true");
         properties.setProperty("security.anonymous.viewer", "false");
-        properties.setProperty("security.mode", "off");
+        properties.setProperty("security.mode", "hmac");
         properties.setProperty("security.hmac.secret", "");
         properties.setProperty("security.hmac.timestamp.window.ms", "30000");
         properties.setProperty("security.hmac.nonce.cache.size", "10000");
+        properties.setProperty("security.dangerous.confirm.enabled", "true");
+        properties.setProperty("security.dangerous.confirm.ttl.ms", "60000");
+        properties.setProperty("security.dangerous.confirm.token.bytes", "12");
+        properties.setProperty("security.dangerous.confirm.cache.size", "2000");
         properties.setProperty("security.bootstrap.hmac.on.attach", "true");
         properties.setProperty("security.bootstrap.hmac.secret.bytes", "32");
         properties.setProperty("security.hmac.session.role", "operator");
@@ -107,7 +111,7 @@ public class ProductionConfig {
         properties.setProperty("security.auth.viewer.password", "");
 
         // Protocol configuration
-        properties.setProperty("protocol.mode", "legacy");
+        properties.setProperty("protocol.mode", "framed");
         properties.setProperty("protocol.streaming.enabled", "true");
         properties.setProperty("protocol.frame.max.payload", "4096");
         properties.setProperty("protocol.handshake.enabled", "true");
@@ -271,7 +275,7 @@ public class ProductionConfig {
 
     // Protocol configuration
     public String getProtocolMode() {
-        return getString("protocol.mode", "legacy");
+        return getString("protocol.mode", "framed");
     }
 
     public boolean isFramedProtocolEnabled() {

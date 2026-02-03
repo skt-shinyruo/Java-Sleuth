@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 默认配置、外部配置、系统属性覆盖
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-02
+- **Last Updated:** 2026-02-03
 
 ## Specifications
 
@@ -26,16 +26,17 @@
 - `server.bind.address`：默认 127.0.0.1
 - `server.max.connections`：并发连接上限（默认 10）
 - `protocol.handshake.enabled`：默认 true
-- `protocol.mode`：legacy|framed|binary
+- `protocol.mode`：legacy|framed|binary（默认 framed）
 - `protocol.text.max.line.bytes`：文本协议单行最大字节数上限
 - `protocol.frame.max.payload`：分帧/二进制协议单帧 payload 最大字节数
-- `security.mode`：off|hmac（默认 off）
-- `security.anonymous.viewer`：默认 false（要求先 auth）
+- `security.mode`：off|hmac（默认 hmac）
+- `security.anonymous.viewer`：默认 false（仅当会话角色为 viewer 时生效；hmac 模式下默认自举为 operator）
 - `security.bootstrap.hmac.on.attach` / `security.bootstrap.hmac.secret.bytes`：Launcher attach 时 HMAC 自举开关与 secret 长度
 - `security.hmac.session.role`：HMAC 模式下新连接的自举会话角色（viewer|operator|admin）
 - `security.auth.password.enabled`：口令认证开关（默认 false）
 - `security.auth.{admin|operator|viewer}.password`：口令认证密码（也可用环境变量 `SLEUTH_AUTH_*_PASSWORD`）
 - `security.hmac.*`：HMAC 签名与防重放参数
+- `security.dangerous.confirm.*`：危险命令二次确认（一次性 token + TTL）
 - `performance.command.timeout`：命令执行超时
 - `performance.command.timeout.max`：命令超时的上限护栏（避免被 runtime config 放大到不可控）
 - `performance.maintenance.force_gc`：维护线程是否强制 `System.gc()`（默认 false）

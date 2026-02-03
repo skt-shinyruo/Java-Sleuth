@@ -9,6 +9,9 @@ import com.javasleuth.security.AuthorizationManager;
 import com.javasleuth.security.InputValidator;
 import com.javasleuth.security.RequestSecurityManager;
 import com.javasleuth.util.PerformanceOptimizer;
+import com.javasleuth.command.session.ClientDisconnectedException;
+import com.javasleuth.command.session.ClientSession;
+import com.javasleuth.command.session.ClientSessionRegistry;
 import com.javasleuth.command.protocol.BinaryFrame;
 import com.javasleuth.command.protocol.BinaryFrameCodec;
 import com.javasleuth.command.protocol.Frame;
@@ -47,6 +50,7 @@ public class CommandProcessor {
     private final CommandRegistry registry;
     private final CommandPipeline pipeline;
     private final ConcurrentHashMap<String, String> sessionByClient = new ConcurrentHashMap<>();
+    private final ClientSessionRegistry clientSessionRegistry = ClientSessionRegistry.getInstance();
     private ServerSocket serverSocket;
 
     public CommandProcessor(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
@@ -203,6 +207,8 @@ public class CommandProcessor {
         String clientId = "client-" + commandCounter.incrementAndGet();
         String clientInfo = clientSocket.getRemoteSocketAddress().toString();
         String sessionId = null;
+        String connId = null;
+        final ClientSession clientSession;
 
         AuthenticationManager.UserRole initialRole = AuthenticationManager.UserRole.VIEWER;
         String securityMode = config.getSecurityMode();
@@ -219,8 +225,10 @@ public class CommandProcessor {
             sessionId = sessionResult.getSessionId();
             sessionByClient.put(clientId, sessionId);
         }
+        clientSession = clientSessionRegistry.open(clientId, clientInfo, sessionId);
 
         boolean pendingBinaryUpgrade = false;
+        boolean handshakeCompleted = !config.isHandshakeEnabled();
 
         int maxLineBytes = config.getInt(
             "protocol.text.max.line.bytes",
@@ -250,8 +258,17 @@ public class CommandProcessor {
                 }
 
                 if (config.isHandshakeEnabled() && line.toUpperCase().startsWith("HELLO")) {
+                    Map<String, String> helloKv = parseHandshakeKv(line);
+                    connId = helloKv.get("connid");
                     String selected = handleHello(line, out);
                     pendingBinaryUpgrade = "binary".equalsIgnoreCase(selected);
+                    handshakeCompleted = true;
+                    continue;
+                }
+
+                if (config.isHandshakeEnabled() && !handshakeCompleted) {
+                    sendError(out, false, "Handshake required. Send: HELLO");
+                    metricsCollector.recordError("handshake_required");
                     continue;
                 }
 
@@ -264,7 +281,9 @@ public class CommandProcessor {
                             new DataOutputStream(out),
                             clientId,
                             clientInfo,
-                            sessionId
+                            sessionId,
+                            connId,
+                            clientSession
                         );
                         break;
                     } else {
@@ -298,6 +317,24 @@ public class CommandProcessor {
                 if (verifyKey == null) {
                     verifyKey = clientId;
                 }
+
+                if (config.isHandshakeEnabled() && "hmac".equalsIgnoreCase(config.getSecurityMode())) {
+                    Map<String, String> sigKv = parseHandshakeKv(raw);
+                    String v = sigKv.get("v");
+                    String sid = sigKv.get("sid");
+                    if (!"2".equals(v)) {
+                        sendError(out, framedRequested, "Handshake enabled: signed commands must use SIG v=2");
+                        metricsCollector.recordError("security_sig_version");
+                        continue;
+                    }
+                    if (connId != null && !connId.trim().isEmpty()) {
+                        if (sid == null || !connId.equals(sid)) {
+                            sendError(out, framedRequested, "Handshake enabled: SIG sid must match negotiated connId");
+                            metricsCollector.recordError("security_sig_sid");
+                            continue;
+                        }
+                    }
+                }
                 RequestSecurityManager.VerificationResult verified = requestSecurityManager.verifyAndExtract(verifyKey, raw);
                 if (!verified.isOk()) {
                     sendError(out, framedRequested, verified.getError());
@@ -328,19 +365,21 @@ public class CommandProcessor {
                     metricsCollector.recordError("unauthorized");
                     continue;
                 }
-                CommandContext context = new CommandContext(clientId, clientInfo, currentSessionId, framedRequested, streamRequested);
+                CommandContext context = new CommandContext(clientId, clientInfo, currentSessionId, framedRequested, streamRequested, clientSession);
                 CommandContextHolder.set(context);
 
                 try {
                     metricsCollector.recordCommandStart(commandName);
+                    CommandPipeline.PrecheckResult precheck = pipeline.precheck(entry, commandName, parts, context);
+                    if (!precheck.isOk()) {
+                        sendError(out, framedRequested, precheck.getError());
+                        String[] auditArgs = precheck.getArgs() != null ? precheck.getArgs() : parts;
+                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, auditArgs, false);
+                        continue;
+                    }
+                    String[] execArgs = precheck.getArgs();
                     if (streamRequested && config.isStreamingEnabled() && entry.getMeta().isStreamable()
                         && entry.getCommand() instanceof StreamCommand) {
-                        String precheck = pipeline.validateAndAuthorize(commandName, parts, context);
-                        if (precheck != null) {
-                            sendError(out, framedRequested, precheck);
-                            auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
-                            continue;
-                        }
                         StreamCommand streamCommand = (StreamCommand) entry.getCommand();
                         StreamSink sink = new StreamSink() {
                             @Override
@@ -349,6 +388,12 @@ public class CommandProcessor {
                                     sendData(out, framedRequested, data);
                                 } catch (IOException e) {
                                     metricsCollector.recordError("protocol_write");
+                                    try {
+                                        clientSession.close("client_write_failed");
+                                    } catch (Exception ignore) {
+                                        // ignore
+                                    }
+                                    throw new ClientDisconnectedException("Client connection closed during send");
                                 }
                             }
 
@@ -363,6 +408,12 @@ public class CommandProcessor {
                                     }
                                 } catch (IOException e) {
                                     metricsCollector.recordError("protocol_write");
+                                    try {
+                                        clientSession.close("client_write_failed");
+                                    } catch (Exception ignore) {
+                                        // ignore
+                                    }
+                                    throw new ClientDisconnectedException("Client connection closed during close");
                                 }
                             }
 
@@ -372,11 +423,17 @@ public class CommandProcessor {
                                     sendError(out, framedRequested, message);
                                 } catch (IOException e) {
                                     metricsCollector.recordError("protocol_write");
+                                    try {
+                                        clientSession.close("client_write_failed");
+                                    } catch (Exception ignore) {
+                                        // ignore
+                                    }
+                                    throw new ClientDisconnectedException("Client connection closed during error");
                                 }
                             }
                         };
 
-                        streamCommand.executeStream(parts, sink);
+                        streamCommand.executeStream(execArgs, sink);
                         // For legacy clients (non-framed), also emit END marker to support launcher improvements.
                         if (!framedRequested) {
                             try {
@@ -385,18 +442,18 @@ public class CommandProcessor {
                                 // ignore
                             }
                         }
-                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, true);
+                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, true);
                     } else {
-                        CommandPipeline.Result result = pipeline.execute(entry, parts, context);
+                        CommandPipeline.Result result = pipeline.executePrechecked(entry, execArgs, context);
                         if (result.isSuccess()) {
                             sendData(out, framedRequested, result.getOutput());
                             if (framedRequested) {
                                 FrameCodec.writeFrame(out, Frame.end(), config.getFrameMaxPayload());
                             }
-                            auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, true);
+                            auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, true);
                         } else {
                             sendError(out, framedRequested, result.getError());
-                            auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
+                            auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, false);
                         }
                     }
 
@@ -406,6 +463,8 @@ public class CommandProcessor {
                     if ("quit".equals(commandName)) {
                         break;
                     }
+                } catch (ClientDisconnectedException disconnected) {
+                    break;
                 } catch (Exception e) {
                     sendError(out, framedRequested, "Error executing command: " + e.getMessage());
                     metricsCollector.recordError("command_execution");
@@ -416,6 +475,7 @@ public class CommandProcessor {
                             authenticationManager.logout(currentSessionId);
                         }
                         sessionByClient.put(clientId, context.getSessionId());
+                        clientSession.setSessionId(context.getSessionId());
                     }
                     CommandContextHolder.clear();
                 }
@@ -434,6 +494,7 @@ public class CommandProcessor {
                 if (activeSession != null) {
                     authenticationManager.logout(activeSession);
                 }
+                clientSessionRegistry.close(clientId, "disconnect");
             } catch (IOException e) {
                 // Ignore close errors
             }
@@ -444,7 +505,9 @@ public class CommandProcessor {
                                     DataOutputStream out,
                                     String clientId,
                                     String clientInfo,
-                                    String baseSessionId) throws IOException {
+                                    String baseSessionId,
+                                    String connId,
+                                    ClientSession clientSession) throws IOException {
         int maxPayloadBytes = config.getFrameMaxPayload();
 
         while (running.get()) {
@@ -481,6 +544,24 @@ public class CommandProcessor {
             if (verifyKey == null) {
                 verifyKey = clientId;
             }
+
+            if (config.isHandshakeEnabled() && "hmac".equalsIgnoreCase(config.getSecurityMode())) {
+                Map<String, String> sigKv = parseHandshakeKv(raw);
+                String v = sigKv.get("v");
+                String sid = sigKv.get("sid");
+                if (!"2".equals(v)) {
+                    sendErrorBinary(out, "Handshake enabled: signed commands must use SIG v=2", maxPayloadBytes);
+                    metricsCollector.recordError("security_sig_version");
+                    continue;
+                }
+                if (connId != null && !connId.trim().isEmpty()) {
+                    if (sid == null || !connId.equals(sid)) {
+                        sendErrorBinary(out, "Handshake enabled: SIG sid must match negotiated connId", maxPayloadBytes);
+                        metricsCollector.recordError("security_sig_sid");
+                        continue;
+                    }
+                }
+            }
             RequestSecurityManager.VerificationResult verified = requestSecurityManager.verifyAndExtract(verifyKey, raw);
             if (!verified.isOk()) {
                 sendErrorBinary(out, verified.getError(), maxPayloadBytes);
@@ -508,20 +589,21 @@ public class CommandProcessor {
                 continue;
             }
 
-            CommandContext context = new CommandContext(clientId, clientInfo, currentSessionId, framedRequested, streamRequested);
+            CommandContext context = new CommandContext(clientId, clientInfo, currentSessionId, framedRequested, streamRequested, clientSession);
             CommandContextHolder.set(context);
 
             try {
                 metricsCollector.recordCommandStart(commandName);
+                CommandPipeline.PrecheckResult precheck = pipeline.precheck(entry, commandName, parts, context);
+                if (!precheck.isOk()) {
+                    sendErrorBinary(out, precheck.getError(), maxPayloadBytes);
+                    String[] auditArgs = precheck.getArgs() != null ? precheck.getArgs() : parts;
+                    auditLogger.logCommandExecution(clientId, clientInfo, commandName, auditArgs, false);
+                    continue;
+                }
+                String[] execArgs = precheck.getArgs();
                 if (streamRequested && config.isStreamingEnabled() && entry.getMeta().isStreamable()
                     && entry.getCommand() instanceof StreamCommand) {
-                    String precheck = pipeline.validateAndAuthorize(commandName, parts, context);
-                    if (precheck != null) {
-                        sendErrorBinary(out, precheck, maxPayloadBytes);
-                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
-                        continue;
-                    }
-
                     StreamCommand streamCommand = (StreamCommand) entry.getCommand();
                     StreamSink sink = new StreamSink() {
                         @Override
@@ -530,6 +612,12 @@ public class CommandProcessor {
                                 sendDataBinary(out, data, maxPayloadBytes);
                             } catch (IOException e) {
                                 metricsCollector.recordError("protocol_binary_write");
+                                try {
+                                    clientSession.close("client_write_failed");
+                                } catch (Exception ignore) {
+                                    // ignore
+                                }
+                                throw new ClientDisconnectedException("Client connection closed during binary send");
                             }
                         }
 
@@ -542,6 +630,12 @@ public class CommandProcessor {
                                 BinaryFrameCodec.writeFrame(out, BinaryFrame.end(), maxPayloadBytes);
                             } catch (IOException e) {
                                 metricsCollector.recordError("protocol_binary_write");
+                                try {
+                                    clientSession.close("client_write_failed");
+                                } catch (Exception ignore) {
+                                    // ignore
+                                }
+                                throw new ClientDisconnectedException("Client connection closed during binary close");
                             }
                         }
 
@@ -551,21 +645,27 @@ public class CommandProcessor {
                                 sendErrorBinary(out, message, maxPayloadBytes);
                             } catch (IOException e) {
                                 metricsCollector.recordError("protocol_binary_write");
+                                try {
+                                    clientSession.close("client_write_failed");
+                                } catch (Exception ignore) {
+                                    // ignore
+                                }
+                                throw new ClientDisconnectedException("Client connection closed during binary error");
                             }
                         }
                     };
 
-                    streamCommand.executeStream(parts, sink);
-                    auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, true);
+                    streamCommand.executeStream(execArgs, sink);
+                    auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, true);
                 } else {
-                    CommandPipeline.Result result = pipeline.execute(entry, parts, context);
+                    CommandPipeline.Result result = pipeline.executePrechecked(entry, execArgs, context);
                     if (result.isSuccess()) {
                         sendDataBinary(out, result.getOutput(), maxPayloadBytes);
                         BinaryFrameCodec.writeFrame(out, BinaryFrame.end(), maxPayloadBytes);
-                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, true);
+                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, true);
                     } else {
                         sendErrorBinary(out, result.getError(), maxPayloadBytes);
-                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
+                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, false);
                     }
                 }
 
@@ -575,6 +675,8 @@ public class CommandProcessor {
                 if ("quit".equals(commandName)) {
                     break;
                 }
+            } catch (ClientDisconnectedException disconnected) {
+                break;
             } catch (Exception e) {
                 sendErrorBinary(out, "Error executing command: " + e.getMessage(), maxPayloadBytes);
                 metricsCollector.recordError("command_execution");
@@ -585,6 +687,7 @@ public class CommandProcessor {
                         authenticationManager.logout(currentSessionId);
                     }
                     sessionByClient.put(clientId, context.getSessionId());
+                    clientSession.setSessionId(context.getSessionId());
                 }
                 CommandContextHolder.clear();
             }

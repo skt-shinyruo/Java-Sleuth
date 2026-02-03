@@ -75,6 +75,10 @@ public final class StackInterceptor {
         if (q == null) {
             return;
         }
+        if (config.isWatchDropOnFull() && q.remainingCapacity() <= 0) {
+            droppedEvents.incrementAndGet();
+            return;
+        }
 
         try {
             StackTraceElement[] raw = Thread.currentThread().getStackTrace();
@@ -195,4 +199,3 @@ public final class StackInterceptor {
         }
     }
 }
-

@@ -10,9 +10,11 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 插件化命令注册与分帧协议基础设施
 - auth 命令与会话角色绑定
 - HELLO/CONFIG 握手协商与 binary 严格二进制帧协议
-- security.mode=off|hmac（默认 off）与 HMAC+nonce 请求签名/基础防重放
+- security.mode=off|hmac（默认 hmac）与 HMAC+nonce 请求签名/基础防重放
+- 危险命令二次确认（默认开启）：`security.dangerous.confirm.*` + `--confirm <token>`（一次性、短 TTL）
+- Launcher 支持 `--insecure`（需交互确认 `I UNDERSTAND`）用于本机单次排障开启 `security.mode=off`
 - server.bind.address 默认 127.0.0.1（降低默认口令/明文传输暴露面）
-- 插件命令动态权限注册（避免 unknown command 被 AuthorizationManager 拒绝）
+- ClientSessionRegistry/ClientSession：监控类命令注册断连清理动作，连接写失败时快速终止并回收增强/队列
 - 协议/插件/安全相关指标：handshake、binary upgrade、plugin load、security_verify
 - watch/trace 事件丢弃/采样计数与 status 输出
 - UTF-8 行编解码（Utf8LineCodec）与 `protocol.text.max.line.bytes` 单行字节数上限
@@ -47,6 +49,8 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - Enhancer 支持链式叠加与按会话移除
 - CommandProcessor 支持 bind address + handshake 协商并可升级 binary 通道
 - Launcher 支持 handshake 协商与 binary 通道；在 security.mode=hmac 时自动封装 SIG 请求
+- 默认协议由 legacy 调整为 framed（保持 handshake 协商，提升长输出/流式命令稳定性）
+- 授权策略 SSOT：以 CommandMeta 为唯一权限来源，AuthorizationManager 不再维护命令名特判/映射；插件命令必须提供 meta
 - 项目根目录结构整理：文档集中到 docs/，脚本归档到 scripts/
 - 安全默认：关闭匿名 viewer（`security.anonymous.viewer=false`），连接后需要先执行 `auth`
 - sysprop 写入改为显式子命令 `sysprop set <key> <value>`（并要求更高权限）
@@ -64,6 +68,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
 ### Fixed
 - watch/trace 队列增加背压与采样
+- TraceInterceptor ThreadLocal 在 map 为空时执行 remove，降低线程池场景潜在残留与固定开销
 - CommandParser 反斜杠转义字符解析修复
 - PerformanceOptimizer/MemoryOptimizer 编译问题修复（静态 API/缓存清理/ MBean 接口）
 - Launcher 进程列表过滤后序号不一致导致的误选问题

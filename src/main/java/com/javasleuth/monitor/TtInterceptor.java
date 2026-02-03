@@ -93,6 +93,10 @@ public final class TtInterceptor {
         if (queue == null) {
             return;
         }
+        if (config.isWatchDropOnFull() && queue.remainingCapacity() <= 0) {
+            dropped.incrementAndGet();
+            return;
+        }
 
         try {
             TtRecord r = new TtRecord();

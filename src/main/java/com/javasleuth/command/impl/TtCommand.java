@@ -1,8 +1,11 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.JobManager;
+import com.javasleuth.command.CommandContext;
+import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
+import com.javasleuth.command.session.ClientSession;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.data.TtRecord;
 import com.javasleuth.enhancement.ClassEnhancer;
@@ -191,6 +194,19 @@ public class TtCommand implements StreamCommand {
             throw e;
         }
 
+        ClientSession clientSession = null;
+        String cleanupKey = null;
+        try {
+            CommandContext ctx = CommandContextHolder.get();
+            clientSession = ctx != null ? ctx.getClientSession() : null;
+            if (clientSession != null) {
+                cleanupKey = "tt:" + ttId;
+                clientSession.registerCleanup(cleanupKey, () -> stopSession(ttId));
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+
         StringBuilder banner = new StringBuilder();
         banner.append("Started tt record ").append(target.getName()).append(".").append(methodPattern).append("\n");
         banner.append("TT ID: ").append(ttId).append("\n");
@@ -220,6 +236,9 @@ public class TtCommand implements StreamCommand {
             }
         } finally {
             stopSession(ttId);
+            if (clientSession != null && cleanupKey != null) {
+                clientSession.removeCleanup(cleanupKey);
+            }
         }
 
         String summary = "TT completed. totalRecords=" + recorded;

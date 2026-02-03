@@ -44,6 +44,10 @@ public class WatchInterceptor {
 
         BlockingQueue<WatchResult> queue = watchQueues.get(watchId);
         if (queue == null) return;
+        if (config.isWatchDropOnFull() && queue.remainingCapacity() <= 0) {
+            droppedEvents.incrementAndGet();
+            return;
+        }
 
         try {
             WatchResult result = new WatchResult();
@@ -69,6 +73,10 @@ public class WatchInterceptor {
 
         BlockingQueue<WatchResult> queue = watchQueues.get(watchId);
         if (queue == null) return;
+        if (config.isWatchDropOnFull() && queue.remainingCapacity() <= 0) {
+            droppedEvents.incrementAndGet();
+            return;
+        }
 
         try {
             WatchResult result = new WatchResult();
@@ -95,6 +103,10 @@ public class WatchInterceptor {
 
         BlockingQueue<WatchResult> queue = watchQueues.get(watchId);
         if (queue == null) return;
+        if (config.isWatchDropOnFull() && queue.remainingCapacity() <= 0) {
+            droppedEvents.incrementAndGet();
+            return;
+        }
 
         try {
             WatchResult result = new WatchResult();

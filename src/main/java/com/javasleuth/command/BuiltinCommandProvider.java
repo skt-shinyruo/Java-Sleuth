@@ -102,9 +102,9 @@ public class BuiltinCommandProvider implements CommandProvider {
         meta.put("health", CommandMeta.viewer(false, false));
         meta.put("metrics", CommandMeta.viewer(false, false));
         meta.put("status", CommandMeta.viewer(false, false));
-        meta.put("sysprop", CommandMeta.viewer(true, false));
+        meta.put("sysprop", CommandMeta.viewer(true, false).withSubcommandRole("set", UserRole.ADMIN));
         meta.put("sysenv", CommandMeta.viewer(true, false));
-        meta.put("vmoption", CommandMeta.operator(true, false));
+        meta.put("vmoption", CommandMeta.operator(true, false).withSubcommandRole("set", UserRole.ADMIN));
         meta.put("mbean", CommandMeta.operator(false, false));
         meta.put("session", CommandMeta.viewer(false, false));
         meta.put("perm", CommandMeta.viewer(true, false));
@@ -119,7 +119,7 @@ public class BuiltinCommandProvider implements CommandProvider {
         meta.put("getstatic", CommandMeta.operator(false, false));
         meta.put("logger", CommandMeta.operator(true, false));
         meta.put("profiler", CommandMeta.operator(false, false));
-        meta.put("stack", CommandMeta.operator(false, false));
+        meta.put("stack", CommandMeta.operator(false, true));
 
         meta.put("redefine", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(3));
         meta.put("retransform", CommandMeta.admin(false, false).withDangerous(true).withRateLimit(3));

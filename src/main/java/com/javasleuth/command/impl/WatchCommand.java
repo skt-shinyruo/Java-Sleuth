@@ -1,6 +1,8 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
+import com.javasleuth.command.CommandContext;
+import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
 import com.javasleuth.config.ProductionConfig;
@@ -10,6 +12,7 @@ import com.javasleuth.enhancement.WatchEnhancer;
 import com.javasleuth.monitor.WatchInterceptor;
 import com.javasleuth.data.WatchResult;
 import com.javasleuth.command.JobManager;
+import com.javasleuth.command.session.ClientSession;
 import com.javasleuth.util.SleuthConditionEvaluator;
 import com.javasleuth.util.SleuthValueFormatter;
 import com.javasleuth.util.WildcardMatcher;
@@ -219,6 +222,19 @@ public class WatchCommand implements StreamCommand {
             throw e;
         }
 
+        ClientSession clientSession = null;
+        String cleanupKey = null;
+        try {
+            CommandContext ctx = CommandContextHolder.get();
+            clientSession = ctx != null ? ctx.getClientSession() : null;
+            if (clientSession != null) {
+                cleanupKey = "watch:" + watchId;
+                clientSession.registerCleanup(cleanupKey, () -> stopWatch(watchId));
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+
         StringBuilder result = new StringBuilder();
         result.append("Started watching ").append(targetClassName).append(".").append(methodPattern).append("\n");
         result.append("Watch ID: ").append(watchId).append("\n");
@@ -271,6 +287,9 @@ public class WatchCommand implements StreamCommand {
         } finally {
             // Cleanup
             stopWatch(watchId);
+            if (clientSession != null && cleanupKey != null) {
+                clientSession.removeCleanup(cleanupKey);
+            }
         }
 
         String summary = "Watch completed. Total events: " + eventCount;

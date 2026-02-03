@@ -26,11 +26,12 @@ import java.util.Map;
 
 public class SleuthLauncher {
     private static final SecureRandom NONCE_RANDOM = new SecureRandom();
+    private boolean insecureMode;
 
     public static void main(String[] args) {
         try {
             SleuthLauncher launcher = new SleuthLauncher();
-            launcher.start();
+            launcher.start(args);
         } catch (Exception e) {
             System.err.println("Failed to start Java-Sleuth: " + e.getMessage());
             if (Boolean.getBoolean("sleuth.launcher.debug")) {
@@ -38,6 +39,11 @@ public class SleuthLauncher {
             }
             System.exit(1);
         }
+    }
+
+    public void start(String[] args) throws Exception {
+        parseArgs(args);
+        start();
     }
 
     public void start() throws Exception {
@@ -67,8 +73,43 @@ public class SleuthLauncher {
             return;
         }
 
+        if (insecureMode && !confirmInsecureMode()) {
+            System.out.println("Insecure mode confirmation rejected. Exiting...");
+            return;
+        }
+
         attachToJvm(selectedVm, agentJar);
         startInteractiveSession(selectedVm);
+    }
+
+    private void parseArgs(String[] args) {
+        if (args == null) {
+            return;
+        }
+        for (String arg : args) {
+            if (arg == null) {
+                continue;
+            }
+            String a = arg.trim();
+            if (a.isEmpty()) {
+                continue;
+            }
+            if ("--insecure".equalsIgnoreCase(a) || "-insecure".equalsIgnoreCase(a)) {
+                insecureMode = true;
+            }
+        }
+    }
+
+    private boolean confirmInsecureMode() throws IOException {
+        Terminal terminal = TerminalBuilder.builder().system(true).build();
+        LineReader reader = LineReaderBuilder.builder().terminal(terminal).build();
+
+        System.out.println("⚠️  You are about to enable insecure mode (security.mode=off).");
+        System.out.println("    This is intended for local troubleshooting only and is unsafe if exposed via port-forwarding or proxies.");
+        System.out.println("    Type 'I UNDERSTAND' to continue, or anything else to cancel.");
+
+        String input = reader.readLine("Confirm insecure mode: ");
+        return "I UNDERSTAND".equalsIgnoreCase(input != null ? input.trim() : "");
     }
 
     private VirtualMachineDescriptor selectTargetJvm() throws IOException {
@@ -154,7 +195,10 @@ public class SleuthLauncher {
             String securityMode = config.getSecurityMode();
             String hmacSecret = config.getSecurityHmacSecret();
             String hmacSessionRole = config.getHmacSessionRole();
-            if (config.isHmacBootstrapOnAttachEnabled()) {
+            if (insecureMode) {
+                securityMode = "off";
+                config.setRuntimeConfig("security.mode", "off");
+            } else if (config.isHmacBootstrapOnAttachEnabled()) {
                 securityMode = "hmac";
                 if (hmacSecret == null || hmacSecret.trim().isEmpty()) {
                     int bytes = config.getHmacBootstrapSecretBytes();
@@ -298,7 +342,11 @@ public class SleuthLauncher {
 
                         String commandName = command.split("\\s+")[0].toLowerCase();
                         boolean stream = (binary || framed) && streamingEnabled &&
-                                         ("watch".equals(commandName) || "trace".equals(commandName));
+                                         ("watch".equals(commandName) ||
+                                             "trace".equals(commandName) ||
+                                             "monitor".equals(commandName) ||
+                                             "tt".equals(commandName) ||
+                                             "stack".equals(commandName));
 
                         if (binary && binaryIn != null && binaryOut != null) {
                             String signed = securityManager.signCommandV2(command, System.currentTimeMillis(), generateNonce(), connId);

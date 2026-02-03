@@ -189,10 +189,8 @@ public class CommandProcessorTest {
             assertTrue(session.isSuccess());
 
             CommandMeta meta = CommandMeta.viewer(false, false);
-            authorizationManager.registerOrUpdatePermission("plugin_cmd", meta);
-
             AuthorizationManager.AuthorizationResult result =
-                authorizationManager.authorize(session.getSessionId(), "plugin_cmd", new String[]{"plugin_cmd"});
+                authorizationManager.authorize(session.getSessionId(), "plugin_cmd", new String[]{"plugin_cmd"}, meta);
             assertTrue(result.isAllowed());
         } finally {
             setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
@@ -213,10 +211,8 @@ public class CommandProcessorTest {
             assertTrue(session.isSuccess());
 
             CommandMeta meta = CommandMeta.viewer(false, false).withDangerous(true);
-            authorizationManager.registerOrUpdatePermission("dangerous_plugin_cmd", meta);
-
             AuthorizationManager.AuthorizationResult result =
-                authorizationManager.authorize(session.getSessionId(), "dangerous_plugin_cmd", new String[]{"dangerous_plugin_cmd"});
+                authorizationManager.authorize(session.getSessionId(), "dangerous_plugin_cmd", new String[]{"dangerous_plugin_cmd"}, meta);
             assertFalse(result.isAllowed());
         } finally {
             setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);

@@ -2,8 +2,11 @@ package com.javasleuth.command;
 
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.security.AuthorizationManager;
+import com.javasleuth.security.DangerousCommandConfirmationManager;
 import com.javasleuth.security.InputValidator;
 import com.javasleuth.util.PerformanceOptimizer;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
@@ -12,6 +15,42 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 public class CommandPipeline {
+    public static class PrecheckResult {
+        private final boolean ok;
+        private final String error;
+        private final String[] args;
+
+        private PrecheckResult(boolean ok, String error, String[] args) {
+            this.ok = ok;
+            this.error = error;
+            this.args = args;
+        }
+
+        public static PrecheckResult ok(String[] args) {
+            return new PrecheckResult(true, null, args);
+        }
+
+        public static PrecheckResult denied(String error) {
+            return new PrecheckResult(false, error, null);
+        }
+
+        public static PrecheckResult denied(String error, String[] args) {
+            return new PrecheckResult(false, error, args);
+        }
+
+        public boolean isOk() {
+            return ok;
+        }
+
+        public String getError() {
+            return error;
+        }
+
+        public String[] getArgs() {
+            return args;
+        }
+    }
+
     public static class Result {
         private final boolean success;
         private final String output;
@@ -38,6 +77,7 @@ public class CommandPipeline {
 
     private final InputValidator inputValidator;
     private final AuthorizationManager authorizationManager;
+    private final DangerousCommandConfirmationManager dangerousConfirm;
     private final ProductionConfig config;
 
     // Dedicated executor for command execution (avoid ForkJoinPool contention).
@@ -47,6 +87,7 @@ public class CommandPipeline {
         this.inputValidator = inputValidator;
         this.authorizationManager = authorizationManager;
         this.config = config;
+        this.dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
         this.commandExecutor = Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r, "sleuth-cmd-exec");
             t.setDaemon(true);
@@ -56,11 +97,18 @@ public class CommandPipeline {
 
     public Result execute(CommandRegistry.Entry entry, String[] args, CommandContext context) {
         String commandName = args[0].toLowerCase();
-
-        String validationError = validateAndAuthorize(commandName, args, context);
-        if (validationError != null) {
-            return new Result(false, null, validationError);
+        PrecheckResult precheck = precheck(entry, commandName, args, context);
+        if (!precheck.isOk()) {
+            return new Result(false, null, precheck.getError());
         }
+        return executePrechecked(entry, precheck.getArgs(), context);
+    }
+
+    public Result executePrechecked(CommandRegistry.Entry entry, String[] args, CommandContext context) {
+        if (args == null || args.length == 0) {
+            return new Result(false, null, "Empty command");
+        }
+        String commandName = args[0].toLowerCase();
 
         Command command = entry.getCommand();
         String result;
@@ -145,20 +193,69 @@ public class CommandPipeline {
         }
     }
 
-    public String validateAndAuthorize(String commandName, String[] args, CommandContext context) {
+    public String validateAndAuthorize(CommandRegistry.Entry entry, String commandName, String[] args, CommandContext context) {
+        PrecheckResult pre = precheck(entry, commandName, args, context);
+        return pre.isOk() ? null : pre.getError();
+    }
+
+    public PrecheckResult precheck(CommandRegistry.Entry entry, String commandName, String[] args, CommandContext context) {
+        String[] argsForChecks = stripConfirmArgs(args);
         InputValidator.ValidationResult validation =
-            inputValidator.validateCommand(context.getClientId(), context.getClientInfo(), commandName, args);
+            inputValidator.validateCommand(context.getClientId(), context.getClientInfo(), commandName, argsForChecks);
         if (!validation.isValid()) {
-            return "Security validation failed: " + validation.getMessage();
+            return PrecheckResult.denied("Security validation failed: " + validation.getMessage(), argsForChecks);
         }
 
         if (config.isAuthorizationEnabled() && !"auth".equals(commandName)) {
             AuthorizationManager.AuthorizationResult authz =
-                authorizationManager.authorize(context.getSessionId(), commandName, args);
+                authorizationManager.authorize(context.getSessionId(), commandName, argsForChecks, entry != null ? entry.getMeta() : null);
             if (!authz.isAllowed()) {
-                return authz.getReason();
+                return PrecheckResult.denied(authz.getReason(), argsForChecks);
             }
         }
-        return null;
+
+        DangerousCommandConfirmationManager.ConfirmationResult confirm =
+            dangerousConfirm.confirmIfRequired(
+                context.getSessionId(),
+                context.getClientInfo(),
+                commandName,
+                args,
+                entry != null ? entry.getMeta() : null
+            );
+        if (!confirm.isAllowed()) {
+            return PrecheckResult.denied(confirm.getError(), confirm.getNormalizedArgs() != null ? confirm.getNormalizedArgs() : args);
+        }
+
+        return PrecheckResult.ok(confirm.getNormalizedArgs());
+    }
+
+    private static String[] stripConfirmArgs(String[] args) {
+        if (args == null || args.length == 0) {
+            return new String[0];
+        }
+
+        List<String> out = new ArrayList<>(args.length);
+        for (int i = 0; i < args.length; i++) {
+            String a = args[i];
+            if (a == null) {
+                continue;
+            }
+            String t = a.trim();
+            if (t.isEmpty()) {
+                continue;
+            }
+
+            if ("--confirm".equalsIgnoreCase(t) || "-confirm".equalsIgnoreCase(t)) {
+                if (i + 1 < args.length) {
+                    i++;
+                }
+                continue;
+            }
+            if (t.toLowerCase().startsWith("--confirm=")) {
+                continue;
+            }
+            out.add(t);
+        }
+        return out.toArray(new String[0]);
     }
 }

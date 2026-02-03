@@ -1,6 +1,8 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
+import com.javasleuth.command.CommandContext;
+import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.command.JobManager;
 import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
@@ -11,6 +13,7 @@ import com.javasleuth.enhancement.TraceEnhancer;
 import com.javasleuth.monitor.TraceAggregator;
 import com.javasleuth.monitor.TraceInterceptor;
 import com.javasleuth.data.TraceResult;
+import com.javasleuth.command.session.ClientSession;
 import com.javasleuth.util.SleuthConditionEvaluator;
 import com.javasleuth.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
@@ -217,6 +220,19 @@ public class TraceCommand implements StreamCommand {
             throw e;
         }
 
+        ClientSession clientSession = null;
+        String cleanupKey = null;
+        try {
+            CommandContext ctx = CommandContextHolder.get();
+            clientSession = ctx != null ? ctx.getClientSession() : null;
+            if (clientSession != null) {
+                cleanupKey = "trace:" + traceId;
+                clientSession.registerCleanup(cleanupKey, () -> stopTrace(traceId));
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+
         StringBuilder result = new StringBuilder();
         result.append("Started tracing ").append(targetClassName).append(".").append(methodPattern).append("\n");
         result.append("Trace ID: ").append(traceId).append("\n");
@@ -278,6 +294,9 @@ public class TraceCommand implements StreamCommand {
         } finally {
             // Cleanup
             stopTrace(traceId);
+            if (clientSession != null && cleanupKey != null) {
+                clientSession.removeCleanup(cleanupKey);
+            }
         }
 
         String summary = "Trace completed. Total invocations: " + invocationCount;

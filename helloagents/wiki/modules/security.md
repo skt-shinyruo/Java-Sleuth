@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** InputValidator/AuditLogger/Auth/AuthZ/SecurityValidator
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-02
+- **Last Updated:** 2026-02-03
 
 ## Specifications
 
@@ -62,13 +62,29 @@
 
 ### Requirement: 可选请求签名与防重放（security.mode=hmac）
 **Module:** security
-在不改变默认兼容行为（security.mode=off）的前提下，提供可选的完整性校验与基础防重放能力。
+默认启用 HMAC（`security.mode=hmac`），提供完整性校验与基础防重放能力；如需临时关闭需显式选择（例如 Launcher `--insecure`）。
 
 #### Scenario: SIG 包装命令校验
-前置：security.mode=hmac  
-- 客户端以 `SIG ts=... nonce=... sig=... cmd=...` 发送命令
+前置：`security.mode=hmac`  
+- 客户端以 `SIG v=2 ts=... nonce=... sid=<connId> sig=... cmd=...` 发送命令
 - 服务端验证 HMAC-SHA256 签名
 - 对 nonce 做去重与窗口期校验，拒绝重放
+- 当 `protocol.handshake.enabled=true` 时，服务端会要求先完成 `HELLO/CONFIG` 握手，并强制使用 `v=2`（sid 绑定到握手协商的 connId）
+
+### Requirement: 危险命令二次确认（防误触 + 可审计）
+**Module:** security / command
+对标“手术刀级别能力”的工程实践：危险命令默认需要一次性确认 token，降低误触与脚本误用风险。
+
+#### Scenario: 危险命令需 --confirm <token>
+前置：命令被标记为 dangerous（例如 redefine/retransform/mc/heapdump/reset/stop）  
+- 首次执行：服务端返回挑战 token（不执行实际操作），并提示在 TTL 内追加 `--confirm <token>` 重试
+- 二次执行：校验 token（一次性、过期失效），通过后才执行危险操作
+- challenge/confirm 会写入审计日志，便于追溯
+配置项：
+- `security.dangerous.confirm.enabled`（默认 true）
+- `security.dangerous.confirm.ttl.ms`
+- `security.dangerous.confirm.token.bytes`
+- `security.dangerous.confirm.cache.size`
 
 ### Requirement: 安全默认边界
 **Module:** security

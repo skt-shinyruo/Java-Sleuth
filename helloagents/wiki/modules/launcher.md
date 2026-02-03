@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** JVM 选择、Attach、Socket 交互
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-01
+- **Last Updated:** 2026-02-03
 
 ## Specifications
 
@@ -38,6 +38,7 @@
 - 发送 `HELLO v=1 protocols=...`
 - 读取 `CONFIG ... protocol=<legacy|framed|binary>`
 - 若选择 binary：发送 `UPGRADE BINARY` 并切换到 BinaryFrame 通道
+- 在 `security.mode=hmac` 且握手开启时，Launcher 采用 `SIG v=2`（sid 绑定到握手协商的 connId）
 
 ### Requirement: 分帧协议与流式支持
 **Module:** launcher
@@ -56,6 +57,16 @@
 ### Requirement: 可选请求签名（security.mode=hmac）
 **Module:** launcher
 当启用 hmac 时，Launcher 会将命令封装为 `SIG ... cmd=<base64url>` 发送，以提供完整性校验与基础防重放。
+
+### Requirement: 本机单次排障的显式不安全开关（--insecure）
+**Module:** launcher / security
+允许在“明确知情 + 本机可信”的场景下临时关闭安全模式，但必须交互确认以降低误用风险。
+
+#### Scenario: 使用 --insecure 启动
+前置：用户需要在本机快速排障且确认不会被端口转发/容器网络/代理暴露  
+- 通过 `--insecure` 启动 Launcher
+- Launcher 会提示风险并要求输入 `I UNDERSTAND` 才继续
+- attach 参数会强制下发 `security.mode=off`
 
 ### Requirement: 启动/发布稳定化（JarLocator）
 **Module:** launcher / util

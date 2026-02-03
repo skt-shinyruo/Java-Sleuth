@@ -116,7 +116,16 @@ public class CommandRegistry {
             Map<String, CommandMeta> metas = provider.getCommandMeta();
             for (Map.Entry<String, Command> entry : commands.entrySet()) {
                 String name = entry.getKey().toLowerCase();
-                CommandMeta meta = metas.getOrDefault(name, CommandMeta.viewer(false, false));
+                CommandMeta meta = metas != null ? metas.get(name) : null;
+                if (meta == null) {
+                    if ("builtin".equalsIgnoreCase(provider.getName())) {
+                        meta = CommandMeta.viewer(false, false);
+                    } else {
+                        logPluginRejected("PLUGIN_META_MISSING",
+                            "Rejected command without meta: provider=" + provider.getName() + ", command=" + name);
+                        continue;
+                    }
+                }
                 register(name, entry.getValue(), meta, provider.getName());
             }
         }
@@ -269,7 +278,6 @@ public class CommandRegistry {
         if (existing == null) {
             registry.put(name, new Entry(command, meta, source));
             commandView.put(name, command);
-            AuthorizationManager.getInstance().registerOrUpdatePermission(name, meta);
             if (metricsCollector != null && !"builtin".equalsIgnoreCase(source)) {
                 metricsCollector.recordPluginCommandRegistered();
             }
@@ -292,7 +300,6 @@ public class CommandRegistry {
             if (!incomingIsBuiltin || existingIsBuiltin) {
                 registry.put(name, new Entry(command, meta, source));
                 commandView.put(name, command);
-                AuthorizationManager.getInstance().registerOrUpdatePermission(name, meta);
                 if (metricsCollector != null && !"builtin".equalsIgnoreCase(source)) {
                     metricsCollector.recordPluginCommandRegistered();
                 }
@@ -306,7 +313,6 @@ public class CommandRegistry {
             }
             registry.put(name, new Entry(command, meta, source));
             commandView.put(name, command);
-            AuthorizationManager.getInstance().registerOrUpdatePermission(name, meta);
             if (metricsCollector != null && !"builtin".equalsIgnoreCase(source)) {
                 metricsCollector.recordPluginCommandRegistered();
             }

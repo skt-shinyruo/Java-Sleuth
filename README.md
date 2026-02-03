@@ -98,19 +98,23 @@ quit         - Exit the Java-Sleuth session
 > 推荐使用 Launcher 的 HMAC 自举（attach 时自动下发 `security.hmac.secret`，并按 `security.hmac.session.role` 创建初始会话）以获得“默认安全 + 可用”的体验。
 > 如需启用口令认证，请显式配置 `security.auth.*.password` 或使用环境变量 `SLEUTH_AUTH_*_PASSWORD`。
 
-## 安全与协议说明（2026-01-29 变更）
+## 安全与协议说明（2026-02-03 更新）
 
 为降低“非回环绑定 + 明文控制”带来的风险，本项目对默认安全边界与传输层做了收敛与重构：
 
 - 默认仅允许本机访问：`server.bind.address=127.0.0.1`
+- 默认安全模式：`security.mode=hmac`（推荐通过 Launcher attach 自举 secret）
 - 若配置为非回环地址（例如 `0.0.0.0` 或局域网 IP），且 `security.mode=off`，Agent 会拒绝启动并提示修复方式
 - 若启用 `security.mode=hmac`，必须配置非空的 `security.hmac.secret`，否则也会拒绝启动（避免误以为“已开启安全”但实际无签名校验）
 - HMAC 模式下支持会话自举：按 `security.hmac.session.role` 创建初始会话（免口令），并以请求签名作为“持有 secret”的证明
 - 若仍使用 `security.mode=off` 且关闭匿名 viewer，则需开启口令认证并配置密码，或显式开启匿名 viewer（不推荐在多用户机器上使用）
+- 危险命令默认启用二次确认：首次执行会返回一次性 token，需要追加 `--confirm <token>` 重试后才会真正执行
+- 本机临时排障可使用 Launcher `--insecure`（需交互确认 `I UNDERSTAND`）显式开启 `security.mode=off`
 
 传输层与资源治理相关配置：
 
 - `protocol.handshake.enabled=true`：CLI 与 Agent 会先握手协商协议，再按协商结果进入 legacy/framed/binary
+- `protocol.mode=framed`：默认使用分帧协议，便于长输出与流式命令（watch/trace/monitor/tt/stack）
 - `protocol.text.max.line.bytes`：文本协议单行最大字节数，避免超长输入导致资源耗尽
 - `server.max.connections`：并发连接上限（超限新连接会被拒绝）
 - `performance.command.timeout`：命令执行超时（避免长耗时命令永久占用线程）

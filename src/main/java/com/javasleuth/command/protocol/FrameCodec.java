@@ -107,26 +107,38 @@ public class FrameCodec {
         }
         int max = normalizeMax(maxPayloadSize);
 
-        // Split by bytes, not chars, and avoid breaking UTF-8 sequences.
-        byte[] bytes = payload.replace("\r\n", "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        if (bytes.length == 0) {
+        // Split by newline first to avoid embedding '\n' inside a single payload line.
+        // This keeps the wire format compatible with readLineBytes() framing.
+        String normalized = payload.replace("\r\n", "\n");
+        String[] lines = normalized.split("\n", -1);
+        if (lines.length == 0) {
             Utf8LineCodec.writeLine(out, type.name() + " 0", false);
             Utf8LineCodec.writeLine(out, "", true);
             return;
         }
 
-        int offset = 0;
-        while (offset < bytes.length) {
-            int end = Math.min(bytes.length, offset + max);
-            end = adjustUtf8ChunkEnd(bytes, offset, end);
-            if (end <= offset) {
-                end = Math.min(bytes.length, offset + max);
+        for (String line : lines) {
+            String v = line != null ? line : "";
+            byte[] bytes = v.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            if (bytes.length == 0) {
+                Utf8LineCodec.writeLine(out, type.name() + " 0", false);
+                Utf8LineCodec.writeLine(out, "", true);
+                continue;
             }
 
-            int len = end - offset;
-            Utf8LineCodec.writeLine(out, type.name() + " " + len, false);
-            Utf8LineCodec.writeBytesLine(out, bytes, offset, len, true);
-            offset = end;
+            int offset = 0;
+            while (offset < bytes.length) {
+                int end = Math.min(bytes.length, offset + max);
+                end = adjustUtf8ChunkEnd(bytes, offset, end);
+                if (end <= offset) {
+                    end = Math.min(bytes.length, offset + max);
+                }
+
+                int len = end - offset;
+                Utf8LineCodec.writeLine(out, type.name() + " " + len, false);
+                Utf8LineCodec.writeBytesLine(out, bytes, offset, len, true);
+                offset = end;
+            }
         }
     }
 

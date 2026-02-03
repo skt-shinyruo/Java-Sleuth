@@ -334,7 +334,7 @@ Configure role-based access in the application:
 ```properties
 # Security configuration（以当前代码实现为准）
 # - 当前版本未实现 security.authentication.enabled / security.session.timeout 这类配置项
-# - 默认关闭匿名 viewer：连接后需先执行 auth
+# - 默认关闭匿名 viewer：仅在 off + viewer 会话场景会要求先 auth；推荐使用 hmac 会话自举
 # - 非回环绑定时禁止 security.mode=off（会拒绝启动），建议启用 hmac 并设置强随机 secret
 security.authorization.enabled=true
 security.anonymous.viewer=false
@@ -343,6 +343,12 @@ security.hmac.secret=<a-strong-random-secret>
 security.hmac.timestamp.window.ms=30000
 security.hmac.nonce.cache.size=10000
 security.hmac.session.role=operator
+
+# Dangerous command confirmation (recommended)
+security.dangerous.confirm.enabled=true
+security.dangerous.confirm.ttl.ms=60000
+security.dangerous.confirm.token.bytes=12
+security.dangerous.confirm.cache.size=2000
 
 # Optional password-based authentication (disabled by default)
 security.auth.password.enabled=false
@@ -382,14 +388,13 @@ sudo logrotate -d /etc/logrotate.d/java-sleuth
 #### Built-in Health Endpoints
 
 ```bash
-# Health check
-echo "health" | nc localhost 3658
-
-# Status check
-echo "status" | nc localhost 3658
-
-# Metrics
-echo "metrics" | nc localhost 3658
+# NOTE:
+# 默认启用 `protocol.handshake.enabled=true` + `security.mode=hmac`，不能再用 nc 直接发送明文命令。
+# 推荐做法：使用 SleuthLauncher 连接后执行 health/status/metrics 等诊断命令（本机排障）。
+./sleuth.sh
+# sleuth> health
+# sleuth> status
+# sleuth> metrics
 ```
 
 #### External Monitoring Integration
@@ -568,7 +573,8 @@ echo 'sleuth hard nofile 65536' >> /etc/security/limits.conf
 **Investigation:**
 ```bash
 # Check memory usage
-echo "memory" | nc localhost 3658
+./sleuth.sh
+# sleuth> memory
 
 # Generate heap dump
 jcmd <PID> GC.run_finalization
@@ -594,7 +600,8 @@ jmap -dump:live,format=b,file=heapdump.hprof <PID>
 **Investigation:**
 ```bash
 # Check performance metrics
-echo "metrics" | nc localhost 3658
+./sleuth.sh
+# sleuth> metrics
 
 # Profile application
 jstack <PID> > thread-dump.txt
@@ -643,7 +650,8 @@ sudo ufw status
 ./monitor.sh
 
 # Detailed status
-echo "status" | nc localhost 3658
+./sleuth.sh
+# sleuth> status
 
 # Check JVM metrics
 jstat -gc <PID>
@@ -903,9 +911,10 @@ systemctl status java-sleuth
 
 ```bash
 # Health and status
-echo "health" | nc localhost 3658
-echo "status" | nc localhost 3658
-echo "metrics" | nc localhost 3658
+./sleuth.sh
+# sleuth> health
+# sleuth> status
+# sleuth> metrics
 
 # JVM diagnostics
 jstat -gc <PID>
@@ -941,6 +950,17 @@ security.input.validation=true
 security.audit.logging=true
 security.max.command.length=2000
 security.allowed.commands=*
+security.authorization.enabled=true
+security.anonymous.viewer=false
+security.mode=hmac
+security.hmac.secret=<a-strong-random-secret>
+security.hmac.timestamp.window.ms=30000
+security.hmac.nonce.cache.size=10000
+security.hmac.session.role=operator
+security.dangerous.confirm.enabled=true
+security.dangerous.confirm.ttl.ms=60000
+security.dangerous.confirm.token.bytes=12
+security.dangerous.confirm.cache.size=2000
 
 # Monitoring Configuration
 monitoring.metrics.enabled=true
@@ -954,7 +974,7 @@ logging.audit.enabled=true
 logging.performance.enabled=false
 
 # Protocol Configuration
-protocol.mode=legacy
+protocol.mode=framed
 protocol.streaming.enabled=true
 protocol.frame.max.payload=4096
 protocol.handshake.enabled=true

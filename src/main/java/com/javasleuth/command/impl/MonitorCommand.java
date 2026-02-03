@@ -1,8 +1,11 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.JobManager;
+import com.javasleuth.command.CommandContext;
+import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
+import com.javasleuth.command.session.ClientSession;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.enhancement.ClassEnhancer;
 import com.javasleuth.enhancement.MonitorEnhancer;
@@ -186,6 +189,19 @@ public class MonitorCommand implements StreamCommand {
         MonitorSession session = new MonitorSession(monitorId, classPattern, methodPattern, enhanced);
         activeSessions.put(monitorId, session);
 
+        ClientSession clientSession = null;
+        String cleanupKey = null;
+        try {
+            CommandContext ctx = CommandContextHolder.get();
+            clientSession = ctx != null ? ctx.getClientSession() : null;
+            if (clientSession != null) {
+                cleanupKey = "monitor:" + monitorId;
+                clientSession.registerCleanup(cleanupKey, () -> stopMonitor(monitorId));
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+
         StringBuilder banner = new StringBuilder();
         banner.append("Started monitor ").append(classPattern).append(".").append(methodPattern).append("\n");
         banner.append("Monitor ID: ").append(monitorId).append("\n");
@@ -215,6 +231,9 @@ public class MonitorCommand implements StreamCommand {
             }
         } finally {
             stopMonitor(monitorId);
+            if (clientSession != null && cleanupKey != null) {
+                clientSession.removeCleanup(cleanupKey);
+            }
         }
 
         String summary = "Monitor completed. rounds=" + done;

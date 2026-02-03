@@ -1,5 +1,8 @@
 # Java-Sleuth Operations Runbook
 
+> 注意：默认启用 `protocol.handshake.enabled=true` + `security.mode=hmac`，不再支持用 `nc` 直接发送明文命令。
+> 运维排障建议使用 SleuthLauncher（`./sleuth.sh`）连接后执行 `health/status/metrics/...`。
+
 ## Quick Reference
 
 ### Emergency Contacts
@@ -16,7 +19,8 @@ systemctl status java-sleuth
 systemctl restart java-sleuth
 
 # Health check
-echo "health" | nc localhost 3658
+./sleuth.sh
+# sleuth> health
 
 # View recent logs
 tail -f /opt/java-sleuth/logs/sleuth.out
@@ -25,7 +29,7 @@ tail -f /opt/java-sleuth/logs/sleuth.out
 ### Service Endpoints
 - **Main Service**: `localhost:3658`
 - **JMX Monitoring**: `localhost:9999`
-- **Health Check**: `echo "health" | nc localhost 3658`
+- **Health Check**: 使用 SleuthLauncher 执行 `health`
 
 ---
 
@@ -54,7 +58,8 @@ tail -f /opt/java-sleuth/logs/sleuth.out
    ```bash
    systemctl restart java-sleuth
    sleep 30
-   echo "health" | nc localhost 3658
+   ./sleuth.sh
+   # sleuth> health
    ```
 
 3. **If restart fails, check logs** (5 minutes)
@@ -85,7 +90,8 @@ tail -f /opt/java-sleuth/logs/sleuth.out
 2. **Check JVM metrics**
    ```bash
    jstat -gc $(pgrep -f java-sleuth)
-   echo "metrics" | nc localhost 3658
+   ./sleuth.sh
+   # sleuth> metrics
    ```
 
 3. **Review recent changes**
@@ -184,7 +190,8 @@ ls -la /opt/java-sleuth/config/
 **Investigation**:
 ```bash
 # Check current memory usage
-echo "memory" | nc localhost 3658
+./sleuth.sh
+# sleuth> memory
 
 # Get heap dump
 jcmd $(pgrep -f java-sleuth) GC.run_finalization
@@ -205,7 +212,9 @@ jcmd $(pgrep -f java-sleuth) VM.classloader_stats
 
 2. **Clear caches**
    ```bash
-   echo "cache clear" | nc localhost 3658
+   # Clear active enhancements / background jobs (dangerous, requires confirm token)
+   ./sleuth.sh
+   # sleuth> reset
    ```
 
 3. **Restart service if critical**
@@ -232,10 +241,12 @@ jcmd $(pgrep -f java-sleuth) VM.classloader_stats
 jstack $(pgrep -f java-sleuth) > /tmp/threadump-$(date +%Y%m%d-%H%M).txt
 
 # Check performance metrics
-echo "metrics" | nc localhost 3658
+./sleuth.sh
+# sleuth> metrics
 
 # Monitor real-time performance
-watch -n 5 'echo "status" | nc localhost 3658'
+# NOTE: 默认启用握手 + HMAC，无法用 nc 轮询 status。
+# 建议通过 JMX/监控系统观测，或在 SleuthLauncher 中手动多次执行 `status`。
 
 # Check system load
 top -p $(pgrep -f java-sleuth)
@@ -258,7 +269,9 @@ iostat -x 1 5
 3. **Clear performance bottlenecks**
    ```bash
    # Clear caches if hit ratio is low
-   echo "cache clear" | nc localhost 3658
+   # Clear active enhancements / background jobs (dangerous, requires confirm token)
+   ./sleuth.sh
+   # sleuth> reset
    ```
 
 ### Scenario 4: Connection Issues
@@ -334,7 +347,12 @@ grep "CONNECTION" /opt/java-sleuth/logs/sleuth-audit.log | tail -20
 
 2. **Enable emergency lockdown if needed**
    ```bash
-   echo "security lockdown" | nc localhost 3658
+   # 推荐：通过运行时配置快速收敛允许的命令集合（需 ADMIN 权限）
+   ./sleuth.sh
+   # sleuth> config set security.allowed.commands health,status,metrics
+
+   # 兜底：直接停止 agent（危险命令，需 confirm token）
+   # sleuth> stop
    ```
 
 3. **Review audit trail**
@@ -447,7 +465,8 @@ systemctl is-active java-sleuth
 
 # Quick health check
 echo "Health Check:"
-timeout 10 bash -c 'echo "health" | nc localhost 3658' || echo "FAILED"
+# 默认启用握手 + HMAC，无法用 nc 直接发命令；这里用端口连通性作为快速探测。
+timeout 2 nc -zv localhost 3658 || echo "FAILED"
 
 # Memory usage
 echo "Memory Usage:"
@@ -479,7 +498,9 @@ find /opt/java-sleuth/backup -name "*.bak" -mtime +30 -delete
 
 # Performance report
 echo "=== Performance Report ==="
-echo "metrics" | nc localhost 3658
+# 建议通过 JMX/监控系统获取 metrics；如需命令级诊断，请用 SleuthLauncher：
+# ./sleuth.sh
+# sleuth> metrics
 
 # Security audit
 echo "=== Security Summary ==="
@@ -625,10 +646,11 @@ systemctl enable java-sleuth
 #### Diagnostics
 ```bash
 # Application diagnostics
-echo "health" | nc localhost 3658
-echo "status" | nc localhost 3658
-echo "metrics" | nc localhost 3658
-echo "memory" | nc localhost 3658
+./sleuth.sh
+# sleuth> health
+# sleuth> status
+# sleuth> metrics
+# sleuth> memory
 
 # JVM diagnostics
 jps
@@ -713,7 +735,8 @@ If all else fails and the system needs to be completely rebuilt:
    # Test all functionality
    systemctl start java-sleuth
    ./monitor.sh
-   echo "health" | nc localhost 3658
+   ./sleuth.sh
+   # sleuth> health
    ```
 
 ### Contact Information

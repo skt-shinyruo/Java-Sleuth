@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** Watch/Trace/Monitor/TT 拦截器、事件分发与聚合
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-01
+- **Last Updated:** 2026-02-03
 
 ## Specifications
 
@@ -61,6 +61,8 @@ N/A
 - StackInterceptor 以“方法触发点”采集调用栈并写入队列，使用与 watch/tt 相同的队列容量与满队列策略（drop/evict），避免影响业务线程。
 - Watch/Tt 事件在采集阶段会对参数/返回值/异常做“值快照”（限深/限长），避免强引用复杂对象图造成 GC 压力或 OOM。
 - TraceEnhancer 对“同一类内可被 trace 的方法调用”跳过 SUB_METHOD_CALL 注入，避免出现 SUB + 子节点双份记录导致的语义重复。
+- TraceInterceptor 的 ThreadLocal 状态在 map 为空时会 remove，降低线程池场景的潜在残留与固定开销。
+- 断连资源治理：监控类命令会注册到 ClientSession 的清理动作；当连接写失败/断连时会尽快回收增强与队列，避免“误触后后台持续开销”。
 
 ## Dependencies
 - data

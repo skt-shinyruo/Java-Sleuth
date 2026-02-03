@@ -36,3 +36,5 @@ This file records index of all completed changes for traceability and query.
 - 202602011222_sleuth_hardening_bootstrap (2026-02/202602011222_sleuth_hardening_bootstrap/) - 启动/安全/插件/Trace 综合加固（Hardening & Bootstrap）
 - 202602011706_core_fixes_java8_jad_session_regex_trace (2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - Java 8 兼容 + jad/session/regex/trace/watch/tt 稳定性与安全加固
 - 202602021233_quality_audit_more_issues (2026-02/202602021233_quality_audit_more_issues/) - 配置/打包/危险命令分级与关键边界测试补齐
+## 2026-02
+- [202602022232_security_auth_protocol_trace_refactor](2026-02/202602022232_security_auth_protocol_trace_refactor) - 默认 HMAC 安全姿态 / 授权 SSOT / 危险命令二次确认 / 断连回收

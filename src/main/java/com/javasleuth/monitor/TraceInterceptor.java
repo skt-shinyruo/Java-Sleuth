@@ -209,7 +209,11 @@ public class TraceInterceptor {
     }
 
     private static void removeState(String traceId) {
-        perThreadState.get().remove(traceId);
+        Map<String, PerTraceState> map = perThreadState.get();
+        map.remove(traceId);
+        if (map.isEmpty()) {
+            perThreadState.remove();
+        }
     }
 
     private static void offerWithPolicy(BlockingQueue<TraceResult> queue, TraceResult result) {

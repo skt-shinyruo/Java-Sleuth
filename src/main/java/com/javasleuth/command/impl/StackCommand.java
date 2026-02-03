@@ -2,8 +2,11 @@ package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
 import com.javasleuth.command.JobManager;
+import com.javasleuth.command.CommandContext;
+import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
+import com.javasleuth.command.session.ClientSession;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.data.StackTraceResult;
 import com.javasleuth.enhancement.ClassEnhancer;
@@ -238,6 +241,19 @@ public class StackCommand implements StreamCommand {
             throw e;
         }
 
+        ClientSession clientSession = null;
+        String cleanupKey = null;
+        try {
+            CommandContext ctx = CommandContextHolder.get();
+            clientSession = ctx != null ? ctx.getClientSession() : null;
+            if (clientSession != null) {
+                cleanupKey = "stack:" + stackId;
+                clientSession.registerCleanup(cleanupKey, () -> stopSession(stackId));
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+
         StringBuilder banner = new StringBuilder();
         banner.append("Started stack trace ").append(target.getName()).append(".").append(methodPattern).append("\n");
         banner.append("Stack ID: ").append(stackId).append("\n");
@@ -270,6 +286,9 @@ public class StackCommand implements StreamCommand {
             }
         } finally {
             stopSession(stackId);
+            if (clientSession != null && cleanupKey != null) {
+                clientSession.removeCleanup(cleanupKey);
+            }
         }
 
         String summary = "Stack completed. totalEvents=" + events;

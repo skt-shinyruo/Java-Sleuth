@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 命令解析、校验、执行、输出
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-02
+- **Last Updated:** 2026-02-03
 
 ## Specifications
 
@@ -73,13 +73,23 @@
 - 插件目录加载需显式开启 `plugins.enabled=true`（默认关闭）
 - 支持 `plugins.allowlist.sha256`（可选）：不在 allowlist 或 sha256 不匹配的 jar 会被拒绝并记录审计
 - 冲突策略可配置（prefer-builtin / prefer-plugin / fail）
-- 插件命令动态注册到 AuthorizationManager（避免 unknown command 被拒绝）
- - shutdown 时关闭插件 URLClassLoader，降低 Windows JAR 锁定与句柄泄露风险
+- 插件命令注册必须提供 CommandMeta（否则拒绝注册），避免插件绕过权限策略或产生“行为漂移”
+- shutdown 时关闭插件 URLClassLoader，降低 Windows JAR 锁定与句柄泄露风险
 
 #### Scenario: 分帧与流式输出
 前置：客户端使用 framed 模式  
 - DATA/END/ERR 分帧输出
-- watch/trace/monitor/tt 可流式推送
+- watch/trace/monitor/tt/stack 可流式推送
+
+### Requirement: 危险命令二次确认（防误触）
+**Module:** command / security
+危险命令默认启用一次性 token 二次确认，降低误触/脚本误用风险。
+
+#### Scenario: redefine/heapdump 等需确认 token
+前置：命令 meta 标记 dangerous  
+- 第一次执行：返回 challenge token（不执行）
+- 第二次执行：追加 `--confirm <token>` 且 token 校验通过才执行
+- `--confirm` 参数会在执行前从 args 中剥离，避免影响原命令参数解析
 
 ### Requirement: Arthas-like 命令集（简化版）
 **Module:** command
