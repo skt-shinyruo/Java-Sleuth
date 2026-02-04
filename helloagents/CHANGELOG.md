@@ -8,6 +8,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
 ### Added
 - 插件化命令注册与分帧协议基础设施
+- Docker 演示镜像：内置 `EnhancedTestApplication`，支持 `docker exec -it` 纯交互 attach 与命令演示
 - auth 命令与会话角色绑定
 - HELLO/CONFIG 握手协商与 binary 严格二进制帧协议
 - security.mode=off|hmac（默认 hmac）与 HMAC+nonce 请求签名/基础防重放
@@ -27,6 +28,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - trace 聚合输出：按“单次调用”成树输出（TraceAggregator）
 - `monitor` 重写为周期统计输出（可后台 jobs）
 - `dump`（导出 class 资源字节码）、`getstatic`（静态字段只读查看）、`logger`（JUL list/set）
+- `vmtool`（lite）：实例追踪（track/instances/inspect）+ 受控方法调用（invoke/invoke-static，子命令级二次确认）+ histogram（HotSpot best-effort）
 - `session`/`perm`/`version`/`stop`/`reset` 等管理命令
 - `vmoption`（HotSpotDiagnosticMXBean）支持 list/get/set（set 需 admin）
 - `thread -n <N> -i <ms>`：按 CPU delta 输出 top 线程
@@ -49,6 +51,8 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - classpath ServiceLoader 插件开关：`plugins.serviceloader.enabled`
 - `config save --include-runtime`：可选持久化 runtime overrides
 - `mc --encoding`：源码读取默认 UTF-8 并支持显式编码
+- `docs/tutorial/` 教学文档目录：补充运行时 Attach、Agent 生命周期、Instrumentation/Transformer 与 retransform 生效机制说明
+- 教学文档补充：命令触发插桩与回滚链路（watch/trace/reset/stop）
 
 ### Changed
 - CommandProcessor 改为注册表 + 统一执行管线

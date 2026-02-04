@@ -154,6 +154,10 @@ public class ProductionConfig {
         properties.setProperty("monitoring.trace.sample.rate", "0.1");
         properties.setProperty("monitoring.monitor.sample.rate", "1.0");
 
+        // VmTool (instance tracking) configuration
+        properties.setProperty("vmtool.track.max.entries", "500");
+        properties.setProperty("vmtool.track.class.limit", "50");
+
         // Monitoring configuration
         properties.setProperty("monitoring.metrics.enabled", "true");
         properties.setProperty("monitoring.health.checks", "true");

@@ -68,6 +68,7 @@ public class BuiltinCommandProvider implements CommandProvider {
         commands.put("classloader", new ClassLoaderCommand(instrumentation));
         commands.put("mbean", new MBeanCommand(instrumentation));
         commands.put("logger", new LoggerCommand());
+        commands.put("vmtool", new VmToolCommand(instrumentation, transformer));
 
         commands.put("health", new HealthCommand(metricsCollector));
         commands.put("metrics", new MetricsCommand(metricsCollector));
@@ -132,6 +133,13 @@ public class BuiltinCommandProvider implements CommandProvider {
         meta.put("audit", CommandMeta.admin(false, false).withAudit(false));
         meta.put("quit", CommandMeta.viewer(false, false));
         meta.put("auth", CommandMeta.viewer(false, false));
+
+        meta.put("vmtool", CommandMeta.operator(false, false)
+            .withImpact(CommandMeta.ImpactLevel.MEDIUM)
+            .withRateLimit(10)
+            .withSubcommandRole("invoke", UserRole.ADMIN)
+            .withSubcommandRole("invoke-static", UserRole.ADMIN)
+            .withSubcommandRole("invokestatic", UserRole.ADMIN));
 
         return meta;
     }

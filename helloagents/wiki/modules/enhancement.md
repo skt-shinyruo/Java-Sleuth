@@ -22,6 +22,7 @@
 #### Notes
 - 方法匹配支持 `*` 通配符（例如 `execute*`），并且会对异常路径做 try/catch 以确保退出事件可被记录（watch/trace/monitor/tt）。
 - 新增增强器：MonitorEnhancer、TtEnhancer（TT-lite）、StackEnhancer（方法触发调用栈）。
+- 新增增强器：InstanceTrackEnhancer（vmtool track，构造器返回时上报实例；避免 this(...) 构造链重复上报）。
 - 为避免字节码校验失败（VerifyError），异常处理器依赖的本地变量会先初始化；对有返回值的方法会先保存返回值到本地变量，再调用拦截器后回填到原始 return 指令所需的操作数栈。
 - TraceEnhancer 对“同一类内可被 trace 的方法调用”跳过 SUB_METHOD_CALL 注入，避免 SUB + 子节点双份记录导致的语义重复。
 
@@ -84,3 +85,4 @@ N/A
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 代理类过滤策略调整与 transform 日志等级控制
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - TraceEnhancer 语义去重与稳定性加固
 - 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - loader-aware COMPUTE_FRAMES、失败冷却可重试、增强按 loader 隔离
+- 202602042257_vmtool_instance_diagnostics (history/2026-02/202602042257_vmtool_instance_diagnostics/) - InstanceTrackEnhancer（构造器实例追踪）

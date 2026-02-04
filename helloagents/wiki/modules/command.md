@@ -113,6 +113,7 @@
 - jobs：list/tail/stop 管理后台任务
 - reset：一键清理增强与会话并回滚 retransform
 - stop/session/perm/version/logger/dump/getstatic/vmoption：诊断与管理补齐
+- vmtool（lite）：实例追踪（track/instances/inspect）+ 受控方法调用（invoke/invoke-static，需二次确认）+ histogram（HotSpot best-effort）
 
 #### Scenario: 严格二进制帧输出
 前置：握手选择 binary 模式  
@@ -140,3 +141,4 @@ N/A
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - 缓存隔离、session 脱敏与诊断命令稳定性加固
 - 202602021233_quality_audit_more_issues (history/2026-02/202602021233_quality_audit_more_issues/) - 协议上限/危险命令元信息与关键边界单测补齐
 - 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - 流式命令纳入 Pipeline、legacy END marker、后台 jobs 并发上限与多 ClassLoader 选类回滚一致性
+- 202602042257_vmtool_instance_diagnostics (history/2026-02/202602042257_vmtool_instance_diagnostics/) - vmtool（lite）：实例追踪/检视/受控调用

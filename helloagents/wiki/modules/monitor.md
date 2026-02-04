@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** Watch/Trace/Monitor/TT 拦截器、事件分发与聚合
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-03
+- **Last Updated:** 2026-02-04
 
 ## Specifications
 
@@ -63,6 +63,7 @@ N/A
 - TraceEnhancer 对“同一类内可被 trace 的方法调用”跳过 SUB_METHOD_CALL 注入，避免出现 SUB + 子节点双份记录导致的语义重复。
 - TraceInterceptor 的 ThreadLocal 状态在 map 为空时会 remove，降低线程池场景的潜在残留与固定开销。
 - 断连资源治理：监控类命令会注册到 ClientSession 的清理动作；当连接写失败/断连时会尽快回收增强与队列，避免“误触后后台持续开销”。
+- VmToolInterceptor：用于 vmtool track 的实例追踪（弱引用 + 有界缓存），由构造器插桩触发回调；仅覆盖“启用 track 后新创建”的对象，不遍历全堆实例。
 
 ## Dependencies
 - data
@@ -72,3 +73,4 @@ N/A
 - 202601281207_sleuth_plugin_stream (history/2026-01/202601281207_sleuth_plugin_stream/) - 背压与采样策略
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - Trace 调用级采样一致性与默认采样调整
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - watch/tt 值快照与 trace 语义去重
+- 202602042257_vmtool_instance_diagnostics (history/2026-02/202602042257_vmtool_instance_diagnostics/) - VmToolInterceptor（实例追踪）

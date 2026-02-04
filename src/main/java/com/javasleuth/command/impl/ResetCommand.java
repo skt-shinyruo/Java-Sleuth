@@ -8,6 +8,7 @@ import com.javasleuth.monitor.StackInterceptor;
 import com.javasleuth.monitor.TraceInterceptor;
 import com.javasleuth.monitor.WatchInterceptor;
 import com.javasleuth.monitor.TtInterceptor;
+import com.javasleuth.vmtool.VmToolSessionRegistry;
 import java.lang.instrument.Instrumentation;
 import java.util.HashSet;
 import java.util.Set;
@@ -35,6 +36,13 @@ public class ResetCommand implements Command {
         int stoppedJobs = JobManager.getInstance().stopAll("reset");
 
         Set<String> enhanced = new HashSet<>(transformer.getEnhancedClassNames());
+
+        // Clear vmtool sessions first (remove its enhancers best-effort).
+        try {
+            VmToolSessionRegistry.getInstance().stopAll(instrumentation, transformer, "reset");
+        } catch (Exception ignore) {
+            // best-effort
+        }
 
         // Clear interceptor sessions first to reduce further event publishing.
         WatchInterceptor.unregisterAllWatches();

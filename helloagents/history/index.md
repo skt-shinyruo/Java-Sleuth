@@ -21,6 +21,9 @@ This file records index of all completed changes for traceability and query.
 | 202602031122 | event_driven_upgrade | Refactor | ✅Completed | history/2026-02/202602031122_event_driven_upgrade/ |
 | 202602041158 | unified_exec_pipeline | Refactor | ✅Completed | history/2026-02/202602041158_unified_exec_pipeline/ |
 | 202602041830 | docs_zh | Refactor | ✅Completed | history/2026-02/202602041830_docs_zh/ |
+| 202602042137 | docs_tutorial | Refactor | ✅Completed | history/2026-02/202602042137_docs_tutorial/ |
+| 202602042207 | docs_tutorial_command_flow | Refactor | ✅Completed | history/2026-02/202602042207_docs_tutorial_command_flow/ |
+| 202602042257 | vmtool_instance_diagnostics | Feature | ✅Completed | history/2026-02/202602042257_vmtool_instance_diagnostics/ |
 
 ---
 
@@ -44,3 +47,6 @@ This file records index of all completed changes for traceability and query.
 - 202602031122_event_driven_upgrade (2026-02/202602031122_event_driven_upgrade/) - 并发背压/缓存语义统一/高影响命令治理/HMAC 启动自洽（Netty 双栈延期）
 - 202602041158_unified_exec_pipeline (2026-02/202602041158_unified_exec_pipeline/) - 多 ClassLoader 选类回滚一致性、插桩失败可恢复、流式命令纳入 Pipeline 与 jobs 并发硬上限
 - 202602041830_docs_zh (2026-02/202602041830_docs_zh/) - docs/ 文档中文化（统一为简体中文）
+- 202602042137_docs_tutorial (2026-02/202602042137_docs_tutorial/) - 新增 docs/tutorial 教学目录，整理 Attach/Instrumentation 基础知识
+- 202602042207_docs_tutorial_command_flow (2026-02/202602042207_docs_tutorial_command_flow/) - 教学文档补充：命令触发插桩与回滚链路（watch/trace/reset/stop）
+- 202602042257_vmtool_instance_diagnostics (2026-02/202602042257_vmtool_instance_diagnostics/) - vmtool（lite）：实例追踪/检视/受控调用

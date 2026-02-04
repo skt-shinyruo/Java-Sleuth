@@ -5,7 +5,13 @@
 ## 快速入口
 
 - 使用
+  - `docs/usage/getting-started.md` - 快速上手（构建/启动/attach）
   - `docs/usage/commands.md` - 交互式命令参考
+
+- 教学
+  - `docs/tutorial/index.md` - 教学文档索引（原理与机制）
+  - `docs/tutorial/attach-and-instrumentation.md` - 运行时 Attach 与字节码增强（基础教学）
+  - `docs/tutorial/command-instrumentation-and-rollback.md` - 命令触发插桩与回滚（watch/trace/reset/stop）
 
 - 开发
   - `docs/dev/implementation-summary.md` - 实现概览与架构说明
