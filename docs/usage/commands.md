@@ -1,18 +1,18 @@
-# Java-Sleuth Command Reference
+# Java-Sleuth 命令参考
 
 Java-Sleuth 提供多种诊断与监控命令，且会随版本演进。完整且权威的命令列表请以运行时 `help` 输出为准；本文档侧重常用命令与关键选项。
 
-## Core System Commands
+## 核心系统命令
 
 ### `help`
-Lists all available commands with descriptions.
-- **Usage**: `help`
-- **Description**: Display all available commands and their descriptions
+列出所有可用命令及其说明。
+- **用法**: `help`
+- **说明**: 显示所有可用命令及其描述
 
 ### `quit`
-Exits the Java-Sleuth session.
-- **Usage**: `quit`
-- **Description**: Exit the current session
+退出 Java-Sleuth 会话。
+- **用法**: `quit`
+- **说明**: 退出当前会话
 
 ## 认证与配置命令
 
@@ -21,9 +21,9 @@ Exits the Java-Sleuth session.
 
 ### `auth`
 对当前连接进行认证，并将会话角色升级为对应用户角色。
-- **Usage**: `auth <username> <password>`
-- **Description**: Authenticate current session and upgrade role
-- **Notes**:
+- **用法**: `auth <username> <password>`
+- **说明**: 对当前会话进行认证并升级角色
+- **备注**:
   - 认证成功后不会回显 sessionId（避免泄露 bearer token）
   - 口令认证默认关闭：需设置 `security.auth.password.enabled=true`，并通过配置项或环境变量设置密码：
     - 配置项：`security.auth.admin.password` / `security.auth.operator.password` / `security.auth.viewer.password`
@@ -31,292 +31,293 @@ Exits the Java-Sleuth session.
 
 ### `config`
 管理运行时配置（优先级高于默认配置与外部文件），并对敏感值进行脱敏输出。
-- **Usage**:
-  - `config` / `config status` - Show configuration status
-  - `config get <key>` - Get configuration value（敏感 key 自动脱敏）
-  - `config set <key> <value>` - Set runtime override（敏感 key 自动脱敏）
-  - `config remove <key>` - Remove runtime override
-  - `config clear` - Clear all runtime overrides
-  - `config show` - Show current key settings（含安全/协议关键项）
-- **Notes**:
+- **用法**:
+  - `config` / `config status` - 查看配置状态
+  - `config get <key>` - 获取配置值（敏感 key 自动脱敏）
+  - `config set <key> <value>` - 设置运行时覆盖项（敏感 key 自动脱敏）
+  - `config remove <key>` - 删除指定覆盖项
+  - `config clear` - 清空所有运行时覆盖项
+  - `config show` - 展示当前关键配置（含安全/协议关键项）
+- **备注**:
   - 在默认 RBAC 策略下，`config` 相关操作建议仅由 ADMIN 执行
 
-## Monitoring Commands
+## 监控命令
 
 ### `dashboard`
-Displays a comprehensive JVM dashboard with runtime statistics.
-- **Usage**: `dashboard`
-- **Description**: Real-time overview of JVM health
-- **Information includes**:
-  - JVM details (name, version, vendor, uptime)
-  - Memory usage (heap and non-heap)
-  - Thread information with deadlock detection
-  - Class loading statistics
-  - Garbage collection metrics
+展示 JVM 综合仪表盘，包含运行时统计信息。
+- **用法**: `dashboard`
+- **说明**: JVM 健康状况实时概览
+- **信息包含**:
+  - JVM 详情（名称、版本、供应商、运行时长）
+  - 内存使用（堆与非堆）
+  - 线程信息（含死锁检测）
+  - 类加载统计
+  - 垃圾回收指标
 
 ### `jvm`
-Shows detailed JVM information and runtime details.
-- **Usage**: `jvm [--help]`
-- **Description**: Comprehensive JVM system information
-- **Information includes**:
-  - Virtual machine specifications
-  - Operating system details with CPU and memory metrics
-  - Runtime information (PID, paths, arguments)
-  - Class loading and JIT compilation stats
-  - Complete JVM startup arguments
+展示 JVM 详细信息与运行时细节。
+- **用法**: `jvm [--help]`
+- **说明**: JVM 系统信息总览
+- **信息包含**:
+  - 虚拟机规格信息
+  - 操作系统信息（含 CPU 与内存指标）
+  - 运行时信息（PID、路径、参数）
+  - 类加载与 JIT 编译统计
+  - 完整的 JVM 启动参数
 
 ### `thread`
-Displays thread information and analysis.
-- **Usage**: `thread [options]`
-- **Description**: Thread monitoring and analysis
-- **Features**:
-  - Thread states and stack traces
-  - Deadlock detection
-  - CPU usage per thread
-  - Blocked thread analysis
+展示线程信息并提供分析能力。
+- **用法**: `thread [options]`
+- **说明**: 线程监控与分析
+- **特性**:
+  - 线程状态与调用栈
+  - 死锁检测
+  - 线程 CPU 使用情况
+  - 阻塞线程分析
 
 ### `memory`
-Provides detailed memory information and statistics.
-- **Usage**: `memory [subcommand]`
-- **Subcommands**:
-  - `overview` (default): Comprehensive memory overview
-  - `pools`: Detailed memory pool information
-  - `gc`: Garbage collection statistics
-  - `heap`: Heap memory details only
-  - `nonheap`: Non-heap memory details only
-  - `direct`: Direct memory information
-- **Description**: Complete memory analysis including pools, GC stats, and thresholds
+提供详细的内存信息与统计。
+- **用法**: `memory [subcommand]`
+- **子命令**:
+  - `overview`（默认）：综合内存概览
+  - `pools`：内存池详情
+  - `gc`：垃圾回收统计
+  - `heap`：仅展示堆内存
+  - `nonheap`：仅展示非堆内存
+  - `direct`：直接内存信息
+- **说明**: 覆盖内存池、GC 统计与阈值等信息的完整内存分析
 
-## System Information Commands
+## 系统信息命令
 
 ### `sysprop`
-View and modify system properties.
-- **Usage**:
-  - `sysprop` - List all properties
-  - `sysprop <key>` - Get specific property
-  - `sysprop <pattern>` - Search with wildcards
-  - `sysprop set <key> <value>` - Set property（写入需更高权限，value 暂不支持空格）
-- **Description**: System property management with security validation
-- **Features**:
-  - Wildcard pattern matching
-  - Sensitive value masking
-  - Property modification with validation
+查看与修改系统属性。
+- **用法**:
+  - `sysprop` - 列出所有属性
+  - `sysprop <key>` - 获取指定属性
+  - `sysprop <pattern>` - 使用通配符搜索
+  - `sysprop set <key> <value>` - 写入属性（写入需更高权限，value 暂不支持空格）
+- **说明**: 带安全校验的系统属性管理
+- **特性**:
+  - 通配符模式匹配
+  - 敏感值脱敏
+  - 写入校验与权限约束
 
 ### `sysenv`
-Display system environment variables.
-- **Usage**: `sysenv [pattern]`
-- **Description**: Environment variable inspection
-- **Features**:
-  - Complete environment listing
-  - Pattern-based filtering
-  - Sensitive data protection
+展示系统环境变量。
+- **用法**: `sysenv [pattern]`
+- **说明**: 环境变量查看
+- **特性**:
+  - 完整环境变量列表
+  - 基于模式的过滤
+  - 敏感信息保护
 
 ### `vmoption`
-Display and modify JVM runtime options.
-- **Usage**: `vmoption [name] [value]`
-- **Description**: JVM option management
-- **Features**:
-  - List all VM options
-  - Modify writable options
-  - Option validation
+展示与修改 JVM 运行时选项。
+- **用法**: `vmoption [name] [value]`
+- **说明**: JVM 选项管理
+- **特性**:
+  - 列出所有 VM 选项
+  - 修改可写选项
+  - 选项校验
 
-## Class and Method Analysis Commands
+## 类与方法分析命令
 
-### `sc` (Search Class)
-Search for loaded classes.
-- **Usage**: `sc <class-pattern>`
-- **Description**: Class discovery and inspection
-- **Features**:
-  - Pattern-based class search
-  - Class hierarchy information
-  - Method and field listings
+### `sc`（查找类）
+搜索已加载类。
+- **用法**: `sc <class-pattern>`
+- **说明**: 类发现与检视
+- **特性**:
+  - 基于模式的类搜索
+  - 类层级信息
+  - 方法与字段列表
 
-### `sm` (Search Method)
-Search for methods in loaded classes.
-- **Usage**: `sm <class-pattern> <method-pattern>`
-- **Description**: Method discovery and analysis
-- **Features**:
-  - Method signature search
-  - Parameter and return type info
-  - Access modifier details
+### `sm`（查找方法）
+在已加载类中搜索方法。
+- **用法**: `sm <class-pattern> <method-pattern>`
+- **说明**: 方法发现与分析
+- **特性**:
+  - 方法签名搜索
+  - 参数与返回类型信息
+  - 访问修饰符信息
 
 ### `jad`
-Decompile Java classes to source code.
-- **Usage**: `jad <class-name>`
-- **Description**: Class decompilation using CFR
-- **Features**:
-  - Source code reconstruction
-  - Inner class support
-  - Syntax highlighting
-  - Multiple decompilation options
+反编译 Java 类为源码。
+- **用法**: `jad <class-name>`
+- **说明**: 基于 CFR 的类反编译
+- **特性**:
+  - 源码还原
+  - 内部类支持
+  - 语法高亮
+  - 多种反编译选项
 
-## Instrumentation Commands
+## 插桩命令
 
 ### `watch`
-Monitor method calls in real-time.
-- **Usage**: `watch <class-pattern> <method-pattern>`
-- **Description**: Real-time method monitoring
-- **Features**:
-  - Parameter and return value capture
-  - Exception monitoring
-  - Execution time tracking
-  - Conditional filtering
+实时监控方法调用。
+- **用法**: `watch <class-pattern> <method-pattern>`
+- **说明**: 实时方法监控
+- **特性**:
+  - 参数与返回值捕获
+  - 异常监控
+  - 执行耗时统计
+  - 条件过滤
 
 ### `trace`
-Trace method call paths and timing.
-- **Usage**: `trace <class-pattern> <method-pattern> [options]`
-- **Description**: Method call tracing with timing analysis
-- **Features**:
-  - Call stack visualization
-  - Performance bottleneck identification
-  - Nested call tracking
-- **Common options**:
+跟踪方法调用路径与耗时。
+- **用法**: `trace <class-pattern> <method-pattern> [options]`
+- **说明**: 带耗时分析的方法调用链追踪
+- **特性**:
+  - 调用栈可视化
+  - 性能瓶颈定位
+  - 嵌套调用跟踪
+- **常用选项**:
   - `-d, --depth <num>`: 最大展示深度（默认 10）
   - `-n, --count <num>`: 最大捕获调用次数（默认 20）
   - `-t, --timeout <sec>`: 超时时间（默认 30s）
   - `--sample <rate>`: 覆盖采样率（0.0..1.0），默认由 `monitoring.trace.sample.rate` 控制
 
-### `tt` (Time Tunnel - lite)
+### `tt`（Time Tunnel - lite）
 记录方法调用现场，用于后续查看与生成 replay 模板（lite：不执行回放）。
-- **Usage**: `tt record <class-pattern> <method-pattern> [options]`
-- **Common subcommands**:
+- **用法**: `tt record <class-pattern> <method-pattern> [options]`
+- **常用子命令**:
   - `tt list [n]`
   - `tt detail <recordId>`
   - `tt replay <recordId>`（仅生成模板，不执行）
 
-## Hot Reload Commands
+## 热重载命令
 
 > ⚠️ 提示：`mc` / `redefine` / `retransform` / `heapdump` / `reset` / `stop` 属于危险命令。
 > 默认启用二次确认：首次执行会返回一次性 token，需要在短 TTL 内追加 `--confirm <token>` 重试后才会真正执行。
 
-### `mc` (Memory Compiler)
-Compile Java source code in memory.
-- **Usage**: `mc <source-file-path> [options]`
-- **Description**: Runtime Java compilation
-- **Notes**:
+### `mc`（内存编译器）
+在内存中编译 Java 源码。
+- **用法**: `mc <source-file-path> [options]`
+- **说明**: 运行时 Java 编译
+- **备注**:
   - 第一个参数是 `.java` 源文件路径（会做基础校验与过滤）
-- **Features**:
-  - In-memory compilation
-  - Dynamic class generation
-  - Compilation error reporting
+- **特性**:
+  - 内存编译
+  - 动态类生成
+  - 编译错误报告
 
 ### `redefine`
-Hot-reload modified class files.
-- **Usage**: `redefine <class-name> <class-file-path>`
-- **Description**: Runtime class redefinition
-- **Features**:
-  - Hot code replacement
-  - Method body updates
-  - Development productivity enhancement
+热替换修改后的 class 文件。
+- **用法**: `redefine <class-name> <class-file-path>`
+- **说明**: 运行时类重定义
+- **特性**:
+  - 热代码替换
+  - 方法体更新
+  - 提升开发调试效率
 
 ### `retransform`
-Re-transform classes using current transformers.
-- **Usage**: `retransform <class-pattern>`
-- **Description**: Class retransformation
-- **Features**:
-  - Apply new transformations
-  - Update instrumentation
-  - Refresh monitoring
+使用当前 transformers 对类进行重新转换。
+- **用法**: `retransform <class-pattern>`
+- **说明**: 类 retransformation
+- **特性**:
+  - 应用新的转换逻辑
+  - 更新插桩
+  - 刷新监控能力
 
 ### `reset`
-Reset all active enhancements/sessions and best-effort retransform back to original bytecode.
-- **Usage**: `reset`
-- **Notes**:
+重置所有活动增强/会话，并尽力将字节码恢复到原始状态（best-effort retransform）。
+- **用法**: `reset`
+- **备注**:
   - 危险命令：默认需要二次确认 token（`--confirm <token>`）
   - 会停止后台 jobs，并清空 watch/trace/monitor/tt/stack 等拦截器会话
 
 ### `stop`
-Stop Java-Sleuth agent inside target JVM (shutdown command server and transformer).
-- **Usage**: `stop`
-- **Notes**:
+停止目标 JVM 内的 Java-Sleuth agent（关闭命令服务与 transformer）。
+- **用法**: `stop`
+- **备注**:
   - 危险命令：默认需要二次确认 token（`--confirm <token>`）
 
-## Advanced Analysis Commands
+## 高级分析命令
 
 ### `classloader`
-Display classloader hierarchy and information.
-- **Usage**: `classloader [options]`
-- **Description**: Classloader analysis and troubleshooting
-- **Features**:
-  - Hierarchy visualization
-  - Class loading delegation
-  - Resource location
-  - Classloader leaks detection
+展示 ClassLoader 层级与相关信息。
+- **用法**: `classloader [options]`
+- **说明**: ClassLoader 分析与排障
+- **特性**:
+  - 层级可视化
+  - 类加载委派链路
+  - 资源定位
+  - ClassLoader 泄漏检测
 
 ### `mbean`
-Browse and interact with MBeans.
-- **Usage**: `mbean [pattern]`
-- **Description**: JMX MBean exploration
-- **Features**:
-  - MBean discovery
-  - Attribute inspection
-  - Operation invocation
-  - Management interface access
+浏览并操作 MBeans。
+- **用法**: `mbean [pattern]`
+- **说明**: JMX MBean 探索
+- **特性**:
+  - MBean 发现
+  - 属性查看
+  - Operation 调用
+  - 管理接口访问
 
 ### `heapdump`
-Create heap dumps for memory analysis.
-- **Usage**: `heapdump [options] [filename]`
-- **Options**:
-  - `--live`, `-l`: Live objects only (default)
-  - `--all`, `-a`: All objects including unreachable
-  - `--file=<name>`: Specify output filename
-- **Description**: Memory dump generation
-- **Features**:
-  - Automatic filename generation
-  - Size and timing information
-  - Analysis tool recommendations
-  - Security validation for file paths
+创建堆转储文件用于内存分析。
+- **用法**: `heapdump [options] [filename]`
+- **选项**:
+  - `--live`, `-l`: 仅导出存活对象（默认）
+  - `--all`, `-a`: 导出全部对象（包含不可达对象）
+  - `--file=<name>`: 指定输出文件名
+- **说明**: 内存转储生成
+- **特性**:
+  - 自动生成文件名
+  - 输出大小与耗时信息
+  - 分析工具建议
+  - 文件路径安全校验
 
-## Performance Features
+## 性能特性
 
-All commands are optimized for production use with:
-- **Caching**: Expensive operations are cached for 5 seconds
-- **Async Execution**: Long-running operations use background threads
-- **Performance Monitoring**: Slow operations (>1s) are automatically logged
-- **Resource Management**: Proper cleanup and resource pooling
+所有命令都针对生产使用场景做了优化：
+- **缓存**：高开销操作会缓存 5 秒
+- **异步执行**：长耗时操作使用后台线程
+- **性能监控**：慢操作（> 1s）会自动记录日志
+- **资源管理**：及时清理与资源池化复用
 
-## Security Features
+## 安全特性
 
-Java-Sleuth includes comprehensive security measures:
-- **Input Validation**: All user inputs are sanitized and validated
-- **Path Security**: File operations validate paths and prevent directory traversal
-- **Sensitive Data Masking**: Passwords, keys, and tokens are automatically masked
-- **Permission Checking**: Operations respect JVM security manager policies
-- **Class Access Control**: Blocks access to security-sensitive classes
+Java-Sleuth 内置较完善的安全措施：
+- **输入校验**：对用户输入进行清洗与校验
+- **路径安全**：文件操作校验路径并防止目录穿越
+- **敏感信息脱敏**：密码、key、token 等会自动脱敏
+- **权限检查**：相关操作遵循 JVM 安全策略约束
+- **类访问控制**：阻止访问安全敏感类
 
-## Usage Examples
+## 使用示例
 
 ```bash
-# Monitor application health
+# 监控应用健康
 dashboard
 
-# Check memory usage details
+# 查看内存池详情
 memory pools
 
-# Find all Spring classes
+# 查找所有 Spring 相关类
 sc *Spring*
 
-# Watch method calls
+# 监控方法调用
 watch com.example.UserService login
 
-# Create a heap dump
+# 生成堆转储文件
 heapdump --live myapp-heap.hprof
 
-# Search system properties
+# 搜索系统属性
 sysprop java.*
 
-# Decompile a class
+# 反编译某个类
 jad com.example.UserService
 ```
 
-## Command Categories Summary
+## 命令分类速览
 
-- Monitoring/Status: `dashboard`, `health`, `metrics`, `status`, `jvm`, `thread`, `memory`, `mbean`
-- System Info: `sysprop`, `sysenv`, `vmoption`
-- Class Analysis: `sc`, `sm`, `jad`, `classloader`
-- Instrumentation: `watch`, `trace`, `monitor`, `stack`, `tt`, `profiler`
-- Hot Reload: `mc`, `redefine`, `retransform`, `reset`
-- Data/Debug: `dump`, `getstatic`, `heapdump`, `logger`
-- Session/Security: `auth`, `session`, `perm`, `audit`, `config`
-- Job Control: `jobs`
-- Core: `help`, `quit`, `stop`
+- 监控/状态：`dashboard`, `health`, `metrics`, `status`, `jvm`, `thread`, `memory`, `mbean`
+- 系统信息：`sysprop`, `sysenv`, `vmoption`
+- 类分析：`sc`, `sm`, `jad`, `classloader`
+- 插桩：`watch`, `trace`, `monitor`, `stack`, `tt`, `profiler`
+- 热重载：`mc`, `redefine`, `retransform`, `reset`
+- 数据/调试：`dump`, `getstatic`, `heapdump`, `logger`
+- 会话/安全：`auth`, `session`, `perm`, `audit`, `config`
+- 任务控制：`jobs`
+- 核心：`help`, `quit`, `stop`
+

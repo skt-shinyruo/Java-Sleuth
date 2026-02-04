@@ -1,151 +1,155 @@
-# Java-Sleuth Production Deployment Guide
+# Java-Sleuth 生产部署指南
 
-## Table of Contents
+## 目录
 
-1. [Overview](#overview)
-2. [System Requirements](#system-requirements)
-3. [Pre-Deployment Checklist](#pre-deployment-checklist)
-4. [Installation Methods](#installation-methods)
-5. [Configuration](#configuration)
-6. [Security Setup](#security-setup)
-7. [Monitoring and Observability](#monitoring-and-observability)
-8. [Performance Tuning](#performance-tuning)
-9. [Troubleshooting](#troubleshooting)
-10. [Maintenance Procedures](#maintenance-procedures)
-11. [Disaster Recovery](#disaster-recovery)
+1. [概览](#overview)
+2. [系统要求](#system-requirements)
+3. [部署前检查清单](#pre-deployment-checklist)
+4. [安装方式](#installation-methods)
+5. [配置](#configuration)
+6. [安全配置](#security-setup)
+7. [监控与可观测性](#monitoring-and-observability)
+8. [性能调优](#performance-tuning)
+9. [故障排查](#troubleshooting)
+10. [维护流程](#maintenance-procedures)
+11. [容灾恢复](#disaster-recovery)
 
-## Overview
+<a id="overview"></a>
+## 概览
 
-Java-Sleuth is a production-ready Java diagnostic and monitoring agent that provides real-time insights into JVM applications. This guide covers the complete deployment process for production environments.
+Java-Sleuth 是一个面向生产环境的 Java 诊断与监控 Agent，可为 JVM 应用提供实时洞察。本指南覆盖生产环境的完整部署流程。
 
-### Key Features
-- ✅ Real-time JVM monitoring and diagnostics
-- ✅ Advanced performance optimization with multi-tier caching
-- ✅ Comprehensive security with authentication and authorization
-- ✅ Production-grade monitoring with JMX and metrics collection
-- ✅ Graceful shutdown and restart mechanisms
-- ✅ Audit logging and security event tracking
+### 核心特性
+- ✅ 实时 JVM 监控与诊断
+- ✅ 多级缓存带来的高级性能优化
+- ✅ 认证与授权能力支撑的完整安全防护
+- ✅ 通过 JMX 与指标采集实现的生产级监控
+- ✅ 优雅的停止与重启机制
+- ✅ 审计日志与安全事件追踪
 
-## System Requirements
+<a id="system-requirements"></a>
+## 系统要求
 
-### Hardware Requirements
+### 硬件要求
 
-| Component | Minimum | Recommended | High-Load |
+| 组件 | 最低 | 推荐 | 高负载 |
 |-----------|---------|-------------|-----------|
-| CPU | 2 cores | 4 cores | 8+ cores |
+| CPU | 2 核 | 4 核 | 8+ 核 |
 | RAM | 4 GB | 8 GB | 16+ GB |
-| Disk | 10 GB | 50 GB | 100+ GB |
-| Network | 100 Mbps | 1 Gbps | 10 Gbps |
+| 磁盘 | 10 GB | 50 GB | 100+ GB |
+| 网络 | 100 Mbps | 1 Gbps | 10 Gbps |
 
-### Software Requirements
+### 软件要求
 
-- **Java**: OpenJDK 8+ or Oracle JDK 8+
-- **Operating System**: Linux (Ubuntu 18.04+, RHEL 7+, CentOS 7+)
-- **Network**: Port 3658 (default) and 9999 (JMX) available
-- **Optional**: systemd for service management
+- **Java**：OpenJDK 8+ 或 Oracle JDK 8+
+- **操作系统**：Linux（Ubuntu 18.04+、RHEL 7+、CentOS 7+）
+- **网络**：端口 3658（默认）与 9999（JMX）可用
+- **可选**：使用 systemd 进行服务管理
 
-### JVM Requirements
+### JVM 要求
 
 ```bash
-# Minimum heap for agent
+# Agent 最低堆配置
 -Xms512m -Xmx2g
 
-# Recommended for production
+# 生产环境推荐
 -Xms2g -Xmx4g
 
-# High-load environments
+# 高负载环境
 -Xms4g -Xmx8g
 ```
 
-## Pre-Deployment Checklist
+<a id="pre-deployment-checklist"></a>
+## 部署前检查清单
 
-### Infrastructure Preparation
+### 基础设施准备
 
-- [ ] Verify hardware meets minimum requirements
-- [ ] Ensure Java is installed and configured
-- [ ] Check network connectivity and firewall rules
-- [ ] Validate disk space and I/O performance
-- [ ] Configure system limits (ulimits)
-- [ ] Set up log rotation
-- [ ] Configure NTP for time synchronization
+- [ ] 确认硬件满足最低要求
+- [ ] 确保 Java 已安装且配置正确
+- [ ] 检查网络连通性与防火墙规则
+- [ ] 校验磁盘空间与 I/O 性能
+- [ ] 配置系统限制（ulimits）
+- [ ] 配置日志滚动（log rotation）
+- [ ] 配置 NTP 进行时间同步
 
-### Security Preparation
+### 安全准备
 
-- [ ] Create dedicated user account for Java-Sleuth
-- [ ] Configure SSL certificates (if external access required)
-- [ ] Set up firewall rules
-- [ ] Review security policies and compliance requirements
-- [ ] Configure audit logging destinations
-- [ ] Set up intrusion detection (if required)
+- [ ] 为 Java-Sleuth 创建专用用户账号
+- [ ] 配置 SSL 证书（如需外部访问）
+- [ ] 配置防火墙规则
+- [ ] 评审安全策略与合规要求
+- [ ] 配置审计日志落地位置
+- [ ] 配置入侵检测（如需要）
 
-### Monitoring Preparation
+### 监控准备
 
-- [ ] Set up monitoring infrastructure (Prometheus, Grafana, etc.)
-- [ ] Configure log aggregation (ELK stack, Splunk, etc.)
-- [ ] Set up alerting rules and notification channels
-- [ ] Prepare runbooks for common scenarios
-- [ ] Configure backup and retention policies
+- [ ] 准备监控基础设施（Prometheus、Grafana 等）
+- [ ] 配置日志聚合（ELK、Splunk 等）
+- [ ] 配置告警规则与通知渠道
+- [ ] 准备常见场景的运维 Runbook
+- [ ] 配置备份与保留策略
 
-## Installation Methods
+<a id="installation-methods"></a>
+## 安装方式
 
-### Method 1: Automated Deployment Script (Recommended)
+### 方式 1：自动化部署脚本（推荐）
 
 ```bash
-# Download and run the production deployment script
+# 下载并执行生产部署脚本
 ./scripts/deploy/production-deploy.sh
 
-# Follow the interactive prompts
-# The script will:
-# - Build the project
-# - Create directory structure
-# - Deploy files and configurations
-# - Set up systemd service
-# - Configure monitoring
+# 按提示交互执行
+# 脚本将完成：
+# - 构建项目
+# - 创建目录结构
+# - 部署文件与配置
+# - 配置 systemd 服务
+# - 配置监控
 ```
 
-### Method 2: Manual Installation
+### 方式 2：手工安装
 
-#### Step 1: Build the Project
+#### 步骤 1：构建项目
 
 ```bash
-# Clone repository
+# 克隆仓库
 git clone https://github.com/your-org/java-sleuth.git
 cd java-sleuth
 
-# Build with Maven
+# 使用 Maven 构建
 mvn clean package -DskipTests
 
-# Verify build
+# 校验构建产物
 ls -la target/java-sleuth-*-jar-with-dependencies.jar
 ```
 
-#### Step 2: Create Directory Structure
+#### 步骤 2：创建目录结构
 
 ```bash
-# Create installation directories
+# 创建安装目录
 sudo mkdir -p /opt/java-sleuth/{bin,lib,config,logs,backup}
 
-# Set permissions
+# 设置权限
 sudo chown -R sleuth:sleuth /opt/java-sleuth
 sudo chmod 755 /opt/java-sleuth
 ```
 
-#### Step 3: Deploy Files
+#### 步骤 3：部署文件
 
 ```bash
-# Copy JAR file
+# 复制 JAR 文件
 cp target/java-sleuth-*-jar-with-dependencies.jar /opt/java-sleuth/lib/
 
-# Copy configuration files
+# 复制配置文件
 cp config-templates/production-sleuth.properties /opt/java-sleuth/config/sleuth.properties
 cp config-templates/jvm-production.conf /opt/java-sleuth/config/jvm.conf
 
-# Copy startup scripts
+# 复制启动脚本
 cp sleuth.sh /opt/java-sleuth/bin/
 chmod +x /opt/java-sleuth/bin/sleuth.sh
 ```
 
-### Method 3: Container Deployment
+### 方式 3：容器化部署
 
 #### Docker
 
@@ -192,21 +196,22 @@ spec:
             cpu: "2"
 ```
 
-## Configuration
+<a id="configuration"></a>
+## 配置
 
-### Core Configuration Files
+### 核心配置文件
 
-#### 1. Application Configuration (`sleuth.properties`)
+#### 1. 应用配置（`sleuth.properties`）
 
 ```properties
-# Production configuration template
+# 生产配置模板
 server.bind.address=127.0.0.1
 server.port=3658
 server.max.connections=50
 server.executor.queue.capacity=50
 server.connection.timeout=60000
 
-# Performance settings
+# 性能配置
 performance.cache.ttl=10000
 performance.thread.pool.core=8
 performance.thread.pool.max=32
@@ -214,40 +219,40 @@ performance.command.executor.core=8
 performance.command.executor.max=32
 performance.command.executor.queue.capacity=200
 
-# Security settings
+# 安全配置
 security.input.validation=true
 security.audit.logging=true
 security.allowed.commands=*
 
-# Monitoring settings
+# 监控配置
 monitoring.metrics.enabled=true
 monitoring.health.checks=true
 monitoring.jmx.enabled=true
 ```
 
-#### 2. JVM Configuration (`jvm.conf`)
+#### 2. JVM 配置（`jvm.conf`）
 
 ```bash
-# Memory settings
+# 内存设置
 -Xms2g
 -Xmx4g
 -XX:MetaspaceSize=256m
 -XX:MaxMetaspaceSize=512m
 
-# GC settings
+# GC 设置
 -XX:+UseG1GC
 -XX:MaxGCPauseMillis=200
 -XX:G1HeapRegionSize=16m
 
-# Monitoring
+# 监控
 -Dcom.sun.management.jmxremote
 -Dcom.sun.management.jmxremote.port=9999
 ```
 
-#### 3. Logging Configuration (`logging.properties`)
+#### 3. 日志配置（`logging.properties`）
 
 ```properties
-# Root logger configuration
+# Root logger 配置
 .level=INFO
 handlers=java.util.logging.FileHandler, java.util.logging.ConsoleHandler
 
@@ -257,30 +262,30 @@ java.util.logging.FileHandler.limit=10485760
 java.util.logging.FileHandler.count=10
 ```
 
-### Environment-Specific Configuration
+### 环境差异化配置
 
-#### Development Environment
+#### 开发环境
 
 ```properties
-# Development overrides
+# 开发环境覆盖项
 logging.level=DEBUG
 security.input.validation=false
 monitoring.metrics.enabled=true
 ```
 
-#### Staging Environment
+#### 预发布（Staging）环境
 
 ```properties
-# Staging configuration
+# 预发布环境配置
 server.max.connections=25
 performance.cache.ttl=5000
 security.input.validation=true
 ```
 
-#### Production Environment
+#### 生产环境
 
 ```properties
-# Production configuration
+# 生产环境配置
 server.max.connections=50
 performance.cache.ttl=10000
 security.input.validation=true
@@ -288,116 +293,118 @@ security.audit.logging=true
 monitoring.metrics.enabled=true
 ```
 
-## Security Setup
+<a id="security-setup"></a>
+## 安全配置
 
-### Network Security
+### 网络安全
 
-#### Firewall Configuration
+#### 防火墙配置
 
 ```bash
-# Allow Java-Sleuth port
+# 放通 Java-Sleuth 端口
 sudo ufw allow 3658/tcp
 
-# Allow JMX port (internal networks only)
+# 放通 JMX 端口（仅限内网）
 sudo ufw allow from 10.0.0.0/8 to any port 9999
 
-# Enable firewall
+# 启用防火墙
 sudo ufw enable
 ```
 
-#### SSL/TLS Configuration
+#### SSL/TLS 配置
 
-For external access, configure SSL termination:
+如需外部访问，建议配置 SSL 终止（SSL termination）：
 
 ```bash
-# Generate self-signed certificate (development)
+# 生成自签证书（仅开发环境）
 openssl req -x509 -newkey rsa:4096 -keyout sleuth-key.pem -out sleuth-cert.pem -days 365
 
-# Use proper CA-signed certificates in production
-# Configure reverse proxy (nginx/Apache) for SSL termination
+# 生产环境请使用 CA 签发证书
+# 建议通过反向代理（nginx/Apache）做 SSL 终止
 ```
 
-### Authentication and Authorization
+### 认证与授权
 
-#### User Management
+#### 用户管理
 
 ```bash
-# Create dedicated user
+# 创建专用用户
 sudo useradd -r -s /bin/false sleuth
 sudo usermod -aG sleuth sleuth
 
-# Set file permissions
+# 设置文件权限
 sudo chown -R sleuth:sleuth /opt/java-sleuth
 sudo chmod 750 /opt/java-sleuth/config
 sudo chmod 640 /opt/java-sleuth/config/*.properties
 ```
 
-#### Access Control
+#### 访问控制
 
-Configure role-based access in the application:
+在应用中配置基于角色的访问控制：
 
-	```properties
-	# Security configuration（以当前代码实现为准）
-	# - 当前版本未实现 security.authentication.enabled / security.session.timeout 这类配置项
-	# - 默认关闭匿名 viewer：仅在 off + viewer 会话场景会要求先 auth；推荐使用 hmac 会话自举
-	# - 非回环绑定时禁止 security.mode=off（会拒绝启动），建议启用 hmac 并设置强随机 secret
-	security.authorization.enabled=true
-	security.anonymous.viewer=false
-	security.mode=hmac
-	security.hmac.secret=<a-strong-random-secret>
-	# Loopback 自洽启动（生产建议明确配置 secret，并关闭打印）
-	security.hmac.secret.autogen.on.loopback=false
-	security.hmac.secret.autogen.print=false
-	security.hmac.timestamp.window.ms=30000
-	security.hmac.nonce.cache.size=10000
-	security.hmac.session.role=operator
+```properties
+# 安全配置（以当前代码实现为准）
+# - 当前版本未实现 security.authentication.enabled / security.session.timeout 这类配置项
+# - 默认关闭匿名 viewer：仅在 off + viewer 会话场景会要求先 auth；推荐使用 hmac 会话自举
+# - 非回环绑定时禁止 security.mode=off（会拒绝启动），建议启用 hmac 并设置强随机 secret
+security.authorization.enabled=true
+security.anonymous.viewer=false
+security.mode=hmac
+security.hmac.secret=<a-strong-random-secret>
+# Loopback 自洽启动（生产建议明确配置 secret，并关闭打印）
+security.hmac.secret.autogen.on.loopback=false
+security.hmac.secret.autogen.print=false
+security.hmac.timestamp.window.ms=30000
+security.hmac.nonce.cache.size=10000
+security.hmac.session.role=operator
 
-# Dangerous command confirmation (recommended)
+# 危险命令二次确认（推荐）
 security.dangerous.confirm.enabled=true
-	security.dangerous.confirm.ttl.ms=60000
-	security.dangerous.confirm.token.bytes=12
-	security.dangerous.confirm.cache.size=2000
+security.dangerous.confirm.ttl.ms=60000
+security.dangerous.confirm.token.bytes=12
+security.dangerous.confirm.cache.size=2000
 
-	# High impact commands governance (recommended)
-	security.impact.high.confirm.enabled=true
-	security.impact.high.concurrent.limit=1
+# 高影响命令治理（推荐）
+security.impact.high.confirm.enabled=true
+security.impact.high.concurrent.limit=1
 
-# Optional password-based authentication (disabled by default)
+# 可选：口令认证（默认关闭）
 security.auth.password.enabled=false
 # security.auth.admin.password=<set-a-strong-password>
 # security.auth.operator.password=<set-a-strong-password>
 # security.auth.viewer.password=<set-a-strong-password>
 ```
 
-### Audit Logging
+### 审计日志
 
-#### Audit Configuration
+#### 审计配置
 
 ```properties
-# Enable comprehensive audit logging
+# 启用完整审计日志
 security.audit.logging=true
 logging.audit.enabled=true
 logging.audit.console.enabled=false
-# Default file paths: if left empty, Java-Sleuth uses java.io.tmpdir with pid suffix.
+# 默认文件路径：若留空，Java-Sleuth 将使用 java.io.tmpdir 并带 pid 后缀。
 logging.audit.file.path=/opt/java-sleuth/logs/sleuth-audit.log
 logging.security.file.path=/opt/java-sleuth/logs/sleuth-security.log
 ```
 
-#### Log Monitoring
+#### 日志监控
 
 ```bash
-# Monitor security events
+# 监控安全事件
 tail -f /opt/java-sleuth/logs/sleuth-security.log
 
-# Set up log rotation
+# 配置日志滚动
 sudo logrotate -d /etc/logrotate.d/java-sleuth
 ```
 
-## Monitoring and Observability
+<a id="monitoring-and-observability"></a>
+## 监控与可观测性
 
-### Health Checks
+### 健康检查
 
-#### Built-in Health Endpoints
+#### 内置健康检查
 
 ```bash
 # NOTE:
@@ -409,12 +416,12 @@ sudo logrotate -d /etc/logrotate.d/java-sleuth
 # sleuth> metrics
 ```
 
-#### External Monitoring Integration
+#### 外部监控集成
 
-##### Prometheus Metrics
+##### Prometheus 指标
 
 ```yaml
-# prometheus.yml
+# prometheus.yml（示例）
 scrape_configs:
   - job_name: 'java-sleuth'
     static_configs:
@@ -423,15 +430,15 @@ scrape_configs:
     scrape_interval: 30s
 ```
 
-##### Grafana Dashboard
+##### Grafana 看板
 
 ```json
 {
   "dashboard": {
-    "title": "Java-Sleuth Monitoring",
+    "title": "Java-Sleuth 监控",
     "panels": [
       {
-        "title": "Memory Usage",
+        "title": "内存使用率",
         "type": "graph",
         "targets": [
           {
@@ -444,12 +451,12 @@ scrape_configs:
 }
 ```
 
-### Log Management
+### 日志管理
 
-#### Centralized Logging
+#### 集中式日志
 
 ```yaml
-# ELK Stack configuration
+# ELK Stack 配置（示例）
 filebeat.inputs:
 - type: log
   paths:
@@ -459,21 +466,21 @@ filebeat.inputs:
     environment: production
 ```
 
-#### Log Analysis
+#### 日志分析
 
 ```bash
-# Common log analysis commands
+# 常用日志分析命令
 grep "ERROR" /opt/java-sleuth/logs/sleuth-audit.log
 grep "SECURITY" /opt/java-sleuth/logs/sleuth-security.log
 awk '/WARNING/ {print $1, $2, $NF}' /opt/java-sleuth/logs/sleuth.log
 ```
 
-### Alerting Rules
+### 告警规则
 
-#### Memory Alerts
+#### 内存告警
 
 ```yaml
-# Prometheus alerting rules
+# Prometheus 告警规则（示例）
 groups:
 - name: java-sleuth
   rules:
@@ -483,10 +490,10 @@ groups:
     labels:
       severity: warning
     annotations:
-      summary: "Java-Sleuth high memory usage"
+      summary: "Java-Sleuth 内存使用率过高"
 ```
 
-#### Performance Alerts
+#### 性能告警
 
 ```yaml
 - alert: HighResponseTime
@@ -495,76 +502,77 @@ groups:
   labels:
     severity: critical
   annotations:
-    summary: "Java-Sleuth high response time"
+    summary: "Java-Sleuth 响应时间过高"
 ```
 
-## Performance Tuning
+<a id="performance-tuning"></a>
+## 性能调优
 
-### JVM Tuning
+### JVM 调优
 
-#### Memory Optimization
+#### 内存优化
 
 ```bash
-# For high-throughput applications
+# 适用于高吞吐场景
 -Xms4g -Xmx8g
 -XX:+UseG1GC
 -XX:MaxGCPauseMillis=200
 
-# For low-latency applications
+# 适用于低延迟场景
 -Xms8g -Xmx8g
--XX:+UseZGC  # Java 11+
+-XX:+UseZGC  # 需要 Java 11+
 -XX:+UseLargePages
 ```
 
-#### GC Tuning
+#### GC 调优
 
 ```bash
-# G1GC tuning
+# G1GC 调优
 -XX:G1HeapRegionSize=16m
 -XX:G1NewSizePercent=30
 -XX:G1MaxNewSizePercent=40
 -XX:+G1UseAdaptiveIHOP
 
-# Parallel GC tuning
+# Parallel GC 调优
 -XX:+UseParallelGC
 -XX:ParallelGCThreads=8
 -XX:MaxGCPauseMillis=200
 ```
 
-### Application Tuning
+### 应用层调优
 
-#### Cache Optimization
+#### 缓存优化
 
 ```properties
-# Adjust cache settings based on workload
-performance.cache.ttl=5000    # Fast-changing data
-performance.cache.ttl=30000   # Relatively static data
-performance.cache.ttl=300000  # Static data
+# 根据负载调整缓存配置
+performance.cache.ttl=5000    # 变化较快的数据
+performance.cache.ttl=30000   # 相对稳定的数据
+performance.cache.ttl=300000  # 静态数据
 ```
 
-#### Thread Pool Tuning
+#### 线程池调优
 
 ```properties
-# Adjust based on CPU cores and workload
-# Client connection handling threads (accept + per-connection IO)
-performance.thread.pool.core=8   # Number of CPU cores
-performance.thread.pool.max=32   # 4x CPU cores
+# 根据 CPU 核数与负载调整
+# 客户端连接处理线程（accept + per-connection IO）
+performance.thread.pool.core=8   # CPU 核数
+performance.thread.pool.max=32   # 4x CPU 核数
 
-# Command execution threads (non-stream commands)
+# 命令执行线程（非 stream 命令）
 performance.command.executor.core=8
 performance.command.executor.max=32
 performance.command.executor.queue.capacity=200
 
-# Backpressure for connection acceptance
+# 连接接入背压
 server.executor.queue.capacity=50
 ```
 
-### Network Tuning
+### 网络调优
 
-#### TCP Settings
+#### TCP 设置
 
 ```bash
-# Optimize TCP settings for high-throughput
+# 针对高吞吐场景的 TCP 参数优化
 echo 'net.core.rmem_max = 16777216' >> /etc/sysctl.conf
 echo 'net.core.wmem_max = 16777216' >> /etc/sysctl.conf
 echo 'net.ipv4.tcp_rmem = 4096 65536 16777216' >> /etc/sysctl.conf
@@ -572,290 +580,293 @@ echo 'net.ipv4.tcp_wmem = 4096 65536 16777216' >> /etc/sysctl.conf
 sysctl -p
 ```
 
-#### Connection Limits
+#### 连接限制
 
 ```bash
-# Increase connection limits
+# 提高连接数相关限制
 echo 'sleuth soft nofile 65536' >> /etc/security/limits.conf
 echo 'sleuth hard nofile 65536' >> /etc/security/limits.conf
 ```
 
-## Troubleshooting
+<a id="troubleshooting"></a>
+## 故障排查
 
-### Common Issues and Solutions
+### 常见问题与解决方案
 
-#### High Memory Usage
+#### 内存占用过高
 
-**Symptoms:**
-- OutOfMemoryError in logs
-- High heap usage warnings
-- Slow response times
+**症状：**
+- 日志出现 OutOfMemoryError
+- 堆使用率告警
+- 响应变慢
 
-**Investigation:**
+**排查：**
 ```bash
-# Check memory usage
+# 查看内存使用
 ./sleuth.sh
 # sleuth> memory
 
-# Generate heap dump
+# 生成 heap dump
 jcmd <PID> GC.run_finalization
 jcmd <PID> VM.gc
 jmap -dump:live,format=b,file=heapdump.hprof <PID>
 
-# Analyze with Eclipse MAT or VisualVM
+# 使用 Eclipse MAT 或 VisualVM 进行分析
 ```
 
-**Solutions:**
-- Increase heap size: `-Xmx4g` → `-Xmx8g`
-- Tune cache TTL settings
-- Review for memory leaks
-- Optimize GC settings
+**解决：**
+- 增大堆：`-Xmx4g` → `-Xmx8g`
+- 调整缓存 TTL
+- 排查潜在内存泄漏
+- 优化 GC 配置
 
-#### High Response Times
+#### 响应时间过高
 
-**Symptoms:**
-- Slow command execution
-- Client timeouts
-- High CPU usage
+**症状：**
+- 命令执行慢
+- 客户端超时
+- CPU 使用率高
 
-**Investigation:**
+**排查：**
 ```bash
-# Check performance metrics
+# 查看性能指标
 ./sleuth.sh
 # sleuth> metrics
 
-# Profile application
+# 线程分析
 jstack <PID> > thread-dump.txt
 
-# Monitor GC
+# 观察 GC
 jstat -gc -t <PID> 5s
 ```
 
-**Solutions:**
-- Tune GC settings
-- Increase thread pool size
-- Optimize cache hit ratios
-- Review slow operations
+**解决：**
+- 调整 GC 配置
+- 增大线程池
+- 优化缓存命中率
+- 排查慢操作
 
-#### Connection Issues
+#### 连接问题
 
-**Symptoms:**
-- Cannot connect to port 3658
-- Connection refused errors
-- Intermittent connectivity
+**症状：**
+- 无法连接 3658 端口
+- Connection refused
+- 间歇性连接失败
 
-**Investigation:**
+**排查：**
 ```bash
-# Check if service is running
+# 确认服务在运行
 systemctl status java-sleuth
 
-# Check port binding
+# 检查端口监听
 netstat -tlnp | grep 3658
 
-# Check firewall
+# 检查防火墙
 sudo ufw status
 ```
 
-**Solutions:**
-- Restart service: `systemctl restart java-sleuth`
-- Check firewall rules
-- Verify configuration
-- Check for port conflicts
+**解决：**
+- 重启服务：`systemctl restart java-sleuth`
+- 检查防火墙规则
+- 校验配置
+- 排查端口冲突
 
-### Diagnostic Commands
+### 诊断命令
 
-#### Health Diagnostics
+#### 健康诊断
 
 ```bash
-# Quick health check
+# 快速健康探测
 ./monitor.sh
 
-# Detailed status
+# 详细状态
 ./sleuth.sh
 # sleuth> status
 
-# Check JVM metrics
+# 查看 JVM 指标
 jstat -gc <PID>
 jinfo <PID>
 ```
 
-#### Performance Diagnostics
+#### 性能诊断
 
 ```bash
-# Profile for 30 seconds
+# 采样 30 秒
 jcmd <PID> JFR.start duration=30s filename=profile.jfr
 
-# Thread analysis
+# 线程分析
 jstack <PID>
 
-# Memory analysis
+# 内存分析
 jmap -histo <PID>
 ```
 
-#### Log Analysis
+#### 日志分析
 
 ```bash
-# Error analysis
+# 错误分析
 grep -i error /opt/java-sleuth/logs/*.log
 
-# Security events
+# 安全事件
 grep "SECURITY" /opt/java-sleuth/logs/sleuth-security.log
 
-# Performance issues
+# 性能问题
 grep "SLOW" /opt/java-sleuth/logs/sleuth.log
 ```
 
-## Maintenance Procedures
+<a id="maintenance-procedures"></a>
+## 维护流程
 
-### Regular Maintenance Tasks
+### 日常维护任务
 
-#### Daily Tasks
+#### 每日任务
 
-- [ ] Check service health and status
-- [ ] Review error logs for issues
-- [ ] Monitor memory and CPU usage
-- [ ] Verify backup completion
+- [ ] 检查服务健康与状态
+- [ ] 浏览错误日志，发现问题趋势
+- [ ] 监控内存与 CPU 使用率
+- [ ] 确认备份成功
 
 ```bash
-# Daily maintenance script
+# 每日维护脚本
 #!/bin/bash
-echo "=== Daily Java-Sleuth Maintenance ==="
+echo "=== Java-Sleuth 每日维护 ==="
 systemctl status java-sleuth
 ./monitor.sh
 tail -50 /opt/java-sleuth/logs/sleuth.out | grep -i error
 ```
 
-#### Weekly Tasks
+#### 每周任务
 
-- [ ] Review performance metrics and trends
-- [ ] Analyze GC logs for optimization opportunities
-- [ ] Check disk space and log rotation
-- [ ] Update security patches if available
+- [ ] 查看性能指标与趋势
+- [ ] 分析 GC 日志，寻找优化空间
+- [ ] 检查磁盘空间与日志滚动策略
+- [ ] 更新安全补丁（如可用）
 
 ```bash
-# Weekly maintenance script
+# 每周维护脚本
 #!/bin/bash
-echo "=== Weekly Java-Sleuth Maintenance ==="
+echo "=== Java-Sleuth 每周维护 ==="
 df -h /opt/java-sleuth
 find /opt/java-sleuth/logs -name "*.log" -mtime +7 -ls
 ```
 
-#### Monthly Tasks
+#### 每月任务
 
-- [ ] Review and update configurations
-- [ ] Performance benchmarking
-- [ ] Security audit and review
-- [ ] Capacity planning assessment
+- [ ] 复核并更新配置
+- [ ] 性能基准测试
+- [ ] 安全审计与复盘
+- [ ] 容量规划评估
 
-### Updates and Upgrades
+### 更新与升级
 
-#### Patch Updates
+#### 补丁升级（Patch Updates）
 
 ```bash
-# 1. Download new version
+# 1. 下载新版本
 wget https://releases.java-sleuth.com/vX.Y.Z/java-sleuth-X.Y.Z-jar-with-dependencies.jar
 
-# 2. Backup current version
+# 2. 备份当前版本
 cp /opt/java-sleuth/lib/java-sleuth-*-jar-with-dependencies.jar /opt/java-sleuth/backup/
 
-# 3. Stop service
+# 3. 停止服务
 systemctl stop java-sleuth
 
-# 4. Replace JAR
+# 4. 替换 JAR
 cp java-sleuth-*-jar-with-dependencies.jar /opt/java-sleuth/lib/
 
-# 5. Update configuration if needed
-# Review release notes for configuration changes
+# 5. 如有需要更新配置
+# 请先阅读 release notes 中的配置变更说明
 
-# 6. Start service
+# 6. 启动服务
 systemctl start java-sleuth
 
-# 7. Verify deployment
+# 7. 验证部署
 ./monitor.sh
 ```
 
-#### Major Upgrades
+#### 大版本升级（Major Upgrades）
 
 ```bash
-# 1. Full backup
+# 1. 全量备份
 tar czf java-sleuth-backup-$(date +%Y%m%d).tar.gz /opt/java-sleuth/
 
-# 2. Test upgrade in staging environment first
+# 2. 先在 staging 环境验证升级
 
-# 3. Schedule maintenance window
+# 3. 预约维护窗口
 
-# 4. Follow patch update process with additional testing
+# 4. 按补丁升级流程操作，并增加额外验证
 
-# 5. Monitor for 24 hours post-upgrade
+# 5. 升级后观察 24 小时
 ```
 
-### Backup and Recovery
+### 备份与恢复
 
-#### Backup Strategy
+#### 备份策略
 
 ```bash
-# Configuration backup
+# 配置备份
 tar czf config-backup-$(date +%Y%m%d).tar.gz /opt/java-sleuth/config/
 
-# Full backup
+# 全量备份
 rsync -av /opt/java-sleuth/ /backup/java-sleuth/
 
-# Database backup (if applicable)
-# Application state is generally stateless
+# 数据库备份（如适用）
+# 应用状态通常是无状态的
 ```
 
-#### Recovery Procedures
+#### 恢复流程
 
 ```bash
-# Configuration recovery
+# 配置恢复
 tar xzf config-backup-20231201.tar.gz -C /
 
-# Full recovery
+# 全量恢复
 systemctl stop java-sleuth
 rsync -av /backup/java-sleuth/ /opt/java-sleuth/
 systemctl start java-sleuth
 ```
 
-## Disaster Recovery
+<a id="disaster-recovery"></a>
+## 容灾恢复
 
-### Failover Procedures
+### 故障切换流程
 
-#### Single Instance Failure
+#### 单实例故障
 
 ```bash
-# 1. Detect failure
+# 1. 发现故障
 systemctl status java-sleuth
 
-# 2. Attempt restart
+# 2. 尝试重启
 systemctl restart java-sleuth
 
-# 3. If restart fails, investigate
+# 3. 重启失败则进一步排查
 journalctl -u java-sleuth -f
 
-# 4. Restore from backup if necessary
+# 4. 必要时从备份恢复
 ./restore-from-backup.sh
 ```
 
-#### Complete System Failure
+#### 全量系统故障
 
 ```bash
-# 1. Provision new system
-# 2. Install Java and dependencies
-# 3. Restore configuration and data
+# 1. 准备新系统
+# 2. 安装 Java 与依赖
+# 3. 恢复配置与数据
 tar xzf java-sleuth-backup-latest.tar.gz -C /opt/
-# 4. Start service
+# 4. 启动服务
 systemctl enable java-sleuth
 systemctl start java-sleuth
-# 5. Verify functionality
+# 5. 验证功能
 ./monitor.sh
 ```
 
-### High Availability Setup
+### 高可用配置
 
-#### Load Balancer Configuration
+#### 负载均衡配置
 
 ```nginx
-# nginx configuration
+# nginx 配置
 upstream java-sleuth {
     server sleuth1.example.com:3658;
     server sleuth2.example.com:3658;
@@ -872,83 +883,83 @@ server {
 }
 ```
 
-#### Cluster Configuration
+#### 集群配置
 
 ```properties
-# Node 1 configuration
+# Node 1 配置
 server.port=3658
 cluster.node.id=node1
 cluster.peers=node2:3658,node3:3658
 
-# Node 2 configuration
+# Node 2 配置
 server.port=3658
 cluster.node.id=node2
 cluster.peers=node1:3658,node3:3658
 ```
 
-### Business Continuity
+### 业务连续性
 
-#### Communication Plan
+#### 沟通计划
 
-1. **Incident Detection**: Automated monitoring alerts
-2. **Escalation Matrix**:
-   - Level 1: Operations team
-   - Level 2: Engineering team
-   - Level 3: Management
-3. **Communication Channels**:
-   - Slack: #java-sleuth-ops
-   - Email: ops@company.com
-   - Phone: Emergency on-call rotation
+1. **事件发现**：自动化监控告警
+2. **升级矩阵**：
+   - Level 1：运维团队
+   - Level 2：工程团队
+   - Level 3：管理层
+3. **沟通渠道**：
+   - Slack：#java-sleuth-ops
+   - Email：ops@company.com
+   - Phone：紧急值班轮转
 
-#### Service Level Objectives (SLOs)
+#### 服务等级目标（SLOs）
 
-- **Availability**: 99.9% uptime
-- **Performance**: 95% of requests < 100ms
-- **Recovery Time**: < 15 minutes for service restart
-- **Recovery Point**: < 1 hour data loss maximum
+- **可用性**：99.9% uptime
+- **性能**：95% 的请求 < 100ms
+- **恢复时间**：服务重启 < 15 分钟
+- **恢复点**：最大数据丢失 < 1 小时
 
 ---
 
-## Appendices
+## 附录
 
-### A. Command Reference
+### A. 命令参考
 
-#### Management Commands
+#### 管理类命令
 
 ```bash
-# Service management
+# 服务管理
 systemctl start java-sleuth
 systemctl stop java-sleuth
 systemctl restart java-sleuth
 systemctl status java-sleuth
 
-# Manual startup
+# 手工启动
 /opt/java-sleuth/bin/sleuth-production.sh start
 /opt/java-sleuth/bin/sleuth-production.sh stop
 /opt/java-sleuth/bin/sleuth-production.sh status
 ```
 
-#### Diagnostic Commands
+#### 诊断类命令
 
 ```bash
-# Health and status
+# 健康与状态
 ./sleuth.sh
 # sleuth> health
 # sleuth> status
 # sleuth> metrics
 
-# JVM diagnostics
+# JVM 诊断
 jstat -gc <PID>
 jstack <PID>
 jmap -histo <PID>
 ```
 
-### B. Configuration Reference
+### B. 配置参考
 
-#### Complete Configuration Template
+#### 完整配置模板
 
 ```properties
-# Server Configuration
+# 服务端配置
 server.bind.address=127.0.0.1
 server.port=3658
 server.max.connections=50
@@ -956,7 +967,7 @@ server.executor.queue.capacity=50
 server.connection.timeout=60000
 server.socket.timeout=2000
 
-# Performance Configuration
+# 性能配置
 performance.cache.ttl=10000
 performance.thread.pool.core=8
 performance.thread.pool.max=32
@@ -968,14 +979,14 @@ performance.command.timeout.max=300000
 enhancement.failure.cooldown.ms=30000
 enhancement.failure.log.interval.ms=60000
 
-# Jobs Configuration
+# Jobs 配置
 jobs.max=200
 jobs.ttl.ms=3600000
 jobs.output.max.bytes=262144
 jobs.max.running=4
 jobs.queue.capacity=20
 
-# Security Configuration
+# 安全配置
 security.input.validation=true
 security.audit.logging=true
 security.max.command.length=2000
@@ -996,18 +1007,18 @@ security.dangerous.confirm.cache.size=2000
 security.impact.high.confirm.enabled=true
 security.impact.high.concurrent.limit=1
 
-# Monitoring Configuration
+# 监控配置
 monitoring.metrics.enabled=true
 monitoring.health.checks=true
 monitoring.cache.cleanup.interval=300000
 monitoring.jmx.enabled=true
 
-# Logging Configuration
+# 日志配置
 logging.level=INFO
 logging.audit.enabled=true
 logging.performance.enabled=false
 
-# Protocol Configuration
+# 协议配置
 protocol.mode=framed
 protocol.streaming.enabled=true
 protocol.frame.max.payload=4096
@@ -1015,7 +1026,7 @@ protocol.handshake.enabled=true
 protocol.text.max.line.bytes=8192
 protocol.text.end.marker.enabled=true
 
-# Plugin Configuration
+# 插件配置
 plugins.enabled=false
 plugins.serviceloader.enabled=false
 plugins.allowlist.sha256=
@@ -1023,29 +1034,30 @@ plugins.directory=/opt/java-sleuth/plugins
 plugins.conflict.strategy=prefer-builtin
 ```
 
-### C. Security Checklist
+### C. 安全检查清单
 
-- [ ] Dedicated user account created
-- [ ] File permissions properly set
-- [ ] Firewall rules configured
-- [ ] SSL/TLS configured for external access
-- [ ] Audit logging enabled
-- [ ] Input validation enabled
-- [ ] JMX access restricted
-- [ ] Regular security reviews scheduled
+- [ ] 已创建专用用户账号
+- [ ] 文件权限设置正确
+- [ ] 防火墙规则已配置
+- [ ] 外部访问已配置 SSL/TLS
+- [ ] 审计日志已启用
+- [ ] 输入校验已启用
+- [ ] JMX 访问已限制
+- [ ] 已安排定期安全复审
 
-### D. Performance Baseline
+### D. 性能基线
 
-#### Expected Performance Metrics
+#### 预期性能指标
 
-| Metric | Target | Acceptable | Critical |
+| 指标 | 目标 | 可接受 | 临界 |
 |--------|--------|------------|----------|
-| Memory Usage | < 70% | < 85% | > 90% |
-| Response Time | < 50ms | < 100ms | > 500ms |
-| Throughput | > 1000 req/s | > 500 req/s | < 100 req/s |
-| Error Rate | < 0.1% | < 1% | > 5% |
-| GC Pause | < 50ms | < 200ms | > 1s |
+| 内存使用率 | < 70% | < 85% | > 90% |
+| 响应时间 | < 50ms | < 100ms | > 500ms |
+| 吞吐量 | > 1000 req/s | > 500 req/s | < 100 req/s |
+| 错误率 | < 0.1% | < 1% | > 5% |
+| GC 暂停 | < 50ms | < 200ms | > 1s |
 
 ---
 
-*This document should be reviewed and updated quarterly or after major system changes.*
+*本指南建议每季度复审更新一次，或在发生重大系统变更后及时更新。*
+

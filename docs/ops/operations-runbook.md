@@ -1,60 +1,60 @@
-# Java-Sleuth Operations Runbook
+# Java-Sleuth 运维 Runbook
 
 > 注意：默认启用 `protocol.handshake.enabled=true` + `security.mode=hmac`，不再支持用 `nc` 直接发送明文命令。
 > 运维排障建议使用 SleuthLauncher（`./sleuth.sh`）连接后执行 `health/status/metrics/...`。
 
-## Quick Reference
+## 快速参考
 
-### Emergency Contacts
-- **On-Call Engineer**: +1-XXX-XXX-XXXX
-- **Team Lead**: +1-XXX-XXX-XXXX
-- **Escalation**: manager@company.com
+### 紧急联系人
+- **值班工程师**：+1-XXX-XXX-XXXX
+- **团队负责人**：+1-XXX-XXX-XXXX
+- **升级通道**：manager@company.com
 
-### Critical Commands
+### 关键命令
 ```bash
-# Service status
+# 服务状态
 systemctl status java-sleuth
 
-# Emergency restart
+# 紧急重启
 systemctl restart java-sleuth
 
-# Health check
+# 健康检查
 ./sleuth.sh
 # sleuth> health
 
-# View recent logs
+# 查看近期日志
 tail -f /opt/java-sleuth/logs/sleuth.out
 ```
 
-### Service Endpoints
-- **Main Service**: `localhost:3658`
-- **JMX Monitoring**: `localhost:9999`
-- **Health Check**: 使用 SleuthLauncher 执行 `health`
+### 服务端点
+- **主服务**：`localhost:3658`
+- **JMX 监控**：`localhost:9999`
+- **健康检查**：使用 SleuthLauncher 执行 `health`
 
 ---
 
-## Incident Response Procedures
+## 事件响应流程
 
-### Severity Levels
+### 严重程度等级
 
-#### SEV-1 (Critical)
-**Definition**: Service completely unavailable
-**Response Time**: 15 minutes
-**Escalation**: Immediate
+#### SEV-1（严重）
+**定义**：服务完全不可用  
+**响应时间**：15 分钟  
+**升级**：立即  
 
-**Symptoms**:
-- Service cannot be reached on port 3658
-- Health checks fail consistently
-- Complete application crash
+**症状**：
+- 3658 端口不可达
+- 健康检查持续失败
+- 应用完全崩溃
 
-**Immediate Actions**:
-1. **Verify the issue** (2 minutes)
+**立即处理**：
+1. **确认问题**（2 分钟）
    ```bash
    systemctl status java-sleuth
    nc -zv localhost 3658
    ```
 
-2. **Attempt service restart** (3 minutes)
+2. **尝试重启服务**（3 分钟）
    ```bash
    systemctl restart java-sleuth
    sleep 30
@@ -62,303 +62,303 @@ tail -f /opt/java-sleuth/logs/sleuth.out
    # sleuth> health
    ```
 
-3. **If restart fails, check logs** (5 minutes)
+3. **重启失败则检查日志**（5 分钟）
    ```bash
    journalctl -u java-sleuth --since "10 minutes ago"
    tail -100 /opt/java-sleuth/logs/sleuth.out
    ```
 
-4. **Escalate immediately** if not resolved in 15 minutes
+4. **15 分钟内未恢复则立即升级**
 
-#### SEV-2 (High)
-**Definition**: Significant performance degradation
-**Response Time**: 30 minutes
-**Escalation**: 1 hour
+#### SEV-2（高）
+**定义**：明显的性能退化  
+**响应时间**：30 分钟  
+**升级**：1 小时  
 
-**Symptoms**:
-- Response times > 5 seconds
-- Memory usage > 90%
-- High error rates (> 5%)
+**症状**：
+- 响应时间 > 5 秒
+- 内存使用率 > 90%
+- 错误率高（> 5%）
 
-**Actions**:
-1. **Check system resources**
+**处理**：
+1. **检查系统资源**
    ```bash
    top -p $(pgrep -f java-sleuth)
    df -h /opt/java-sleuth
    ```
 
-2. **Check JVM metrics**
+2. **检查 JVM 指标**
    ```bash
    jstat -gc $(pgrep -f java-sleuth)
    ./sleuth.sh
    # sleuth> metrics
    ```
 
-3. **Review recent changes**
-   - Check deployment logs
-   - Review configuration changes
-   - Check for system updates
+3. **回顾近期变更**
+   - 查看部署日志
+   - 检查配置改动
+   - 排查系统更新
 
-#### SEV-3 (Medium)
-**Definition**: Minor issues not affecting core functionality
-**Response Time**: 2 hours
-**Escalation**: 4 hours
+#### SEV-3（中）
+**定义**：不影响核心功能的小问题  
+**响应时间**：2 小时  
+**升级**：4 小时  
 
-**Symptoms**:
-- Occasional slow responses
-- Non-critical errors in logs
-- Minor memory increases
+**症状**：
+- 偶发慢响应
+- 日志中出现非关键错误
+- 轻微内存增长
 
-#### SEV-4 (Low)
-**Definition**: Monitoring alerts, questions
-**Response Time**: Next business day
-**Escalation**: Not required
+#### SEV-4（低）
+**定义**：监控告警、问题咨询  
+**响应时间**：下一个工作日  
+**升级**：无需  
 
 ---
 
-## Common Scenarios and Responses
+## 常见场景与处理
 
-### Scenario 1: Service Won't Start
+### 场景 1：服务无法启动
 
-**Symptoms**:
-- `systemctl start java-sleuth` fails
-- Exit code non-zero
-- Error in systemd logs
+**症状**：
+- `systemctl start java-sleuth` 失败
+- 退出码非 0
+- systemd 日志出现错误
 
-**Diagnostic Steps**:
+**排查步骤**：
 ```bash
-# Check service status
+# 查看服务状态
 systemctl status java-sleuth
 
-# Check systemd logs
+# 查看 systemd 日志
 journalctl -u java-sleuth --since "1 hour ago"
 
-# Check application logs
+# 查看应用日志
 tail -50 /opt/java-sleuth/logs/sleuth.out
 
-# Verify configuration
+# 校验配置
 java -jar /opt/java-sleuth/lib/java-sleuth-*.jar --validate-config
 
-# Check file permissions
+# 检查文件权限
 ls -la /opt/java-sleuth/
 ls -la /opt/java-sleuth/config/
 ```
 
-**Common Causes and Solutions**:
+**常见原因与解决**：
 
-1. **Configuration Error**
+1. **配置错误**
    ```bash
-   # Check configuration syntax
+   # 检查配置语法
    grep -n "=" /opt/java-sleuth/config/sleuth.properties | grep -v "^#"
 
-   # Restore from backup if needed
+   # 必要时从备份恢复
    cp /opt/java-sleuth/backup/sleuth.properties.bak /opt/java-sleuth/config/sleuth.properties
    ```
 
-2. **Port Already in Use**
+2. **端口被占用**
    ```bash
-   # Check what's using the port
+   # 查看端口占用
    lsof -i :3658
    netstat -tlnp | grep 3658
 
-   # Kill conflicting process or change port
+   # 结束冲突进程或修改端口
    ```
 
-3. **File Permissions**
+3. **文件权限问题**
    ```bash
-   # Fix permissions
+   # 修复权限
    sudo chown -R sleuth:sleuth /opt/java-sleuth
    sudo chmod 755 /opt/java-sleuth/bin/*.sh
    ```
 
-4. **Insufficient Memory**
+4. **内存不足**
    ```bash
-   # Check available memory
+   # 查看可用内存
    free -h
 
-   # Reduce heap size temporarily
-	   export JAVA_OPTS="-Xms512m -Xmx1g"
-	   ```
+   # 临时降低堆大小
+   export JAVA_OPTS="-Xms512m -Xmx1g"
+   ```
 
-5. **Security Mode Misconfiguration**
-   - Symptoms: logs contain `SECURITY ERROR: Refusing to start ...`
-   - Checks:
+5. **安全模式配置不当**
+   - 症状：日志包含 `SECURITY ERROR: Refusing to start ...`
+   - 检查点：
      - 非回环 bind（例如 `0.0.0.0`）下禁止 `security.mode=off`
      - 非回环 bind 且 `security.mode=hmac` 时必须配置 `security.hmac.secret` 非空
      - 回环 bind 下可启用 `security.hmac.secret.autogen.on.loopback=true` 进行临时自洽启动（生产不推荐）
 
-### Scenario 2: High Memory Usage
+### 场景 2：内存占用过高
 
-**Symptoms**:
-- Memory usage > 85%
-- OutOfMemoryError in logs
-- Slow garbage collection
+**症状**：
+- 内存使用率 > 85%
+- 日志出现 OutOfMemoryError
+- GC 变慢
 
-**Investigation**:
+**排查**：
 ```bash
-# Check current memory usage
+# 查看当前内存使用
 ./sleuth.sh
 # sleuth> memory
 
-# Get heap dump
+# 导出 heap dump
 jcmd $(pgrep -f java-sleuth) GC.run_finalization
 jmap -dump:live,format=b,file=/tmp/heapdump-$(date +%Y%m%d-%H%M).hprof $(pgrep -f java-sleuth)
 
-# Analyze GC
+# 分析 GC
 jstat -gc -t $(pgrep -f java-sleuth) 5s 12
 
-# Check for memory leaks
+# 排查内存泄漏线索
 jcmd $(pgrep -f java-sleuth) VM.classloader_stats
 ```
 
-**Immediate Actions**:
-1. **Force garbage collection**
+**立即处理**：
+1. **触发垃圾回收**
    ```bash
    jcmd $(pgrep -f java-sleuth) GC.run
    ```
 
-2. **Clear caches**
+2. **清理缓存**
    ```bash
-   # Clear active enhancements / background jobs (dangerous, requires confirm token)
+   # 清理活动增强/后台任务（危险，需 confirm token）
    ./sleuth.sh
    # sleuth> reset
    ```
 
-3. **Restart service if critical**
+3. **必要时重启服务**
    ```bash
    systemctl restart java-sleuth
    ```
 
-**Long-term Solutions**:
-- Increase heap size: `-Xmx4g` → `-Xmx8g`
-- Tune cache TTL settings
-- Optimize GC parameters
-- Review for memory leaks
+**长期方案**：
+- 增大堆：`-Xmx4g` → `-Xmx8g`
+- 调整缓存 TTL
+- 优化 GC 参数
+- 排查潜在内存泄漏
 
-### Scenario 3: High Response Times
+### 场景 3：响应时间过高
 
-**Symptoms**:
-- Commands taking > 1 second
-- Client timeouts
-- Queue buildup
+**症状**：
+- 命令执行耗时 > 1 秒
+- 客户端超时
+- 队列堆积
 
-**Investigation**:
+**排查**：
 ```bash
-# Check thread status
+# 查看线程状态
 jstack $(pgrep -f java-sleuth) > /tmp/threadump-$(date +%Y%m%d-%H%M).txt
 
-# Check performance metrics
+# 查看性能指标
 ./sleuth.sh
 # sleuth> metrics
 
-# Monitor real-time performance
+# 实时观察性能
 # NOTE: 默认启用握手 + HMAC，无法用 nc 轮询 status。
 # 建议通过 JMX/监控系统观测，或在 SleuthLauncher 中手动多次执行 `status`。
 
-# Check system load
+# 查看系统负载
 top -p $(pgrep -f java-sleuth)
 iostat -x 1 5
 ```
 
-**Actions**:
-1. **Check for thread deadlocks**
+**处理**：
+1. **检查线程死锁**
    ```bash
    jstack $(pgrep -f java-sleuth) | grep -A 5 -B 5 "BLOCKED"
    ```
 
-2. **Increase thread pool size temporarily**
+2. **临时调大线程池**
    ```bash
-   # Update configuration
+   # 更新配置
    echo "performance.thread.pool.max=64" >> /opt/java-sleuth/config/sleuth.properties
    systemctl restart java-sleuth
    ```
 
-3. **Clear performance bottlenecks**
+3. **排除性能瓶颈**
    ```bash
-   # Clear caches if hit ratio is low
-   # Clear active enhancements / background jobs (dangerous, requires confirm token)
+   # 缓存命中率过低时可考虑清理
+   # 清理活动增强/后台任务（危险，需 confirm token）
    ./sleuth.sh
    # sleuth> reset
    ```
 
-### Scenario 4: Connection Issues
+### 场景 4：连接问题
 
-**Symptoms**:
-- Cannot connect to port 3658
+**症状**：
+- 无法连接 3658 端口
 - Connection refused
-- Intermittent connectivity
+- 间歇性连接失败
 - 连接建立后立即返回 `ERROR: server busy ...`（服务端过载保护触发）
 
-**Investigation**:
+**排查**：
 ```bash
-# Verify service is running
+# 确认服务在运行
 systemctl status java-sleuth
 ps aux | grep java-sleuth
 
-# Check port binding
+# 检查端口监听
 netstat -tlnp | grep 3658
 lsof -i :3658
 
-# Test connectivity
+# 测试连通性
 nc -zv localhost 3658
 telnet localhost 3658
 
-# Check firewall
+# 检查防火墙
 sudo ufw status
 iptables -L | grep 3658
 ```
 
-**Actions**:
-1. **Restart networking if needed**
+**处理**：
+1. **必要时重启服务**
    ```bash
    systemctl restart java-sleuth
    ```
 
-2. **Check firewall rules**
+2. **检查防火墙规则**
    ```bash
    sudo ufw allow 3658/tcp
    sudo ufw reload
    ```
 
-3. **Verify configuration**
+3. **验证配置**
    ```bash
    grep "server.port" /opt/java-sleuth/config/sleuth.properties
    ```
 
-4. **If overloaded, tune backpressure / executors**
+4. **过载时调参：背压/线程池**
    - 连接侧过载：调大 `server.executor.queue.capacity` 或降低 `server.max.connections`
    - 命令侧过载：调大 `performance.command.executor.queue.capacity` / `performance.command.executor.max`
    - 生产建议：保持 `security.impact.high.concurrent.limit=1`，避免高影响命令并发导致停顿/峰值叠加
 
-### Scenario 5: Security Alerts
+### 场景 5：安全告警
 
-**Symptoms**:
-- Security violation logs
-- Unusual authentication attempts
-- Suspicious command patterns
+**症状**：
+- 安全违规日志
+- 异常认证尝试
+- 可疑命令模式
 
-**Investigation**:
+**排查**：
 ```bash
-# Check security logs
+# 查看安全日志
 tail -100 /opt/java-sleuth/logs/sleuth-security.log
 
-# Look for security violations
+# 搜索安全违规
 grep "SECURITY_VIOLATION" /opt/java-sleuth/logs/sleuth-audit.log
 
-# Check failed authentication attempts
+# 查看认证失败
 grep "AUTHENTICATION_FAILED" /opt/java-sleuth/logs/sleuth-audit.log
 
-# Review recent connections
+# 查看近期连接
 grep "CONNECTION" /opt/java-sleuth/logs/sleuth-audit.log | tail -20
 ```
 
-**Immediate Actions**:
-1. **Block suspicious IPs**
+**立即处理**：
+1. **封禁可疑 IP**
    ```bash
    sudo ufw deny from SUSPICIOUS_IP
    ```
 
-2. **Enable emergency lockdown if needed**
+2. **必要时进入紧急收敛**
    ```bash
    # 推荐：通过运行时配置快速收敛允许的命令集合（需 ADMIN 权限）
    ./sleuth.sh
@@ -368,304 +368,304 @@ grep "CONNECTION" /opt/java-sleuth/logs/sleuth-audit.log | tail -20
    # sleuth> stop
    ```
 
-3. **Review audit trail**
+3. **回溯审计轨迹**
    ```bash
    awk '/SECURITY/ {print $1, $2, $NF}' /opt/java-sleuth/logs/sleuth-audit.log
    ```
 
 ---
 
-## Monitoring and Alerting
+## 监控与告警
 
-### Key Metrics to Monitor
+### 需要关注的关键指标
 
-#### Performance Metrics
-- **Response Time**: Target < 100ms, Alert > 500ms
-- **Throughput**: Target > 1000 req/s, Alert < 100 req/s
-- **Error Rate**: Target < 0.1%, Alert > 5%
-- **Cache Hit Ratio**: Target > 80%, Alert < 50%
+#### 性能指标
+- **响应时间**：目标 < 100ms，告警 > 500ms
+- **吞吐量**：目标 > 1000 req/s，告警 < 100 req/s
+- **错误率**：目标 < 0.1%，告警 > 5%
+- **缓存命中率**：目标 > 80%，告警 < 50%
 
-#### Resource Metrics
-- **Memory Usage**: Target < 70%, Alert > 85%
-- **CPU Usage**: Target < 60%, Alert > 80%
-- **Disk Usage**: Target < 70%, Alert > 85%
-- **Network Connections**: Target < 80% of max, Alert > 90%
+#### 资源指标
+- **内存使用率**：目标 < 70%，告警 > 85%
+- **CPU 使用率**：目标 < 60%，告警 > 80%
+- **磁盘使用率**：目标 < 70%，告警 > 85%
+- **网络连接数**：目标 < 最大值的 80%，告警 > 90%
 
-#### Availability Metrics
-- **Service Uptime**: Target 99.9%, Alert < 99%
-- **Health Check Success**: Target 100%, Alert < 95%
+#### 可用性指标
+- **服务可用性**：目标 99.9%，告警 < 99%
+- **健康检查成功率**：目标 100%，告警 < 95%
 
-### Alert Definitions
+### 告警定义
 
-#### Critical Alerts (Immediate Response)
+#### 严重告警（需立即响应）
 ```yaml
-# Service Down
+# 服务不可用
 - alert: JavaSleuthDown
   expr: up{job="java-sleuth"} == 0
   for: 1m
   severity: critical
 
-# High Memory Usage
+# 内存使用过高
 - alert: HighMemoryUsage
   expr: heap_usage_percent > 90
   for: 2m
   severity: critical
 
-# High Error Rate
+# 错误率过高
 - alert: HighErrorRate
   expr: error_rate_percent > 10
   for: 5m
   severity: critical
 ```
 
-#### Warning Alerts (Monitor Closely)
+#### 警告告警（重点关注）
 ```yaml
-# Elevated Memory Usage
+# 内存使用升高
 - alert: ElevatedMemoryUsage
   expr: heap_usage_percent > 80
   for: 5m
   severity: warning
 
-# Slow Response Times
+# 响应变慢
 - alert: SlowResponseTimes
   expr: avg_response_time_ms > 1000
   for: 5m
   severity: warning
 ```
 
-### Monitoring Dashboard
+### 监控看板
 
-#### Key Panels
-1. **Service Health Overview**
-   - Service status indicator
-   - Response time graph
-   - Error rate graph
-   - Throughput graph
+#### 关键面板
+1. **服务健康概览**
+   - 服务状态指示
+   - 响应时间曲线
+   - 错误率曲线
+   - 吞吐量曲线
 
-2. **Resource Utilization**
-   - Memory usage (heap/non-heap)
-   - CPU utilization
-   - Network connections
-   - Disk I/O
+2. **资源利用率**
+   - 内存使用（堆/非堆）
+   - CPU 使用率
+   - 网络连接数
+   - 磁盘 I/O
 
-3. **Performance Metrics**
-   - Command execution times
-   - Cache hit rates
-   - Thread pool utilization
-   - GC performance
+3. **性能指标**
+   - 命令执行耗时
+   - 缓存命中率
+   - 线程池利用率
+   - GC 表现
 
-4. **Security Metrics**
-   - Authentication attempts
-   - Failed logins
-   - Security violations
-   - Audit events
+4. **安全指标**
+   - 认证尝试次数
+   - 失败登录次数
+   - 安全违规次数
+   - 审计事件
 
 ---
 
-## Maintenance Procedures
+## 维护流程
 
-### Daily Maintenance (5 minutes)
+### 每日维护（5 分钟）
 ```bash
 #!/bin/bash
-# Daily maintenance script
+# 每日维护脚本
 
-echo "=== Java-Sleuth Daily Health Check ==="
+echo "=== Java-Sleuth 每日健康检查 ==="
 date
 
-# Service status
-echo "Service Status:"
+# 服务状态
+echo "服务状态："
 systemctl is-active java-sleuth
 
-# Quick health check
-echo "Health Check:"
+# 快速健康探测
+echo "健康检查："
 # 默认启用握手 + HMAC，无法用 nc 直接发命令；这里用端口连通性作为快速探测。
-timeout 2 nc -zv localhost 3658 || echo "FAILED"
+timeout 2 nc -zv localhost 3658 || echo "失败"
 
-# Memory usage
-echo "Memory Usage:"
+# 内存使用
+echo "内存使用："
 ps -p $(pgrep -f java-sleuth) -o %mem --no-headers | tr -d ' ' | sed 's/$/% used/'
 
-# Recent errors
-echo "Recent Errors (last 24h):"
+# 近期错误
+echo "近 24 小时错误数："
 grep -c "ERROR" /opt/java-sleuth/logs/sleuth.out || echo "0"
 
-# Disk space
-echo "Disk Space:"
+# 磁盘空间
+echo "磁盘空间："
 df -h /opt/java-sleuth | tail -1 | awk '{print $5 " used"}'
 
-echo "=== Daily Check Complete ==="
+echo "=== 每日检查完成 ==="
 ```
 
-### Weekly Maintenance (15 minutes)
+### 每周维护（15 分钟）
 ```bash
 #!/bin/bash
-# Weekly maintenance script
+# 每周维护脚本
 
-echo "=== Java-Sleuth Weekly Maintenance ==="
+echo "=== Java-Sleuth 每周维护 ==="
 
-# Rotate logs if needed
+# 必要时滚动日志
 find /opt/java-sleuth/logs -name "*.log" -size +100M -exec logrotate {} \;
 
-# Clean old backup files
+# 清理过期备份
 find /opt/java-sleuth/backup -name "*.bak" -mtime +30 -delete
 
-# Performance report
-echo "=== Performance Report ==="
+# 性能报告
+echo "=== 性能报告 ==="
 # 建议通过 JMX/监控系统获取 metrics；如需命令级诊断，请用 SleuthLauncher：
 # ./sleuth.sh
 # sleuth> metrics
 
-# Security audit
-echo "=== Security Summary ==="
+# 安全审计
+echo "=== 安全摘要 ==="
 grep "SECURITY" /opt/java-sleuth/logs/sleuth-security.log | tail -10
 
-# Update system packages (if approved)
+# 系统包更新（如已审批）
 # sudo apt update && sudo apt upgrade -y
 
-echo "=== Weekly Maintenance Complete ==="
+echo "=== 每周维护完成 ==="
 ```
 
-### Monthly Maintenance (30 minutes)
+### 每月维护（30 分钟）
 ```bash
 #!/bin/bash
-# Monthly maintenance script
+# 每月维护脚本
 
-echo "=== Java-Sleuth Monthly Maintenance ==="
+echo "=== Java-Sleuth 每月维护 ==="
 
-# Full backup
+# 全量备份
 tar czf /backup/java-sleuth-backup-$(date +%Y%m%d).tar.gz /opt/java-sleuth/
 
-# Performance benchmarking
+# 性能基准测试
 ./scripts/perf/performance-benchmark.sh
 
-# Security review
-echo "=== Security Review ==="
-# Review user access
-# Check SSL certificate expiration
-# Audit configuration changes
+# 安全复盘
+echo "=== 安全复盘 ==="
+# 复查用户访问
+# 检查 SSL 证书过期时间
+# 审计配置变更
 
-# Capacity planning
-echo "=== Capacity Planning ==="
-# Analyze growth trends
-# Resource utilization analysis
-# Performance trending
+# 容量规划
+echo "=== 容量规划 ==="
+# 分析增长趋势
+# 资源利用率分析
+# 性能趋势分析
 
-echo "=== Monthly Maintenance Complete ==="
+echo "=== 每月维护完成 ==="
 ```
 
 ---
 
-## Escalation Procedures
+## 升级流程
 
-### Level 1: Operations Team (First Response)
-**Responsibilities**:
-- Initial incident response
-- Basic troubleshooting
-- Service restarts
-- Log analysis
+### Level 1：运维团队（第一响应）
+**职责**：
+- 初步事件响应
+- 基础排障
+- 服务重启
+- 日志分析
 
-**Escalation Criteria**:
-- Issue not resolved in 30 minutes
-- Requires code changes
-- Security incident
+**升级条件**：
+- 30 分钟内未解决
+- 需要代码改动
+- 安全事件
 
-### Level 2: Engineering Team
-**Responsibilities**:
-- Advanced troubleshooting
-- Configuration changes
-- Performance tuning
-- Bug fixes
+### Level 2：工程团队
+**职责**：
+- 高级排障
+- 配置改动
+- 性能调优
+- Bug 修复
 
-**Escalation Criteria**:
-- Issue not resolved in 2 hours
-- Requires architectural changes
-- Data loss risk
+**升级条件**：
+- 2 小时内未解决
+- 需要架构级改动
+- 存在数据丢失风险
 
-### Level 3: Architecture/Management
-**Responsibilities**:
-- Strategic decisions
-- Resource allocation
-- Major architectural changes
-- Business impact assessment
+### Level 3：架构/管理层
+**职责**：
+- 战略决策
+- 资源协调
+- 重大架构调整
+- 业务影响评估
 
-### Communication Templates
+### 沟通模板
 
-#### Initial Incident Report
+#### 初始事件报告
 ```
-INCIDENT: Java-Sleuth Service Issue
-SEVERITY: [SEV-1/2/3/4]
-START TIME: [YYYY-MM-DD HH:MM UTC]
-IMPACT: [Description of user impact]
-STATUS: [Investigating/Mitigating/Resolved]
-NEXT UPDATE: [Time of next update]
+事件：Java-Sleuth 服务问题
+严重级别：[SEV-1/2/3/4]
+开始时间：[YYYY-MM-DD HH:MM UTC]
+影响范围：[用户影响描述]
+状态：[排查中/缓解中/已解决]
+下次更新：[下一次更新时间]
 
-TIMELINE:
-[HH:MM] - Issue detected
-[HH:MM] - Investigation started
-[HH:MM] - Initial diagnosis
+时间线：
+[HH:MM] - 发现问题
+[HH:MM] - 开始排查
+[HH:MM] - 初步诊断
 
-ACTIONS TAKEN:
-- [List of actions]
+已采取行动：
+- [行动列表]
 
-CURRENT FOCUS:
-- [What's being worked on]
+当前关注点：
+- [正在处理的事项]
 ```
 
-#### Incident Resolution
+#### 事件解决报告
 ```
-INCIDENT RESOLVED: Java-Sleuth Service Issue
-SEVERITY: [SEV-1/2/3/4]
-RESOLUTION TIME: [Total time to resolve]
-ROOT CAUSE: [Brief description]
+事件已解决：Java-Sleuth 服务问题
+严重级别：[SEV-1/2/3/4]
+解决耗时：[总耗时]
+根因概述：[简要描述]
 
-TIMELINE:
-[Complete timeline of events]
+时间线：
+[完整时间线]
 
-ACTIONS TAKEN:
-[All actions taken during incident]
+已采取行动：
+[事件期间的所有行动]
 
-ROOT CAUSE ANALYSIS:
-[Detailed analysis of what went wrong]
+根因分析：
+[详细说明问题原因]
 
-PREVENTIVE MEASURES:
-[What will be done to prevent recurrence]
+预防措施：
+[避免复发的措施]
 
-POST-INCIDENT REVIEW:
-[Date/time of planned review meeting]
+复盘安排：
+[计划复盘会议的日期/时间]
 ```
 
 ---
 
-## Reference Information
+## 参考信息
 
-### Useful Commands
+### 常用命令
 
-#### Service Management
+#### 服务管理
 ```bash
-# Service control
+# 服务控制
 systemctl start java-sleuth
 systemctl stop java-sleuth
 systemctl restart java-sleuth
 systemctl status java-sleuth
 systemctl enable java-sleuth
 
-# Manual control
+# 手工控制
 /opt/java-sleuth/bin/sleuth-production.sh start
 /opt/java-sleuth/bin/sleuth-production.sh stop
 /opt/java-sleuth/bin/sleuth-production.sh restart
 /opt/java-sleuth/bin/sleuth-production.sh status
 ```
 
-#### Diagnostics
+#### 诊断
 ```bash
-# Application diagnostics
+# 应用诊断（建议使用 SleuthLauncher）
 ./sleuth.sh
 # sleuth> health
 # sleuth> status
 # sleuth> metrics
 # sleuth> memory
 
-# JVM diagnostics
+# JVM 诊断
 jps
 jstat -gc $(pgrep -f java-sleuth)
 jstack $(pgrep -f java-sleuth)
@@ -673,102 +673,103 @@ jmap -histo $(pgrep -f java-sleuth)
 jcmd $(pgrep -f java-sleuth) help
 ```
 
-#### Log Analysis
+#### 日志分析
 ```bash
-# Service logs
+# 服务日志
 tail -f /opt/java-sleuth/logs/sleuth.out
 journalctl -u java-sleuth -f
 
-# Error analysis
+# 错误分析
 grep -i error /opt/java-sleuth/logs/*.log
 awk '/ERROR/ {print $1, $2, $NF}' /opt/java-sleuth/logs/sleuth.out
 
-# Security logs
+# 安全日志
 tail -f /opt/java-sleuth/logs/sleuth-security.log
 grep "VIOLATION" /opt/java-sleuth/logs/sleuth-audit.log
 ```
 
-### Configuration Files
+### 配置文件
 
-#### Main Configuration
-- **Application**: `/opt/java-sleuth/config/sleuth.properties`
-- **JVM**: `/opt/java-sleuth/config/jvm.conf`
-- **Logging**: `/opt/java-sleuth/config/logging.properties`
-- **Systemd**: `/etc/systemd/system/java-sleuth.service`
+#### 主配置
+- **应用**：`/opt/java-sleuth/config/sleuth.properties`
+- **JVM**：`/opt/java-sleuth/config/jvm.conf`
+- **日志**：`/opt/java-sleuth/config/logging.properties`
+- **Systemd**：`/etc/systemd/system/java-sleuth.service`
 
-#### Log Files
-- **Application**: `/opt/java-sleuth/logs/sleuth.out`
-- **Audit**: `/opt/java-sleuth/logs/sleuth-audit.log`
-- **Security**: `/opt/java-sleuth/logs/sleuth-security.log`
-- **GC**: `/opt/java-sleuth/logs/gc.log`
+#### 日志文件
+- **应用**：`/opt/java-sleuth/logs/sleuth.out`
+- **审计**：`/opt/java-sleuth/logs/sleuth-audit.log`
+- **安全**：`/opt/java-sleuth/logs/sleuth-security.log`
+- **GC**：`/opt/java-sleuth/logs/gc.log`
 
-### Network Ports
-- **3658**: Main service port
-- **9999**: JMX monitoring port
+### 网络端口
+- **3658**：主服务端口
+- **9999**：JMX 监控端口
 
-### Default Credentials
-- **Admin**: admin / sleuth_admin_2023!
-- **Operator**: operator / sleuth_op_2023!
-- **Viewer**: viewer / sleuth_view_2023!
+### 默认凭据
+- **Admin**：admin / sleuth_admin_2023!
+- **Operator**：operator / sleuth_op_2023!
+- **Viewer**：viewer / sleuth_view_2023!
 
-*Note: Change these in production!*
+*注意：生产环境务必修改这些默认凭据！*
 
 ---
 
-## Appendix: Emergency Procedures
+## 附录：紧急操作
 
-### Complete System Recovery
+### 完整系统恢复
 
-If all else fails and the system needs to be completely rebuilt:
+如果其他方法均无效，且需要完全重建系统：
 
-1. **Preserve Data**
+1. **保留数据**
    ```bash
-   # Backup logs and configuration
+   # 备份日志与配置
    tar czf emergency-backup-$(date +%Y%m%d-%H%M).tar.gz /opt/java-sleuth/
    ```
 
-2. **Clean Installation**
+2. **清理并重新安装**
    ```bash
-   # Remove existing installation
+   # 移除现有安装
    systemctl stop java-sleuth
    rm -rf /opt/java-sleuth/
 
-   # Reinstall from scratch
+   # 从头安装
    ./scripts/deploy/production-deploy.sh
    ```
 
-3. **Restore Configuration**
+3. **恢复配置**
    ```bash
-   # Restore from backup
+   # 从备份恢复
    tar xzf emergency-backup-*.tar.gz -C /opt/java-sleuth/ --strip-components=2
    ```
 
-4. **Verify Recovery**
+4. **验证恢复**
    ```bash
-   # Test all functionality
+   # 验证功能
    systemctl start java-sleuth
    ./monitor.sh
    ./sleuth.sh
    # sleuth> health
    ```
 
-### Contact Information
+### 联系方式
 
-#### On-Call Rotation
-- **Primary**: [Name] - [Phone] - [Email]
-- **Secondary**: [Name] - [Phone] - [Email]
-- **Escalation**: [Manager] - [Phone] - [Email]
+#### 值班轮转
+- **Primary**：[Name] - [Phone] - [Email]
+- **Secondary**：[Name] - [Phone] - [Email]
+- **Escalation**：[Manager] - [Phone] - [Email]
 
-#### Team Contacts
-- **Tech Lead**: [Name] - [Email]
-- **DevOps**: [Name] - [Email]
-- **Security**: [Name] - [Email]
+#### 团队联系人
+- **Tech Lead**：[Name] - [Email]
+- **DevOps**：[Name] - [Email]
+- **Security**：[Name] - [Email]
 
-#### External Contacts
-- **System Admin**: [Name] - [Phone]
-- **Network Team**: [Name] - [Phone]
-- **Vendor Support**: [Number] - [Case Portal]
+#### 外部联系人
+- **System Admin**：[Name] - [Phone]
+- **Network Team**：[Name] - [Phone]
+- **Vendor Support**：[Number] - [Case Portal]
 
 ---
 
-*This runbook should be updated after each incident and reviewed monthly.*
+*Runbook 建议在每次事件后更新，并每月例行复审一次。*
+

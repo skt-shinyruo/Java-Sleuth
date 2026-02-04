@@ -1,228 +1,229 @@
-# Java-Sleuth Comprehensive Testing Report
+# Java-Sleuth 综合测试报告
 
-**Test Execution Date:** September 18, 2025
-**Quality Assessment Score:** 92/100
-**Implementation Status:** APPROVED FOR TESTING ✅
+**测试执行日期：** 2025 年 9 月 18 日  
+**质量评估得分：** 92/100  
+**实现状态：** 已批准进入测试 ✅  
 
-## Executive Summary
+## 摘要
 
-The enhanced Java-Sleuth implementation has undergone comprehensive testing validation covering all 20 commands across 6 major testing categories. The implementation demonstrates excellent build quality, functional completeness, and strong security posture with only minor performance optimization opportunities identified.
+本次对增强后的 Java-Sleuth 进行了较完整的测试验证，覆盖 6 大测试类别、共 20 条命令。整体结果表明：构建质量优秀、功能完整性良好、安全姿态稳健；同时也识别出少量可优化的性能点。
 
-## Detailed Test Results
+## 详细测试结果
 
-### 1. Build and Compilation Testing ✅ PASSED
+### 1. 构建与编译测试 ✅ 通过
 
-**Status:** FULLY SUCCESSFUL
-- ✅ Maven compilation: SUCCESS (36 source files compiled)
-- ✅ JAR packaging: SUCCESS (2 JARs created)
-  - Standard JAR: 143,582 bytes
-  - Fat JAR with dependencies: 5,164,167 bytes
-- ✅ Agent manifest configuration: VERIFIED
-  - Agent-Class: ✓ com.javasleuth.agent.SleuthAgent
-  - Can-Redefine-Classes: ✓ true
-  - Can-Retransform-Classes: ✓ true
-  - Premain-Class: ✓ com.javasleuth.agent.SleuthAgent
-- ✅ Dependency resolution: SUCCESS (All dependencies included)
-- ✅ Unit tests: 4/4 PASSED
+**状态：** 完全成功
+- ✅ Maven 编译：成功（编译 36 个源文件）
+- ✅ JAR 打包：成功（生成 2 个 JAR）
+  - 标准 JAR：143,582 bytes
+  - 含依赖 Fat JAR：5,164,167 bytes
+- ✅ Agent Manifest 配置：已验证
+  - Agent-Class：✓ com.javasleuth.agent.SleuthAgent
+  - Can-Redefine-Classes：✓ true
+  - Can-Retransform-Classes：✓ true
+  - Premain-Class：✓ com.javasleuth.agent.SleuthAgent
+- ✅ 依赖解析：成功（依赖均已包含）
+- ✅ 单元测试：4/4 通过
 
-**Dependencies Verified:**
-- ASM 9.5 (bytecode manipulation)
-- JLine 3.21.0 (command line interface)
-- Jackson 2.15.2 (JSON processing)
-- CFR 0.152 (Java decompiler)
+**已验证依赖：**
+- ASM 9.5（字节码操作）
+- JLine 3.21.0（命令行交互）
+- Jackson 2.15.2（JSON 处理）
+- CFR 0.152（Java 反编译器）
 
-### 2. Command Integration Testing ✅ PASSED
+### 2. 命令集成测试 ✅ 通过
 
-**Status:** ALL 20 COMMANDS REGISTERED
-- ✅ Command registration: 20/20 commands properly registered
-- ✅ Help system: Fully functional with descriptions
-- ✅ Command parsing: Proper argument handling verified
-- ✅ Error handling: Unknown commands properly rejected
+**状态：** 20 条命令均已注册
+- ✅ 命令注册：20/20 正确注册
+- ✅ Help 系统：可正常输出描述信息
+- ✅ 命令解析：参数处理逻辑已验证
+- ✅ 错误处理：未知命令可正确拒绝
 
-**Registered Commands:**
-1. `dashboard` - Display JVM dashboard with runtime statistics
-2. `thread` - Display thread information and detect deadlocks
-3. `sc` - Search for loaded classes by pattern
-4. `sm` - Search for methods in loaded classes
-5. `watch` - Watch method execution with parameters, return values, and timing
-6. `trace` - Trace method execution call chains with timing
-7. `redefine` - Redefine loaded classes with new implementations
-8. `mc` - Compile Java source code in memory
-9. `retransform` - Retransform loaded classes to apply active transformers
-10. `jvm` - Display comprehensive JVM information and runtime details
-11. `sysprop` - View and modify system properties
-12. `sysenv` - Inspect system environment variables
-13. `vmoption` - Display and analyze JVM startup options and arguments
-14. `memory` - Display detailed memory information and statistics
-15. `heapdump` - Create heap dumps for memory analysis
-16. `jad` - Decompile Java classes to readable source code
-17. `classloader` - Analyze ClassLoader hierarchy and loaded classes
-18. `mbean` - Inspect and interact with JMX MBeans
-19. `help` - Show help information for all commands
-20. `quit` - Exit the Java-Sleuth session
+**已注册命令：**
+1. `dashboard` - 展示 JVM 仪表盘与运行时统计
+2. `thread` - 展示线程信息并检测死锁
+3. `sc` - 按 pattern 搜索已加载类
+4. `sm` - 在已加载类中搜索方法
+5. `watch` - 监控方法执行（参数/返回值/耗时）
+6. `trace` - 跟踪方法调用链并统计耗时
+7. `redefine` - 使用新实现重定义已加载类
+8. `mc` - 内存编译 Java 源码
+9. `retransform` - 对已加载类执行 retransformation 以应用 transformer
+10. `jvm` - 展示 JVM 综合信息与运行时细节
+11. `sysprop` - 查看与修改系统属性
+12. `sysenv` - 查看系统环境变量
+13. `vmoption` - 展示与分析 JVM 启动选项与参数
+14. `memory` - 展示详细内存信息与统计
+15. `heapdump` - 生成堆转储用于内存分析
+16. `jad` - 反编译 Java 类为可读源码
+17. `classloader` - 分析 ClassLoader 层级与已加载类
+18. `mbean` - 查看并操作 JMX MBeans
+19. `help` - 输出所有命令的帮助信息
+20. `quit` - 退出 Java-Sleuth 会话
 
-### 3. Functional Testing ✅ PASSED
+### 3. 功能测试 ✅ 通过
 
-**Status:** CORE FUNCTIONALITY VERIFIED
+**状态：** 核心功能已验证
 
-**Successful Command Tests:**
-- ✅ `help` - Lists all 20 commands with descriptions
-- ✅ `jvm` - Displays comprehensive JVM information (VM details, OS info, runtime stats)
-- ✅ `memory` - Shows memory pools, GC stats, heap/non-heap usage
-- ✅ `thread` - Lists 8 active threads with states and CPU times
-- ✅ `dashboard` - Provides consolidated system overview
-- ✅ `sc java.lang.String` - Found 12 matching classes
-- ✅ `classloader` - Lists 4 ClassLoaders with hierarchy
-- ✅ `mbean` - Displays 25 MBeans across domains
+**成功验证的命令：**
+- ✅ `help` - 可列出 20 条命令与描述
+- ✅ `jvm` - 可输出 JVM 信息（VM 详情、OS 信息、运行时统计）
+- ✅ `memory` - 可展示内存池、GC 统计、堆/非堆使用情况
+- ✅ `thread` - 可列出活动线程并输出状态与 CPU 时间
+- ✅ `dashboard` - 可输出综合系统概览
+- ✅ `sc java.lang.String` - 可找到匹配类
+- ✅ `classloader` - 可列出 ClassLoader 并展示层级信息
+- ✅ `mbean` - 可按 domain 展示 MBeans
 
-**Test Application Integration:**
-- ✅ Agent attachment: Successful
-- ✅ Socket communication: Port 3658 functional
-- ✅ Multi-client support: Concurrent connections handled
-- ✅ Command processing: Real-time execution
+**测试应用集成：**
+- ✅ Agent attach：成功
+- ✅ Socket 通信：端口 3658 正常
+- ✅ 多客户端支持：可处理并发连接
+- ✅ 命令处理：可实时执行
 
-**Known Limitations:**
-- ⚠️ JAD decompiler: CFR integration needs optimization
-- ⚠️ Some commands require specific class context for full testing
+**已知限制：**
+- ⚠️ JAD 反编译：CFR 集成仍有优化空间
+- ⚠️ 个别命令需要特定类上下文才能完全覆盖测试
 
-### 4. Performance Testing ⚠️ ACCEPTABLE
+### 4. 性能测试 ⚠️ 可接受
 
-**Status:** GOOD PERFORMANCE WITH OPTIMIZATION OPPORTUNITIES
+**状态：** 性能总体良好，存在可优化空间
 
-**Agent Startup Performance:**
-- Average startup time: 205ms (consistent across 3 tests)
-- Memory footprint: 75MB RSS (acceptable for diagnostic tool)
-- Process overhead: Minimal CPU impact during idle
+**Agent 启动性能：**
+- 平均启动耗时：205ms（3 次测试结果一致）
+- 内存占用：75MB RSS（作为诊断工具可接受）
+- 空闲开销：CPU 影响较小
 
-**Command Response Times:**
-- Average response time: ~3000ms (includes network timeout)
-- Response consistency: Stable across multiple runs
-- Memory usage during operation: Stable
+**命令响应时间：**
+- 平均响应时间：约 3000ms（包含网络超时配置影响）
+- 响应一致性：多次运行表现稳定
+- 运行时内存：整体稳定
 
-**Resource Management:**
-- ✅ Process cleanup: Successful termination
-- ✅ Memory leaks: No significant leaks detected
-- ✅ File descriptor management: Proper cleanup
+**资源管理：**
+- ✅ 进程清理：可正常终止
+- ✅ 内存泄漏：未发现明显泄漏
+- ✅ 文件描述符：可正确清理
 
-**Performance Recommendations:**
-1. Optimize command response times (currently limited by timeout handling)
-2. Implement connection pooling for improved responsiveness
-3. Add command result caching for frequently accessed data
+**性能建议：**
+1. 优化命令响应时间（当前受 timeout 处理限制）
+2. 实施连接复用以提升交互响应
+3. 对高频数据增加结果缓存
 
-### 5. Security Testing ✅ PASSED
+### 5. 安全测试 ✅ 通过
 
-**Status:** STRONG SECURITY POSTURE
+**状态：** 安全姿态良好
 
-**Java Compatibility:**
-- ✅ Java 11 compatibility: Confirmed
-- ✅ Java 8+ target: Verified (compiled with target 8)
+**Java 兼容性：**
+- ✅ Java 11 兼容：已确认
+- ✅ Java 8+ 目标：已验证（target=8 编译）
 
-**Security Manager Compatibility:**
-- ✅ Works with security manager enabled
-- ✅ No security violations detected
+**Security Manager 兼容性：**
+- ✅ 可在开启 Security Manager 的场景下运行
+- ✅ 未发现明显安全违规
 
-**Input Validation:**
-- ✅ Malicious path injection: Properly blocked
-- ✅ Command injection: Sanitized
-- ✅ XSS attempts: Neutralized
-- ✅ JNDI injection: Blocked
-- ✅ Binary input: Handled safely
+**输入校验：**
+- ✅ 恶意路径注入：可正确拦截
+- ✅ 命令注入：已清洗
+- ✅ XSS 尝试：可中和
+- ✅ JNDI 注入：可拦截
+- ✅ 二进制输入：可安全处理
 
-**File System Security:**
-- ⚠️ Heap dump operations: Need permission validation enhancement
-- ✅ Path traversal protection: Basic validation present
+**文件系统安全：**
+- ⚠️ Heap dump 操作：建议增强权限校验
+- ✅ 目录穿越：已有基础防护
 
-**Cross-Platform Support:**
-- ✅ Unix launcher script: Present and executable
-- ✅ Windows launcher script: Present
-- ✅ Platform-specific handling: Appropriate
+**跨平台支持：**
+- ✅ Unix 启动脚本：存在且可执行
+- ✅ Windows 启动脚本：存在
+- ✅ 平台差异处理：基本合理
 
-**Resource Security:**
-- ✅ No resource leaks: File descriptors properly managed
-- ✅ Connection limits: Proper cleanup implemented
+**资源安全：**
+- ✅ 未发现明显资源泄漏：文件描述符可正确管理
+- ✅ 连接限制：断连清理机制生效
 
-### 6. Compatibility Testing ✅ PASSED
+### 6. 兼容性测试 ✅ 通过
 
-**Status:** EXCELLENT COMPATIBILITY
+**状态：** 兼容性表现优秀
 
-**JVM Compatibility:**
-- ✅ OpenJDK 11: Fully compatible
-- ✅ Java 8+ target: Maintained
-- ✅ Agent attachment: Standard JVM attach mechanism
+**JVM 兼容性：**
+- ✅ OpenJDK 11：完全兼容
+- ✅ Java 8+：目标保持
+- ✅ Agent attach：使用标准 JVM attach 机制
 
-**Platform Compatibility:**
-- ✅ Linux: Tested and working
-- ✅ Cross-platform scripts: Available for Unix/Windows
+**平台兼容性：**
+- ✅ Linux：已测试可用
+- ✅ 跨平台脚本：Unix/Windows 均提供
 
-**Integration Compatibility:**
-- ✅ Maven build: Standard plugin usage
-- ✅ IDE integration: Standard project structure
-- ✅ CI/CD ready: Standard Maven lifecycle
+**工程/集成兼容性：**
+- ✅ Maven 构建：使用标准生命周期
+- ✅ IDE 集成：项目结构标准
+- ✅ CI/CD：可直接纳入 Maven 流水线
 
-## Overall Assessment
+## 总体评估
 
-### Strengths
-1. **Complete Implementation**: All 20 planned commands implemented and functional
-2. **Robust Architecture**: Well-structured command processor with proper abstractions
-3. **Security Focused**: Input validation and permission handling implemented
-4. **Production Ready**: Proper agent configuration and resource management
-5. **Standards Compliant**: Follows Java agent best practices and Maven conventions
+### 优势
+1. **实现完整**：20 条计划命令均已实现并可用
+2. **架构稳健**：命令处理器结构清晰、抽象合理
+3. **安全优先**：输入校验与权限处理具备基础能力
+4. **可生产化**：Agent 配置完整、资源管理到位
+5. **规范一致**：符合 Java agent 最佳实践与 Maven 约定
 
-### Areas for Improvement
-1. **Performance Optimization**: Command response times could be improved
-2. **Enhanced File Operations**: Strengthen heap dump permission validation
-3. **Documentation**: Runtime documentation could be enhanced
-4. **Error Reporting**: More detailed error messages for edge cases
+### 可改进点
+1. **性能优化**：命令响应时间仍有下降空间
+2. **文件操作增强**：heapdump 权限校验需更严格
+3. **文档完善**：运行时文档与示例可进一步补充
+4. **错误提示**：边界场景的错误信息可更细化
 
-### Risk Assessment
-- **Low Risk**: Core functionality is stable and secure
-- **Medium Risk**: Performance optimization needed for production scale
-- **Minimal Risk**: File operation permissions need minor enhancement
+### 风险评估
+- **低风险**：核心功能稳定且安全
+- **中风险**：生产规模下建议进行性能优化
+- **轻微风险**：文件操作权限策略需小幅增强
 
-## Recommendations
+## 建议
 
-### Immediate Actions (Pre-Production)
-1. ✅ **Deploy for Testing**: Implementation approved for testing environment
-2. 🔄 **Performance Tuning**: Optimize command response times
-3. 🔄 **Security Enhancement**: Strengthen file operation permissions
+### 立即行动（生产前）
+1. ✅ **进入测试部署**：已批准用于测试环境
+2. 🔄 **性能调优**：针对响应时间进行优化
+3. 🔄 **安全增强**：强化文件操作权限校验
 
-### Future Enhancements
-1. **Monitoring Integration**: Add metrics collection
-2. **Configuration Management**: External configuration support
-3. **Advanced Features**: Custom command plugins
-4. **Performance Profiling**: Built-in performance analysis tools
+### 后续增强
+1. **监控集成**：补充指标采集与对接
+2. **配置管理**：完善外部化配置能力
+3. **高级能力**：自定义命令插件机制
+4. **性能剖析**：内置更强的性能分析工具
 
-## Test Environment Details
+## 测试环境信息
 
-**System Configuration:**
-- OS: Linux 6.6.87.2-microsoft-standard-WSL2
-- Java: OpenJDK 11.0.28
-- Memory: 45GB total, 29GB available
-- CPU: 32 cores available
+**系统配置：**
+- OS：Linux 6.6.87.2-microsoft-standard-WSL2
+- Java：OpenJDK 11.0.28
+- 内存：45GB total，29GB available
+- CPU：32 cores available
 
-**Testing Tools Used:**
-- Maven 3.x for build testing
-- netcat for socket communication testing
-- Custom shell scripts for automation
-- JPS for process monitoring
-- Memory profiling tools
+**使用的测试工具：**
+- Maven 3.x（构建测试）
+- netcat（socket 通信测试）
+- 自定义 shell 脚本（自动化）
+- jps（进程监控）
+- 内存分析工具
 
-## Conclusion
+## 结论
 
-The Java-Sleuth enhanced implementation successfully passes comprehensive testing validation with a score of 92/100. The implementation demonstrates:
+增强后的 Java-Sleuth 以 92/100 的得分通过综合测试验证。整体结论如下：
 
-- ✅ **Complete Functional Coverage**: All 20 commands operational
-- ✅ **Strong Security Posture**: Input validation and permission handling
-- ✅ **Production Readiness**: Proper resource management and cleanup
-- ✅ **Cross-Platform Support**: Unix and Windows compatibility
-- ⚠️ **Performance Acceptable**: Minor optimization opportunities identified
+- ✅ **功能覆盖完整**：20 条命令均可工作
+- ✅ **安全姿态良好**：输入校验与权限处理具备基础能力
+- ✅ **具备生产可用基础**：资源管理与清理到位
+- ✅ **跨平台支持**：Unix 与 Windows 启动脚本齐备
+- ⚠️ **性能可接受**：存在少量优化空间
 
-**RECOMMENDATION: APPROVED FOR TESTING DEPLOYMENT**
+**建议：批准在测试环境部署**
 
-The implementation is ready for testing environment deployment with monitoring for performance optimization opportunities. The quality assessment score of 92/100 reflects a robust, secure, and functionally complete diagnostic tool ready for production use.
+实现已具备进入测试环境的条件，建议在测试期持续关注性能与文件操作权限策略的完善。
 
 ---
-*Test Report Generated: September 18, 2025*
-*Testing Framework: Custom validation suite*
-*Total Test Duration: ~45 minutes*
-*Test Coverage: 100% of implemented features*
+*测试报告生成：2025 年 9 月 18 日*  
+*测试框架：自定义验证套件*  
+*总耗时：约 45 分钟*  
+*覆盖率：100%（覆盖已实现特性）*
+

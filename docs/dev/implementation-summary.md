@@ -1,197 +1,197 @@
-# Java-Sleuth Enhancement Implementation Summary
+# Java-Sleuth 增强实现总结
 
-## Overview
-Successfully implemented **Phase 4** and **Phase 5** enhancements for Java-Sleuth, adding 9 new high-priority commands that significantly expand the diagnostic and monitoring capabilities.
+## 概览
+已完成 Java-Sleuth 的 **Phase 4** 与 **Phase 5** 增强，实现了 9 个高优先级新命令，显著扩展了诊断与监控能力。
 
-## Implemented Features
+## 已实现功能
 
-### Phase 4 - High Priority Commands
+### Phase 4 - 高优先级命令
 
-#### 1. Enhanced JVM Command (`jvm`)
-- **Location**: `src/main/java/com/javasleuth/command/impl/JvmCommand.java`
-- **Features**:
-  - Comprehensive VM information (name, version, vendor, specifications)
-  - Operating system details with CPU and memory metrics
-  - Runtime information (PID, uptime, classpaths)
-  - Class loading statistics
-  - JIT compilation details
-  - Memory usage summary
-  - Complete JVM startup arguments
-- **Usage**: `jvm [--help]`
+#### 1. 增强版 JVM 命令（`jvm`）
+- **位置**: `src/main/java/com/javasleuth/command/impl/JvmCommand.java`
+- **能力**:
+  - 全面的 VM 信息（名称、版本、供应商、规格）
+  - 操作系统详情（CPU 与内存指标）
+  - 运行时信息（PID、运行时长、classpath）
+  - 类加载统计
+  - JIT 编译详情
+  - 内存使用汇总
+  - 完整的 JVM 启动参数
+- **用法**: `jvm [--help]`
 
-#### 2. System Property Command (`sysprop`)
-- **Location**: `src/main/java/com/javasleuth/command/impl/SysPropCommand.java`
-- **Features**:
-  - View all system properties
-  - Get specific property values
-  - Set property values at runtime
-  - Pattern-based search with wildcards
-  - Sorted and formatted output
-- **Usage**: `sysprop [key] [value]` or `sysprop <pattern>`
+#### 2. 系统属性命令（`sysprop`）
+- **位置**: `src/main/java/com/javasleuth/command/impl/SysPropCommand.java`
+- **能力**:
+  - 查看所有系统属性
+  - 获取指定属性值
+  - 在运行时写入属性值
+  - 支持通配符的模式搜索
+  - 输出排序与格式化
+- **用法**: `sysprop [key] [value]` 或 `sysprop <pattern>`
 
-#### 3. System Environment Command (`sysenv`)
-- **Location**: `src/main/java/com/javasleuth/command/impl/SysEnvCommand.java`
-- **Features**:
-  - List all environment variables
-  - Search with wildcard patterns
-  - Automatic masking of sensitive variables
-  - Security-conscious value truncation
-  - Case-insensitive pattern matching
-- **Usage**: `sysenv [key]` or `sysenv <pattern>`
+#### 3. 系统环境变量命令（`sysenv`）
+- **位置**: `src/main/java/com/javasleuth/command/impl/SysEnvCommand.java`
+- **能力**:
+  - 列出全部环境变量
+  - 支持通配符模式搜索
+  - 自动脱敏敏感变量
+  - 安全导向的值截断
+  - 不区分大小写的模式匹配
+- **用法**: `sysenv [key]` 或 `sysenv <pattern>`
 
-#### 4. VM Options Command (`vmoption`)
-- **Location**: `src/main/java/com/javasleuth/command/impl/VmOptionCommand.java`
-- **Features**:
-  - Categorized display of JVM options (Memory, GC, Performance, Debug, etc.)
-  - Pattern-based search through VM arguments
-  - Detailed descriptions for common options
-  - Analysis of actual startup parameters
-- **Usage**: `vmoption [pattern]`
+#### 4. VM 选项命令（`vmoption`）
+- **位置**: `src/main/java/com/javasleuth/command/impl/VmOptionCommand.java`
+- **能力**:
+  - 分类展示 JVM 选项（内存、GC、性能、调试等）
+  - 通过模式在 VM 参数中搜索
+  - 为常见选项提供详细说明
+  - 分析实际启动参数
+- **用法**: `vmoption [pattern]`
 
-#### 5. Enhanced Memory Command (`memory`)
-- **Location**: `src/main/java/com/javasleuth/command/impl/MemoryCommand.java`
-- **Features**:
-  - Comprehensive memory overview
-  - Detailed memory pool analysis
-  - Garbage collection statistics
-  - Heap and non-heap breakdowns
-  - Direct memory information
-  - Memory threshold monitoring
-- **Usage**: `memory [overview|pools|gc|heap|nonheap|direct]`
+#### 5. 增强版内存命令（`memory`）
+- **位置**: `src/main/java/com/javasleuth/command/impl/MemoryCommand.java`
+- **能力**:
+  - 综合内存概览
+  - 详细的内存池分析
+  - 垃圾回收统计
+  - 堆与非堆拆分
+  - 直接内存信息
+  - 内存阈值监控
+- **用法**: `memory [overview|pools|gc|heap|nonheap|direct]`
 
-#### 6. Heap Dump Command (`heapdump`)
-- **Location**: `src/main/java/com/javasleuth/command/impl/HeapDumpCommand.java`
-- **Features**:
-  - Create heap dumps for memory analysis
-  - Support for live-only or all-objects dumps
-  - Automatic filename generation with timestamps
-  - File size and duration reporting
-  - Integration guidance for analysis tools
-- **Usage**: `heapdump [--live|--all] [filename]`
+#### 6. 堆转储命令（`heapdump`）
+- **位置**: `src/main/java/com/javasleuth/command/impl/HeapDumpCommand.java`
+- **能力**:
+  - 生成堆转储文件用于内存分析
+  - 支持仅导出 live 对象或导出全部对象
+  - 自动生成带时间戳的文件名
+  - 输出文件大小与耗时
+  - 提供分析工具使用指引
+- **用法**: `heapdump [--live|--all] [filename]`
 
-### Phase 5 - Critical Production Commands
+### Phase 5 - 生产关键命令
 
-#### 7. Class Decompilation Command (`jad`)
-- **Location**: `src/main/java/com/javasleuth/command/impl/JadCommand.java`
-- **Features**:
-  - Uses CFR decompiler for modern Java support
-  - Decompiles loaded classes to readable source
-  - Method filtering capabilities
-  - Line number support for debugging
-  - Handles lambdas, streams, and generics
-  - Class search with wildcards
-- **Usage**: `jad <classname> [--lines] [--verbose] [--method=<pattern>]`
+#### 7. 类反编译命令（`jad`）
+- **位置**: `src/main/java/com/javasleuth/command/impl/JadCommand.java`
+- **能力**:
+  - 使用 CFR 反编译器，支持较新 Java 语法
+  - 将已加载类反编译为可读源码
+  - 支持方法过滤
+  - 支持行号输出（便于调试）
+  - 支持 lambdas/streams/generics
+  - 支持通配符类搜索
+- **用法**: `jad <classname> [--lines] [--verbose] [--method=<pattern>]`
 
-#### 8. Enhanced ClassLoader Analysis Command (`classloader`)
-- **Location**: `src/main/java/com/javasleuth/command/impl/ClassLoaderCommand.java`
-- **Features**:
-  - Hierarchical ClassLoader tree visualization
-  - Class distribution statistics
-  - URL and classpath inspection
-  - Class search across loaders
-  - Parent-child relationship analysis
-  - Code source location tracking
-- **Usage**: `classloader [list|tree|stats|classes|urls|find] [options]`
+#### 8. 增强版 ClassLoader 分析命令（`classloader`）
+- **位置**: `src/main/java/com/javasleuth/command/impl/ClassLoaderCommand.java`
+- **能力**:
+  - 分层展示 ClassLoader 树
+  - 类分布统计
+  - URL 与 classpath 查看
+  - 跨 loader 的类搜索
+  - 父子关系分析
+  - 代码来源位置追踪
+- **用法**: `classloader [list|tree|stats|classes|urls|find] [options]`
 
-#### 9. MBean Inspector (`mbean`)
-- **Location**: `src/main/java/com/javasleuth/command/impl/MBeanCommand.java`
-- **Features**:
-  - Complete JMX MBean integration
-  - List and search MBeans by pattern
-  - Get/set MBean attributes
-  - Invoke MBean operations
-  - Domain-based organization
-  - Support for complex data types (CompositeData, TabularData)
-- **Usage**: `mbean [list|info|get|set|invoke|domains|search] [options]`
+#### 9. MBean 查看器（`mbean`）
+- **位置**: `src/main/java/com/javasleuth/command/impl/MBeanCommand.java`
+- **能力**:
+  - 完整的 JMX MBean 集成
+  - 按 pattern 列出与搜索 MBeans
+  - 读取/写入 MBean 属性
+  - 调用 MBean 操作
+  - 按 domain 组织展示
+  - 支持复杂数据类型（CompositeData、TabularData）
+- **用法**: `mbean [list|info|get|set|invoke|domains|search] [options]`
 
-## Technical Implementation Details
+## 技术实现细节
 
-### Dependencies Added
-- **CFR Decompiler**: `org.benf:cfr:0.152` - High-quality Java decompiler
-- Added to `pom.xml`
+### 新增依赖
+- **CFR 反编译器**: `org.benf:cfr:0.152` - 高质量 Java 反编译器
+- 已添加到 `pom.xml`
 
-### Architecture Integration
-- All commands follow existing `Command` interface pattern
-- Registered in `com.javasleuth.command.BuiltinCommandProvider` and loaded by `com.javasleuth.command.CommandRegistry`
-- Consistent error handling and help system
-- Thread-safe implementations
-- Compatible with existing bytecode enhancement framework
+### 架构集成
+- 所有命令遵循现有 `Command` 接口模式
+- 在 `com.javasleuth.command.BuiltinCommandProvider` 注册，并由 `com.javasleuth.command.CommandRegistry` 加载
+- 统一的错误处理与 help 系统
+- 线程安全实现
+- 与既有字节码增强框架兼容
 
-### Code Quality Standards
-- ✅ Comprehensive error handling
-- ✅ Detailed help documentation for each command
-- ✅ Consistent naming conventions
-- ✅ Thread-safe implementations
-- ✅ Security considerations (sensitive data masking)
-- ✅ Performance optimizations
-- ✅ Extensive pattern matching support
+### 代码质量标准
+- ✅ 完整的错误处理
+- ✅ 每个命令提供详细 help 文档
+- ✅ 统一命名规范
+- ✅ 线程安全实现
+- ✅ 安全考虑（敏感数据脱敏）
+- ✅ 性能优化
+- ✅ 丰富的模式匹配支持
 
-## Build Status
-- ✅ **Compilation**: Successful
-- ✅ **Tests**: All existing tests pass
-- ✅ **Packaging**: JAR with dependencies built successfully
-- ✅ **Dependencies**: CFR decompiler integrated
+## 构建状态
+- ✅ **编译**：成功
+- ✅ **测试**：所有既有测试通过
+- ✅ **打包**：成功生成包含依赖的 JAR
+- ✅ **依赖**：CFR 反编译器已集成
 
-## Command Summary
+## 命令汇总
 
-| Command | Alias | Description | Phase |
+| 命令 | 别名 | 说明 | Phase |
 |---------|-------|-------------|--------|
-| `jvm` | - | Comprehensive JVM information | 4 |
-| `sysprop` | - | System properties management | 4 |
-| `sysenv` | - | Environment variables inspection | 4 |
-| `vmoption` | - | VM options analysis | 4 |
-| `memory` | - | Advanced memory analysis | 4 |
-| `heapdump` | - | Heap dump creation | 4 |
-| `jad` | - | Class decompilation | 5 |
-| `classloader` | - | ClassLoader analysis | 5 |
-| `mbean` | - | JMX MBean inspector | 5 |
+| `jvm` | - | JVM 综合信息 | 4 |
+| `sysprop` | - | 系统属性管理 | 4 |
+| `sysenv` | - | 环境变量查看 | 4 |
+| `vmoption` | - | VM 选项分析 | 4 |
+| `memory` | - | 高级内存分析 | 4 |
+| `heapdump` | - | 堆转储生成 | 4 |
+| `jad` | - | 类反编译 | 5 |
+| `classloader` | - | ClassLoader 分析 | 5 |
+| `mbean` | - | JMX MBean 查看器 | 5 |
 
-## Usage Examples
+## 使用示例
 
 ```bash
-# JVM Information
-jvm                                    # Full JVM details
+# JVM 信息
+jvm                                    # JVM 详情
 
-# System Properties
-sysprop                               # List all properties
-sysprop java.version                  # Get specific property
-sysprop user.timezone GMT             # Set property value
-sysprop java.*                        # Search with wildcards
+# 系统属性
+sysprop                               # 列出所有属性
+sysprop java.version                  # 获取指定属性
+sysprop user.timezone GMT             # 写入属性值
+sysprop java.*                        # 通配符搜索
 
-# Memory Analysis
-memory                                # Memory overview
-memory pools                          # Detailed pool info
-memory gc                            # GC statistics
+# 内存分析
+memory                                # 内存概览
+memory pools                          # 内存池详情
+memory gc                            # GC 统计
 
-# Heap Analysis
-heapdump                             # Create heap dump
-heapdump --live myapp.hprof          # Live objects only
+# 堆分析
+heapdump                             # 生成 heap dump
+heapdump --live myapp.hprof          # 仅导出 live 对象
 
-# Class Decompilation
-jad java.lang.String                 # Decompile String class
-jad MyClass --method=toString        # Show only toString method
+# 类反编译
+jad java.lang.String                 # 反编译 String 类
+jad MyClass --method=toString        # 仅展示 toString 方法
 
-# ClassLoader Analysis
-classloader tree                     # Show hierarchy
-classloader find String             # Find String class
+# ClassLoader 分析
+classloader tree                     # 展示层级
+classloader find String             # 查找 String 类
 
-# MBean Inspection
-mbean list java.lang:*              # List Java MBeans
+# MBean 查看
+mbean list java.lang:*              # 列出 Java MBeans
 mbean get java.lang:type=Memory HeapMemoryUsage
 mbean invoke java.lang:type=Memory gc
 ```
 
-## Next Steps and Recommendations
+## 后续建议
 
-1. **Testing**: Test all commands in different JVM environments
-2. **Documentation**: Create user guide with real-world examples
-3. **Performance**: Monitor impact on target applications
-4. **Extensions**: Consider adding more specialized commands based on user feedback
-5. **Integration**: Test with various Java applications and frameworks
+1. **测试**：在不同 JVM 环境中验证所有命令行为
+2. **文档**：补充面向用户的使用指南与真实案例
+3. **性能**：关注对目标应用的影响与开销
+4. **扩展**：根据用户反馈增加更多专项命令
+5. **集成**：与不同类型 Java 应用/框架组合测试
 
-## Files Modified/Created
+## 修改/新增文件
 
-### New Command Files
+### 新增命令文件
 - `src/main/java/com/javasleuth/command/impl/JvmCommand.java`
 - `src/main/java/com/javasleuth/command/impl/SysPropCommand.java`
 - `src/main/java/com/javasleuth/command/impl/SysEnvCommand.java`
@@ -202,8 +202,9 @@ mbean invoke java.lang:type=Memory gc
 - `src/main/java/com/javasleuth/command/impl/ClassLoaderCommand.java`
 - `src/main/java/com/javasleuth/command/impl/MBeanCommand.java`
 
-### Modified Files
-- `pom.xml` - Added CFR dependency
-- `src/main/java/com/javasleuth/command/BuiltinCommandProvider.java` - Registered new commands
+### 修改文件
+- `pom.xml` - 添加 CFR 依赖
+- `src/main/java/com/javasleuth/command/BuiltinCommandProvider.java` - 注册新命令
 
-The implementation successfully enhances Java-Sleuth with production-ready diagnostic capabilities that provide comprehensive insight into JVM internals, memory management, class loading, and runtime behavior.
+本次实现将 Java-Sleuth 增强为更贴近生产可用的诊断工具，覆盖 JVM 内部信息、内存管理、类加载分析与运行时行为的可观测能力。
+

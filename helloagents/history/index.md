@@ -20,6 +20,7 @@ This file records index of all completed changes for traceability and query.
 | 202602022232 | security_auth_protocol_trace_refactor | Refactor | ✅Completed | history/2026-02/202602022232_security_auth_protocol_trace_refactor/ |
 | 202602031122 | event_driven_upgrade | Refactor | ✅Completed | history/2026-02/202602031122_event_driven_upgrade/ |
 | 202602041158 | unified_exec_pipeline | Refactor | ✅Completed | history/2026-02/202602041158_unified_exec_pipeline/ |
+| 202602041830 | docs_zh | Refactor | ✅Completed | history/2026-02/202602041830_docs_zh/ |
 
 ---
 
@@ -42,3 +43,4 @@ This file records index of all completed changes for traceability and query.
 - 202602022232_security_auth_protocol_trace_refactor (2026-02/202602022232_security_auth_protocol_trace_refactor/) - 默认 HMAC 安全姿态 / 授权 SSOT / 危险命令二次确认 / 断连回收
 - 202602031122_event_driven_upgrade (2026-02/202602031122_event_driven_upgrade/) - 并发背压/缓存语义统一/高影响命令治理/HMAC 启动自洽（Netty 双栈延期）
 - 202602041158_unified_exec_pipeline (2026-02/202602041158_unified_exec_pipeline/) - 多 ClassLoader 选类回滚一致性、插桩失败可恢复、流式命令纳入 Pipeline 与 jobs 并发硬上限
+- 202602041830_docs_zh (2026-02/202602041830_docs_zh/) - docs/ 文档中文化（统一为简体中文）

@@ -1,21 +1,20 @@
-# Documentation Index
+# 文档索引
 
-This directory contains user-facing documentation that used to live in the repository root.
+本目录包含面向用户的文档（此前位于仓库根目录）。
 
-## Quick Links
+## 快速入口
 
-- Usage
-  - `docs/usage/commands.md` - Interactive command reference
+- 使用
+  - `docs/usage/commands.md` - 交互式命令参考
 
-- Development
-  - `docs/dev/implementation-summary.md` - Implementation overview and architecture notes
-  - `docs/dev/testing-report.md` - Testing notes and report
+- 开发
+  - `docs/dev/implementation-summary.md` - 实现概览与架构说明
+  - `docs/dev/testing-report.md` - 测试说明与报告
 
-- Operations
-  - `docs/ops/operations-runbook.md` - Operations runbook (troubleshooting, performance, etc.)
-  - `docs/ops/production-deployment-guide.md` - Production deployment guide
+- 运维
+  - `docs/ops/operations-runbook.md` - 运维 Runbook（排障、性能等）
+  - `docs/ops/production-deployment-guide.md` - 生产部署指南
 
-## Scripts
+## 脚本
 
-Operational scripts have been organized under `scripts/`. See `scripts/README.md` for the full list.
-
+运维相关脚本已整理到 `scripts/` 目录；完整列表见 `scripts/README.md`。

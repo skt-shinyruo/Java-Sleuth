@@ -59,6 +59,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 默认协议由 legacy 调整为 framed（保持 handshake 协商，提升长输出/流式命令稳定性）
 - 授权策略 SSOT：以 CommandMeta 为唯一权限来源，AuthorizationManager 不再维护命令名特判/映射；插件命令必须提供 meta
 - 项目根目录结构整理：文档集中到 docs/，脚本归档到 scripts/
+- docs/ 文档中文化：用户/开发/运维文档说明文字统一为简体中文（保留命令/配置示例可复制）
 - 安全默认：关闭匿名 viewer（`security.anonymous.viewer=false`），连接后需要先执行 `auth`
 - sysprop 写入改为显式子命令 `sysprop set <key> <value>`（并要求更高权限）
 - 插桩过滤策略放开常见代理类（例如 Spring/CGLIB `$$EnhancerBySpringCGLIB$$`），transform 逐次日志默认降噪（DEBUG 才输出）
