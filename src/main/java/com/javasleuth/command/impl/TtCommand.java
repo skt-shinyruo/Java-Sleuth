@@ -163,7 +163,7 @@ public class TtCommand implements StreamCommand {
             TtInterceptor.register(ttId, q);
             interceptorRegistered = true;
 
-            transformer.addEnhancer(target.getName(), enhancer);
+            transformer.addEnhancer(target, enhancer);
             enhancerAdded = true;
 
             instrumentation.retransformClasses(target);
@@ -174,7 +174,7 @@ public class TtCommand implements StreamCommand {
             // Rollback partial state best-effort.
             if (enhancerAdded) {
                 try {
-                    transformer.removeEnhancer(target.getName(), enhancer);
+                    transformer.removeEnhancer(target, enhancer);
                 } catch (Exception ignore) {
                     // ignore
                 }
@@ -331,7 +331,7 @@ public class TtCommand implements StreamCommand {
             return false;
         }
         try {
-            transformer.removeEnhancer(session.target.getName(), session.enhancer);
+            transformer.removeEnhancer(session.target, session.enhancer);
             instrumentation.retransformClasses(session.target);
         } catch (Exception ignored) {
             // best-effort

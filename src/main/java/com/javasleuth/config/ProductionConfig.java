@@ -2,6 +2,7 @@ package com.javasleuth.config;
 
 import java.io.*;
 import java.lang.management.ManagementFactory;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -88,10 +89,17 @@ public class ProductionConfig {
         properties.setProperty("performance.command.timeout.max", "300000");
         properties.setProperty("performance.maintenance.force_gc", "false");
 
+        // Enhancement failure strategy (cooldown + retry, avoid silent disable)
+        properties.setProperty("enhancement.failure.cooldown.ms", "30000");
+        properties.setProperty("enhancement.failure.log.interval.ms", "60000");
+
         // Job retention configuration
         properties.setProperty("jobs.max", "200");
         properties.setProperty("jobs.ttl.ms", "3600000");
         properties.setProperty("jobs.output.max.bytes", "262144");
+        // Background job execution limits (backpressure + stability)
+        properties.setProperty("jobs.max.running", "4");
+        properties.setProperty("jobs.queue.capacity", "20");
 
         // Security configuration
         properties.setProperty("security.input.validation", "true");
@@ -128,9 +136,12 @@ public class ProductionConfig {
         properties.setProperty("protocol.frame.max.payload", "4096");
         properties.setProperty("protocol.handshake.enabled", "true");
         properties.setProperty("protocol.text.max.line.bytes", "8192");
+        properties.setProperty("protocol.text.end.marker.enabled", "true");
 
         // Plugin configuration
         properties.setProperty("plugins.enabled", "false");
+        // When disabled, do not load CommandProvider from the target application's classpath by default.
+        properties.setProperty("plugins.serviceloader.enabled", "false");
         properties.setProperty("plugins.allowlist.sha256", "");
         properties.setProperty("plugins.directory", "plugins");
         properties.setProperty("plugins.conflict.strategy", "prefer-builtin");
@@ -252,6 +263,22 @@ public class ProductionConfig {
         return getInt("jobs.output.max.bytes", 262144);
     }
 
+    public int getJobsMaxRunning() {
+        int v = getInt("jobs.max.running", 4);
+        if (v <= 0) {
+            v = 1;
+        }
+        return Math.min(v, 64);
+    }
+
+    public int getJobsQueueCapacity() {
+        int v = getInt("jobs.queue.capacity", 20);
+        if (v <= 0) {
+            v = 1;
+        }
+        return Math.min(v, 10000);
+    }
+
     // Security configuration
     public boolean isInputValidationEnabled() {
         return getBoolean("security.input.validation", true);
@@ -362,6 +389,10 @@ public class ProductionConfig {
         return getBoolean("protocol.handshake.enabled", true);
     }
 
+    public boolean isTextEndMarkerEnabled() {
+        return getBoolean("protocol.text.end.marker.enabled", true);
+    }
+
     // Security mode configuration
     public String getSecurityMode() {
         return getString("security.mode", "off");
@@ -370,6 +401,10 @@ public class ProductionConfig {
     // Plugin configuration
     public boolean isPluginsEnabled() {
         return getBoolean("plugins.enabled", false);
+    }
+
+    public boolean isPluginsServiceLoaderEnabled() {
+        return getBoolean("plugins.serviceloader.enabled", false);
     }
 
     public String getPluginsAllowlistSha256() {
@@ -504,7 +539,6 @@ public class ProductionConfig {
     // Runtime configuration updates
     public void setRuntimeConfig(String key, String value) {
         runtimeConfig.put(key, value);
-        System.out.println("Runtime config updated: " + key + " = " + maskIfSensitive(key, value));
     }
 
     public void removeRuntimeConfig(String key) {
@@ -540,10 +574,26 @@ public class ProductionConfig {
 
     // Save current configuration
     public void saveConfiguration() throws IOException {
+        saveConfiguration(false);
+    }
+
+    public void saveConfiguration(boolean includeRuntimeOverrides) throws IOException {
         File configFile = new File(CONFIG_FILE);
+        Properties toSave = new Properties();
+        toSave.putAll(properties);
+        if (includeRuntimeOverrides && !runtimeConfig.isEmpty()) {
+            for (Map.Entry<String, String> e : runtimeConfig.entrySet()) {
+                if (e == null || e.getKey() == null || e.getValue() == null) {
+                    continue;
+                }
+                toSave.setProperty(e.getKey(), e.getValue());
+            }
+        }
         try (FileOutputStream output = new FileOutputStream(configFile)) {
-            properties.store(output, "Java-Sleuth Production Configuration");
-            System.out.println("Configuration saved to: " + configFile.getAbsolutePath());
+            String comment = includeRuntimeOverrides
+                ? "Java-Sleuth Production Configuration (including runtime overrides)"
+                : "Java-Sleuth Production Configuration";
+            toSave.store(output, comment);
         }
     }
 

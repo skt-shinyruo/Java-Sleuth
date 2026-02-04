@@ -42,6 +42,13 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 审计输出可控：`logging.audit.console.enabled`、`logging.audit.file.path`、`logging.security.file.path`（默认落盘到 tmp 并带 pid 后缀）
 - monitor 独立采样 key：`monitoring.monitor.sample.rate`
 - 关键边界单测补齐：非回环 bind + `security.mode=off` 拒绝启动、`security.mode=hmac` 但 secret 为空拒绝启动、协议上限异常路径
+- 多 ClassLoader 目标选择器 `LoadedClassResolver`：输出候选与 loaderId，支持 `--loader` 精确选类
+- 插桩失败冷却可重试：`enhancement.failure.*`（避免失败后静默移除 enhancer）
+- jobs 并发硬上限与队列上限：`jobs.max.running` / `jobs.queue.capacity`
+- legacy 文本流式输出 END marker：`protocol.text.end.marker.enabled`
+- classpath ServiceLoader 插件开关：`plugins.serviceloader.enabled`
+- `config save --include-runtime`：可选持久化 runtime overrides
+- `mc --encoding`：源码读取默认 UTF-8 并支持显式编码
 
 ### Changed
 - CommandProcessor 改为注册表 + 统一执行管线
@@ -69,6 +76,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 命令执行侧背压与可配置上限：`performance.command.executor.core/max/queue.capacity`（替代 `Executors.newCachedThreadPool`，避免线程膨胀与无限排队）
 - loopback 自洽启动：当 `security.mode=hmac` 且 `security.hmac.secret` 为空时，回环绑定下可自动生成临时 secret（明文 secret 仅在交互控制台打印，`security.hmac.secret.autogen.*` 控制）
 - 高影响命令治理：`CommandMeta.impact=LOW|MEDIUM|HIGH` + `security.impact.high.*`（二次确认 + 并发限制，默认同一时刻仅允许 1 条高影响命令执行）
+- 流式命令执行链路统一：StreamCommand 走 `CommandPipeline` 的 executor/timeout/输出治理（sanitize/truncate），减少连接线程被长时间业务逻辑占用
 
 ### Fixed
 - watch/trace 队列增加背压与采样
@@ -97,6 +105,11 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - stdout/stderr 污染：`logging.performance.enabled` 默认关闭（可配置开启）
 - `tt replay` 模板输出移除 TODO 占位，改为明确限制说明与更可复制的 Java 模板
 - `profiler` 文案澄清当前实现不依赖 async-profiler（避免误导）
+- 多 ClassLoader 场景稳定性：watch/trace/redefine 支持 `--loader` 精确选类，session 回滚绑定同一 `Class<?>`，避免同名类选错/回滚错
+- ASM `COMPUTE_FRAMES` 可靠性：使用 loader-aware ClassWriter，失败不再移除 enhancer，改为冷却+可重试并暴露可观测指标
+- 后台任务线程模型：`--bg` 不再“每 job 新线程”，改为有界线程池并提供背压与明确拒绝提示
+- 插件默认禁用语义一致：默认不加载目标进程 classpath 上的 ServiceLoader provider（需显式开启）
+- 文件/编码治理一致：`mc` 源码读取默认 UTF-8；`redefine` 文件读取统一走 `SecurityValidator.canReadFile` 校验
 
 ## [1.0.0] - 2026-01-28
 

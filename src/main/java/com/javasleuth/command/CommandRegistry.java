@@ -101,9 +101,11 @@ public class CommandRegistry {
         List<CommandProvider> providers = new ArrayList<>();
         providers.add(new BuiltinCommandProvider(instrumentation, transformer, metricsCollector, config, auditLogger));
 
-        ServiceLoader<CommandProvider> loader = ServiceLoader.load(CommandProvider.class);
-        for (CommandProvider provider : loader) {
-            providers.add(provider);
+        if (config.isPluginsServiceLoaderEnabled()) {
+            ServiceLoader<CommandProvider> loader = ServiceLoader.load(CommandProvider.class);
+            for (CommandProvider provider : loader) {
+                providers.add(provider);
+            }
         }
 
         providers.addAll(loadFromPluginDirectory());

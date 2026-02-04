@@ -1,6 +1,8 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
+import com.javasleuth.security.SecurityValidator;
+import com.javasleuth.util.LoadedClassResolver;
 import java.lang.instrument.ClassDefinition;
 import java.lang.instrument.Instrumentation;
 import java.io.File;
@@ -25,11 +27,25 @@ public class RedefineCommand implements Command {
 
         // Parse options
         boolean verbose = false;
+        Integer loaderId = null;
         for (int i = 3; i < args.length; i++) {
             switch (args[i]) {
                 case "-v":
                 case "--verbose":
                     verbose = true;
+                    break;
+                case "--loader":
+                case "--loader-id":
+                case "--loader-hash":
+                    if (i + 1 < args.length) {
+                        String raw = args[++i];
+                        Integer parsed = LoadedClassResolver.parseLoaderId(raw);
+                        if (parsed == null) {
+                            return "Invalid --loader value: " + raw +
+                                " (expected: bootstrap/null/0x1234/1234)";
+                        }
+                        loaderId = parsed;
+                    }
                     break;
                 case "-h":
                 case "--help":
@@ -37,29 +53,33 @@ public class RedefineCommand implements Command {
             }
         }
 
-        return redefineClass(className, classFilePath, verbose);
+        return redefineClass(className, classFilePath, loaderId, verbose);
     }
 
-    private String redefineClass(String className, String classFilePath, boolean verbose) {
+    private String redefineClass(String className, String classFilePath, Integer loaderId, boolean verbose) {
         try {
             // Check if class file exists
             File classFile = new File(classFilePath);
             if (!classFile.exists()) {
                 return "Class file not found: " + classFilePath;
             }
+            if (!SecurityValidator.canReadFile(classFilePath)) {
+                return "Class file path not allowed: " + classFilePath;
+            }
 
             // Read class bytes
             byte[] classBytes = Files.readAllBytes(Paths.get(classFilePath));
 
             // Find the loaded class
-            Class<?> targetClass = null;
-            for (Class<?> loadedClass : instrumentation.getAllLoadedClasses()) {
-                if (loadedClass.getName().equals(className)) {
-                    targetClass = loadedClass;
-                    break;
-                }
+            LoadedClassResolver.Candidate resolved;
+            try {
+                resolved = LoadedClassResolver.resolveSingle(instrumentation, className, loaderId, true, 200, false);
+            } catch (LoadedClassResolver.ResolutionException e) {
+                return e.getMessage() +
+                    "\nCandidates:\n" + LoadedClassResolver.formatCandidates(e.getCandidates(), 10) +
+                    "\nHint: use --loader <loaderId> (e.g. --loader 0x1234 or --loader bootstrap)";
             }
-
+            Class<?> targetClass = resolved.getClazz();
             if (targetClass == null) {
                 return "Class not found in loaded classes: " + className;
             }
@@ -81,6 +101,7 @@ public class RedefineCommand implements Command {
 
             if (verbose) {
                 result.append("Class loader: ").append(getClassLoaderName(targetClass.getClassLoader())).append("\n");
+                result.append("Loader ID: ").append(LoadedClassResolver.formatLoaderId(LoadedClassResolver.loaderId(targetClass.getClassLoader()))).append("\n");
                 result.append("Is interface: ").append(targetClass.isInterface()).append("\n");
                 result.append("Is array: ").append(targetClass.isArray()).append("\n");
             }
@@ -126,6 +147,7 @@ public class RedefineCommand implements Command {
                "  class-file-path   Path to the compiled .class file\n\n" +
                "Options:\n" +
                "  -v, --verbose     Show detailed information\n" +
+               "  --loader <id>     Select target ClassLoader when multiple loaded classes match\n" +
                "  -h, --help        Show this help\n\n" +
                "Examples:\n" +
                "  redefine com.example.MyClass /path/to/MyClass.class\n" +

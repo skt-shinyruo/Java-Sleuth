@@ -96,6 +96,9 @@ public class SessionCleanupOnDisconnectTest {
                 if ("getAllLoadedClasses".equals(method.getName())) {
                     return snapshot;
                 }
+                if ("isModifiableClass".equals(method.getName())) {
+                    return true;
+                }
                 Class<?> returnType = method.getReturnType();
                 if (returnType == Void.TYPE) {
                     return null;

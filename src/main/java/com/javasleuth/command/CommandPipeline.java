@@ -1,6 +1,7 @@
 package com.javasleuth.command;
 
 import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.command.session.ClientDisconnectedException;
 import com.javasleuth.security.AuthorizationManager;
 import com.javasleuth.security.DangerousCommandConfirmationManager;
 import com.javasleuth.security.InputValidator;
@@ -73,6 +74,32 @@ public class CommandPipeline {
 
         public String getOutput() {
             return output;
+        }
+
+        public String getError() {
+            return error;
+        }
+    }
+
+    public static class StreamResult {
+        private final boolean success;
+        private final String error;
+
+        public StreamResult(boolean success, String error) {
+            this.success = success;
+            this.error = error;
+        }
+
+        public static StreamResult ok() {
+            return new StreamResult(true, null);
+        }
+
+        public static StreamResult failed(String error) {
+            return new StreamResult(false, error);
+        }
+
+        public boolean isSuccess() {
+            return success;
         }
 
         public String getError() {
@@ -247,6 +274,86 @@ public class CommandPipeline {
         }
     }
 
+    private static final class PermitFutureTaskVoid extends FutureTask<Void> {
+        private final ImpactPermit permit;
+
+        private PermitFutureTaskVoid(ImpactPermit permit, java.util.concurrent.Callable<Void> callable) {
+            super(callable);
+            this.permit = permit;
+        }
+
+        @Override
+        public void run() {
+            try {
+                super.run();
+            } finally {
+                if (permit != null) {
+                    permit.release();
+                }
+            }
+        }
+    }
+
+    private static final class GuardedStreamSink implements StreamSink {
+        private final StreamSink delegate;
+        private final InputValidator validator;
+        private final AtomicBoolean ended = new AtomicBoolean(false);
+
+        private GuardedStreamSink(StreamSink delegate, InputValidator validator) {
+            this.delegate = delegate;
+            this.validator = validator;
+        }
+
+        @Override
+        public void send(String data) {
+            if (delegate == null || ended.get()) {
+                return;
+            }
+            delegate.send(sanitize(data));
+        }
+
+        @Override
+        public void close(String summary) {
+            if (delegate == null) {
+                return;
+            }
+            if (!ended.compareAndSet(false, true)) {
+                return;
+            }
+            delegate.close(sanitize(summary));
+        }
+
+        @Override
+        public void error(String message) {
+            if (delegate == null) {
+                return;
+            }
+            if (!ended.compareAndSet(false, true)) {
+                return;
+            }
+            delegate.error(sanitize(message));
+        }
+
+        private String sanitize(String raw) {
+            if (validator == null) {
+                return raw == null ? "" : raw;
+            }
+            InputValidator.ValidationResult r = validator.sanitizeOutput(raw);
+            String out = r != null ? r.getSanitizedOutput() : null;
+            return out != null ? out : (raw == null ? "" : raw);
+        }
+
+        private void ensureClosed() {
+            if (delegate == null) {
+                return;
+            }
+            if (!ended.compareAndSet(false, true)) {
+                return;
+            }
+            delegate.close(null);
+        }
+    }
+
     private ImpactPermit acquireImpactPermit(CommandMeta meta) throws Exception {
         if (meta == null || meta.getImpactLevel() != CommandMeta.ImpactLevel.HIGH) {
             return ImpactPermit.none();
@@ -326,6 +433,100 @@ public class CommandPipeline {
             Throwable cause = e.getCause();
             if (cause instanceof RuntimeException && cause.getCause() != null) {
                 cause = cause.getCause();
+            }
+            if (cause instanceof Exception) {
+                throw (Exception) cause;
+            }
+            throw new Exception(cause != null ? cause.getMessage() : "Command execution failed");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            task.cancel(true);
+            boolean removed = false;
+            try {
+                removed = commandExecutor.remove(task);
+            } catch (Exception ignore) {
+                // ignore
+            }
+            if (removed && permit != null) {
+                permit.release();
+            }
+            throw new Exception("Command interrupted");
+        }
+    }
+
+    public StreamResult executeStreamPrechecked(CommandRegistry.Entry entry, String[] args, CommandContext context, StreamSink sink) throws Exception {
+        if (args == null || args.length == 0) {
+            return StreamResult.failed("Empty command");
+        }
+        Command command = entry != null ? entry.getCommand() : null;
+        if (!(command instanceof StreamCommand)) {
+            return StreamResult.failed("Command is not streamable");
+        }
+
+        CommandMeta meta = entry != null ? entry.getMeta() : null;
+        long timeoutMs = config.getCommandTimeout();
+        ImpactPermit permit = acquireImpactPermit(meta);
+        GuardedStreamSink guarded = new GuardedStreamSink(sink, inputValidator);
+        try {
+            executeStreamWithTimeout((StreamCommand) command, args, timeoutMs, permit, guarded);
+            guarded.ensureClosed();
+            return StreamResult.ok();
+        } catch (ClientDisconnectedException e) {
+            throw e;
+        } catch (Exception e) {
+            String message = e.getMessage() != null ? e.getMessage() : "Command execution failed";
+            guarded.error(message);
+            return StreamResult.failed(message);
+        }
+    }
+
+    private void executeStreamWithTimeout(StreamCommand command, String[] args, long timeoutMs, ImpactPermit permit, StreamSink sink) throws Exception {
+        if (timeoutMs <= 0) {
+            try {
+                command.executeStream(args, sink);
+            } finally {
+                if (permit != null) {
+                    permit.release();
+                }
+            }
+            return;
+        }
+
+        PermitFutureTaskVoid task = new PermitFutureTaskVoid(permit, () -> {
+            command.executeStream(args, sink);
+            return null;
+        });
+        try {
+            commandExecutor.execute(task);
+        } catch (RejectedExecutionException rejected) {
+            if (permit != null) {
+                permit.release();
+            }
+            throw new Exception("Server is busy: command execution queue is full");
+        }
+
+        try {
+            task.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            task.cancel(true);
+            boolean removed = false;
+            try {
+                removed = commandExecutor.remove(task);
+            } catch (Exception ignore) {
+                // ignore
+            }
+            if (removed && permit != null) {
+                // Task won't run: PermitFutureTaskVoid.run() won't execute, release here.
+                permit.release();
+            }
+            throw new Exception("Command timed out after " + timeoutMs + "ms");
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException && cause.getCause() != null) {
+                cause = cause.getCause();
+            }
+            if (cause instanceof ClientDisconnectedException) {
+                throw (ClientDisconnectedException) cause;
             }
             if (cause instanceof Exception) {
                 throw (Exception) cause;

@@ -143,13 +143,13 @@ public class MonitorCommand implements StreamCommand {
 
             for (Class<?> c : matches) {
                 MonitorEnhancer enhancer = new MonitorEnhancer(c.getName(), methodPattern, null, monitorId);
-                transformer.addEnhancer(c.getName(), enhancer);
+                transformer.addEnhancer(c, enhancer);
                 try {
                     instrumentation.retransformClasses(c);
                 } catch (Exception e) {
                     // Roll back this class registration and then abort.
                     try {
-                        transformer.removeEnhancer(c.getName(), enhancer);
+                        transformer.removeEnhancer(c, enhancer);
                     } catch (Exception ignore) {
                         // ignore
                     }
@@ -166,7 +166,7 @@ public class MonitorCommand implements StreamCommand {
             // Rollback any partial state best-effort.
             for (MonitorSession.EnhancedClass ec : enhanced) {
                 try {
-                    transformer.removeEnhancer(ec.className, ec.enhancer);
+                    transformer.removeEnhancer(ec.clazz, ec.enhancer);
                 } catch (Exception ignore) {
                     // ignore
                 }
@@ -254,7 +254,7 @@ public class MonitorCommand implements StreamCommand {
 
         try {
             for (MonitorSession.EnhancedClass ec : session.enhancedClasses) {
-                transformer.removeEnhancer(ec.className, ec.enhancer);
+                transformer.removeEnhancer(ec.clazz, ec.enhancer);
                 try {
                     instrumentation.retransformClasses(ec.clazz);
                 } catch (Exception ignored) {

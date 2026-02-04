@@ -8,6 +8,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -75,6 +81,13 @@ public final class JobManager {
     private volatile long jobTtlMs = 60L * 60L * 1000L; // 1 hour
     private volatile int maxOutputBytesPerJob = 256 * 1024; // 256 KiB
 
+    // Execution limits (hard cap on concurrency + bounded queue).
+    private volatile int maxRunning = 4;
+    private volatile int queueCapacity = 20;
+    private final AtomicLong workerSeq = new AtomicLong(0);
+    private final Object executorLock = new Object();
+    private volatile ThreadPoolExecutor executor;
+
     private JobManager() {}
 
     public void configureRetention(int maxJobs, long jobTtlMs, int maxOutputBytesPerJob) {
@@ -86,6 +99,97 @@ public final class JobManager {
         }
         if (maxOutputBytesPerJob > 0) {
             this.maxOutputBytesPerJob = maxOutputBytesPerJob;
+        }
+    }
+
+    public void configureExecution(int maxRunning, int queueCapacity) {
+        if (maxRunning > 0) {
+            this.maxRunning = maxRunning;
+        }
+        if (queueCapacity > 0) {
+            this.queueCapacity = queueCapacity;
+        }
+        synchronized (executorLock) {
+            ThreadPoolExecutor ex = executor;
+            if (ex == null) {
+                ensureExecutor();
+                return;
+            }
+
+            int mr = Math.max(1, Math.min(this.maxRunning, 64));
+            int qc = Math.max(1, Math.min(this.queueCapacity, 10000));
+            int oldQc = -1;
+            try {
+                BlockingQueue<Runnable> q = ex.getQueue();
+                if (q != null) {
+                    oldQc = q.size() + q.remainingCapacity();
+                }
+            } catch (Exception ignore) {
+                oldQc = -1;
+            }
+
+            boolean needsRebuild = ex.getCorePoolSize() != mr || oldQc != -1 && oldQc != qc;
+            if (!needsRebuild) {
+                return;
+            }
+
+            // 尝试“无任务时”重建（队列容量无法动态变更）。
+            boolean idle = false;
+            try {
+                idle = ex.getActiveCount() == 0 && (ex.getQueue() == null || ex.getQueue().isEmpty());
+            } catch (Exception ignore) {
+                idle = false;
+            }
+            if (idle) {
+                ThreadPoolExecutor old = ex;
+                executor = null;
+                try {
+                    old.shutdownNow();
+                } catch (Exception ignore) {
+                    // ignore
+                }
+                ensureExecutor();
+                return;
+            }
+
+            // 有运行中的任务：仅调整线程数上限，队列容量保持不变。
+            try {
+                ex.setCorePoolSize(mr);
+                ex.setMaximumPoolSize(mr);
+            } catch (Exception ignore) {
+                // ignore
+            }
+        }
+    }
+
+    private ThreadPoolExecutor ensureExecutor() {
+        ThreadPoolExecutor ex = executor;
+        if (ex != null) {
+            return ex;
+        }
+        synchronized (executorLock) {
+            if (executor != null) {
+                return executor;
+            }
+            int mr = Math.max(1, Math.min(maxRunning, 64));
+            int qc = Math.max(1, Math.min(queueCapacity, 10000));
+            BlockingQueue<Runnable> q = new LinkedBlockingQueue<>(qc);
+            ThreadPoolExecutor tpe = new ThreadPoolExecutor(
+                mr,
+                mr,
+                60L,
+                TimeUnit.SECONDS,
+                q,
+                r -> {
+                    Thread t = new Thread(r, "sleuth-job-worker-" + workerSeq.incrementAndGet());
+                    t.setDaemon(true);
+                    return t;
+                },
+                new ThreadPoolExecutor.AbortPolicy()
+            );
+            tpe.allowCoreThreadTimeOut(true);
+            executor = tpe;
+            return tpe;
         }
     }
 
@@ -132,14 +236,26 @@ public final class JobManager {
         Objects.requireNonNull(job, "job");
         evictExpired();
 
+        ThreadPoolExecutor ex = ensureExecutor();
         String id = String.format(Locale.ROOT, "job-%d", seq.getAndIncrement());
         Job j = new Job(id, name, commandLine, maxOutputBytesPerJob);
         jobs.put(id, j);
 
-        Thread t = new Thread(() -> runJob(j, job), "sleuth-job-" + id);
-        t.setDaemon(true);
-        j.thread = t;
-        t.start();
+        try {
+            Future<?> f = ex.submit(() -> {
+                j.thread = Thread.currentThread();
+                try {
+                    runJob(j, job);
+                } finally {
+                    j.thread = null;
+                }
+            });
+            j.future = f;
+        } catch (RejectedExecutionException rejected) {
+            jobs.remove(id);
+            throw new RejectedExecutionException("Too many background jobs running/queued: maxRunning=" +
+                Math.max(1, maxRunning) + ", queueCapacity=" + Math.max(1, queueCapacity));
+        }
         return id;
     }
 
@@ -169,9 +285,22 @@ public final class JobManager {
             return false;
         }
         j.cancelled.set(true);
+        Future<?> f = j.future;
+        if (f != null) {
+            try {
+                f.cancel(true);
+            } catch (Exception ignore) {
+                // ignore
+            }
+        }
         Thread t = j.thread;
         if (t != null) {
             t.interrupt();
+        } else {
+            // Not started yet (still in queue) or already finished.
+            if (f != null && f.isCancelled() && j.status == JobStatus.RUNNING) {
+                j.stop();
+            }
         }
         // status will be updated by job thread
         return true;
@@ -225,6 +354,7 @@ public final class JobManager {
         private final int maxOutputBytes;
         private final AtomicLong outputBytes = new AtomicLong(0);
         private volatile Thread thread;
+        private volatile Future<?> future;
 
         private Job(String id, String name, String commandLine, int maxOutputBytes) {
             this.id = id;
@@ -306,4 +436,3 @@ public final class JobManager {
         }
     }
 }
-

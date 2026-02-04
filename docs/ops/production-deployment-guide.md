@@ -965,11 +965,15 @@ performance.command.executor.max=32
 performance.command.executor.queue.capacity=200
 performance.command.timeout=120000
 performance.command.timeout.max=300000
+enhancement.failure.cooldown.ms=30000
+enhancement.failure.log.interval.ms=60000
 
 # Jobs Configuration
 jobs.max=200
 jobs.ttl.ms=3600000
 jobs.output.max.bytes=262144
+jobs.max.running=4
+jobs.queue.capacity=20
 
 # Security Configuration
 security.input.validation=true
@@ -1009,6 +1013,14 @@ protocol.streaming.enabled=true
 protocol.frame.max.payload=4096
 protocol.handshake.enabled=true
 protocol.text.max.line.bytes=8192
+protocol.text.end.marker.enabled=true
+
+# Plugin Configuration
+plugins.enabled=false
+plugins.serviceloader.enabled=false
+plugins.allowlist.sha256=
+plugins.directory=/opt/java-sleuth/plugins
+plugins.conflict.strategy=prefer-builtin
 ```
 
 ### C. Security Checklist

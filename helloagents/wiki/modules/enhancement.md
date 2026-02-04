@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** Transformer 与 Enhancer 实现
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-01
+- **Last Updated:** 2026-02-04
 
 ## Specifications
 
@@ -34,6 +34,30 @@
 - Enhancer 链式组合
 - 停止会话仅移除对应 Enhancer
 
+### Requirement: 多 ClassLoader 增强隔离（同名类不互相污染）
+**Module:** enhancement
+在多 ClassLoader 场景下，同名类需要以 loader 维度隔离增强与回滚，避免“增强错对象 / 回滚错对象 / 互相覆盖”。
+
+#### Scenario: 同名类（不同 loader）仅增强目标 loader 的类
+前置：存在 `com.example.Foo` 被多个 ClassLoader 加载  
+- Transformer 以 `(className + loaderId)` 作为 enhancer key（loaderId=identityHashCode，bootstrap=0）
+- 添加/移除 enhancer 与 retransform 绑定到同一个 `Class<?>` 实例（与 command 层 session 对齐）
+
+### Requirement: ASM COMPUTE_FRAMES 可靠性与失败可恢复（避免静默失效）
+**Module:** enhancement
+`ClassWriter.COMPUTE_FRAMES` 需要正确解析依赖类的层级关系；在自定义 ClassLoader 或复杂依赖场景下，默认实现更容易失败。
+
+#### Scenario: 使用目标 ClassLoader 计算 common super
+前置：Transformer 进行增强且启用 COMPUTE_FRAMES  
+- 使用 loader-aware ClassWriter（以目标 `ClassLoader` 做 `getCommonSuperClass` 解析）
+- 解析失败时 transform 失败并进入冷却（不移除 enhancer），避免 watch/trace 突然失效且不再尝试
+
+#### Scenario: 失败冷却与可观测
+前置：增强失败发生  
+- 失败进入冷却并可重试（`enhancement.failure.cooldown.ms`）
+- 失败日志限频（`enhancement.failure.log.interval.ms`）
+- status 输出包含失败次数、冷却目标数与冷却跳过次数（suppressed）
+
 ### Requirement: 代理类覆盖与日志降噪
 **Module:** enhancement
 默认允许对常见代理类（例如 Spring/CGLIB `$$EnhancerBySpringCGLIB$$`）执行增强，避免 watch/trace 命中率不足；同时将 transform 日志纳入等级控制避免刷屏。
@@ -59,3 +83,4 @@ N/A
 - 202601281207_sleuth_plugin_stream (history/2026-01/202601281207_sleuth_plugin_stream/) - Enhancer 链式叠加
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 代理类过滤策略调整与 transform 日志等级控制
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - TraceEnhancer 语义去重与稳定性加固
+- 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - loader-aware COMPUTE_FRAMES、失败冷却可重试、增强按 loader 隔离

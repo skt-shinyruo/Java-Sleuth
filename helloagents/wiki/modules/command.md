@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 命令解析、校验、执行、输出
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-03
+- **Last Updated:** 2026-02-04
 
 ## Specifications
 
@@ -73,6 +73,7 @@
 前置：CommandProcessor 启动  
 - SPI/插件目录加载
 - 插件目录加载需显式开启 `plugins.enabled=true`（默认关闭）
+- classpath 的 `ServiceLoader` provider 需显式开启 `plugins.serviceloader.enabled=true`（默认关闭），避免在“插件默认禁用”预期下仍加载目标进程 classpath 上的 provider
 - 支持 `plugins.allowlist.sha256`（可选）：不在 allowlist 或 sha256 不匹配的 jar 会被拒绝并记录审计
 - 冲突策略可配置（prefer-builtin / prefer-plugin / fail）
 - 插件命令注册必须提供 CommandMeta（否则拒绝注册），避免插件绕过权限策略或产生“行为漂移”
@@ -82,6 +83,8 @@
 前置：客户端使用 framed 模式  
 - DATA/END/ERR 分帧输出
 - watch/trace/monitor/tt/stack 可流式推送
+- **流式命令同样走 `CommandPipeline`**：统一 executor/timeout/impact permit，并对每个输出 chunk 执行 `InputValidator.sanitizeOutput`（脱控制字符 + 截断）
+- legacy 文本协议的流式输出会追加单行 END marker（`protocol.text.end.marker.enabled=true`），降低客户端“超时猜结束”导致的截断风险
 
 ### Requirement: 高风险命令二次确认（防误触 + 可审计）
 **Module:** command / security
@@ -103,7 +106,7 @@
 对齐 Arthas 高频能力，保持“本机诊断 + 受控输入”。
 
 #### Scenario: 常用命令覆盖
-- watch/trace：支持 `--expr/--condition` 与 `--bg`（配合 jobs）
+- watch/trace：支持 `--expr/--condition` 与 `--bg`（配合 jobs），多 ClassLoader 场景可用 `--loader <id>` 指定目标 ClassLoader（避免同名类不确定）
 - monitor：周期统计输出（支持 `--bg`）
 - tt（lite）：record/list/detail/replay（replay 仅生成模板，不在目标 JVM 执行；支持 `--bg`）
 - stack：新增 `stack <class-pattern> <method-pattern>` 方法触发调用栈追踪（支持 `-n/-t/--depth/--bg`）；保留原 `stack monitor/dump/analyze/...` 线程栈采样分析
@@ -136,3 +139,4 @@ N/A
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - 插件默认关闭 + allowlist + classloader 释放
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - 缓存隔离、session 脱敏与诊断命令稳定性加固
 - 202602021233_quality_audit_more_issues (history/2026-02/202602021233_quality_audit_more_issues/) - 协议上限/危险命令元信息与关键边界单测补齐
+- 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - 流式命令纳入 Pipeline、legacy END marker、后台 jobs 并发上限与多 ClassLoader 选类回滚一致性

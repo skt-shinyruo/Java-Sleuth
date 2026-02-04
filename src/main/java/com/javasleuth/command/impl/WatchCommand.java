@@ -13,6 +13,7 @@ import com.javasleuth.monitor.WatchInterceptor;
 import com.javasleuth.data.WatchResult;
 import com.javasleuth.command.JobManager;
 import com.javasleuth.command.session.ClientSession;
+import com.javasleuth.util.LoadedClassResolver;
 import com.javasleuth.util.SleuthConditionEvaluator;
 import com.javasleuth.util.SleuthValueFormatter;
 import com.javasleuth.util.WildcardMatcher;
@@ -63,6 +64,8 @@ public class WatchCommand implements StreamCommand {
 
         // Background mode
         boolean background = false;
+        Integer loaderId = null;
+        boolean allowFirstWhenAmbiguous = false;
 
         String classPattern = args[1];
         String methodPattern = args[2];
@@ -103,6 +106,28 @@ public class WatchCommand implements StreamCommand {
                 case "--bg":
                     background = true;
                     break;
+                case "--loader":
+                case "--loader-id":
+                case "--loader-hash":
+                    if (i + 1 < args.length) {
+                        String raw = args[++i];
+                        Integer parsed = LoadedClassResolver.parseLoaderId(raw);
+                        if (parsed == null) {
+                            String msg = "Invalid --loader value: " + raw +
+                                " (expected: bootstrap/null/0x1234/1234)";
+                            if (sink != null) {
+                                sink.error(msg);
+                                return "";
+                            }
+                            return msg;
+                        }
+                        loaderId = parsed;
+                    }
+                    break;
+                case "--first":
+                case "--unsafe-first":
+                    allowFirstWhenAmbiguous = true;
+                    break;
                 case "--no-params":
                     captureParams = false;
                     break;
@@ -139,44 +164,44 @@ public class WatchCommand implements StreamCommand {
         List<SleuthConditionEvaluator.Condition> conditions = SleuthConditionEvaluator.parseConditions(rawConditions);
 
         return startWatching(classPattern, methodPattern, captureParams, captureReturn,
-            captureException, maxCount, timeoutSeconds, expr, conditions, sink);
+            captureException, maxCount, timeoutSeconds, loaderId, allowFirstWhenAmbiguous, expr, conditions, sink);
     }
 
     private String startWatching(String classPattern, String methodPattern,
                                boolean captureParams, boolean captureReturn, boolean captureException,
                                int maxCount, long timeoutSeconds,
+                               Integer loaderId,
+                               boolean allowFirstWhenAmbiguous,
                                List<String> expr,
                                List<SleuthConditionEvaluator.Condition> conditions,
-                               StreamSink sink) throws Exception {
+                                StreamSink sink) throws Exception {
 
-        // Find matching classes
-        Class<?>[] loadedClasses = instrumentation.getAllLoadedClasses();
-        String targetClassName = null;
-
-        for (Class<?> clazz : loadedClasses) {
-            if (matchesPattern(clazz.getName(), classPattern)) {
-                targetClassName = clazz.getName();
-                break;
+        // Find matching class (multi-ClassLoader safe)
+        LoadedClassResolver.Candidate resolved;
+        try {
+            resolved = LoadedClassResolver.resolveSingle(instrumentation, classPattern, loaderId, true, 200, allowFirstWhenAmbiguous);
+        } catch (LoadedClassResolver.ResolutionException e) {
+            String msg = e.getMessage() +
+                "\nCandidates:\n" + LoadedClassResolver.formatCandidates(e.getCandidates(), 10) +
+                "\nHint: use --loader <loaderId> (e.g. --loader 0x1234 or --loader bootstrap)";
+            if (sink != null) {
+                sink.error(msg);
+                return "";
             }
+            return msg;
         }
-
-        if (targetClassName == null) {
-            return "No loaded class matches pattern: " + classPattern;
-        }
+        String targetClassName = resolved.getClassName();
+        Class<?> targetClass = resolved.getClazz();
 
         String watchId = UUID.randomUUID().toString();
         BlockingQueue<WatchResult> resultQueue = new LinkedBlockingQueue<>(config.getWatchQueueCapacity());
-
-        // Use the actual loaded Class<?> instance to preserve classloader correctness.
-        Class<?> targetClass = null;
-        for (Class<?> c : loadedClasses) {
-            if (c != null && targetClassName.equals(c.getName())) {
-                targetClass = c;
-                break;
-            }
-        }
         if (targetClass == null) {
-            return "Target class not found in loaded classes: " + targetClassName;
+            String msg = "Target class not found in loaded classes: " + targetClassName;
+            if (sink != null) {
+                sink.error(msg);
+                return "";
+            }
+            return msg;
         }
 
         WatchEnhancer enhancer = new WatchEnhancer(targetClassName, methodPattern, null,
@@ -189,20 +214,20 @@ public class WatchCommand implements StreamCommand {
             interceptorRegistered = true;
 
             // Create and register enhancer
-            transformer.addEnhancer(targetClassName, enhancer);
+            transformer.addEnhancer(targetClass, enhancer);
             enhancerAdded = true;
 
             // Retransform the class
             instrumentation.retransformClasses(targetClass);
 
             // Create watch session
-            WatchSession session = new WatchSession(watchId, targetClassName, methodPattern, resultQueue, enhancer);
+            WatchSession session = new WatchSession(watchId, targetClass, targetClassName, methodPattern, resultQueue, enhancer);
             activeSessions.put(watchId, session);
         } catch (Exception e) {
             // Rollback partial state best-effort.
             if (enhancerAdded) {
                 try {
-                    transformer.removeEnhancer(targetClassName, enhancer);
+                    transformer.removeEnhancer(targetClass, enhancer);
                 } catch (Exception ignore) {
                     // ignore
                 }
@@ -236,7 +261,9 @@ public class WatchCommand implements StreamCommand {
         }
 
         StringBuilder result = new StringBuilder();
-        result.append("Started watching ").append(targetClassName).append(".").append(methodPattern).append("\n");
+        result.append("Started watching ").append(targetClassName)
+            .append(" (loaderId=").append(LoadedClassResolver.formatLoaderId(resolved.getLoaderId())).append(")")
+            .append(".").append(methodPattern).append("\n");
         result.append("Watch ID: ").append(watchId).append("\n");
         result.append("Capturing: ");
         if (captureParams) result.append("params ");
@@ -306,12 +333,13 @@ public class WatchCommand implements StreamCommand {
         if (session != null) {
             try {
                 // Remove enhancer
-                transformer.removeEnhancer(session.getClassName(), session.getEnhancer());
+                if (session.getTargetClass() != null) {
+                    transformer.removeEnhancer(session.getTargetClass(), session.getEnhancer());
+                }
 
                 // Retransform class back to original (best-effort using loaded instance)
-                Class<?> targetClass = findLoadedClass(session.getClassName());
-                if (targetClass != null) {
-                    instrumentation.retransformClasses(targetClass);
+                if (session.getTargetClass() != null) {
+                    instrumentation.retransformClasses(session.getTargetClass());
                 }
 
                 // Unregister watch
@@ -412,6 +440,8 @@ public class WatchCommand implements StreamCommand {
                "Options:\n" +
                "  -n, --count <num>     Maximum number of events to capture (default: 100)\n" +
                "  -t, --timeout <sec>   Timeout in seconds (default: 30)\n" +
+               "  --loader <id>         Select target ClassLoader when multiple loaded classes match\n" +
+               "  --first               Use first matched class when ambiguous (unsafe)\n" +
                "  --expr <fields>       Output fields (comma-separated), e.g. params,return,throw,cost,thread\n" +
                "  --condition <c>       Filter condition (lhs:op:rhs), can repeat; e.g. cost:gt:1000000\n" +
                "  --bg                 Run in background (use jobs tail/stop)\n" +
@@ -467,13 +497,16 @@ public class WatchCommand implements StreamCommand {
 
     private static class WatchSession {
         private final String watchId;
+        private final Class<?> targetClass;
         private final String className;
         private final String methodPattern;
         private final BlockingQueue<WatchResult> resultQueue;
         private final ClassEnhancer enhancer;
 
-        public WatchSession(String watchId, String className, String methodPattern, BlockingQueue<WatchResult> resultQueue, ClassEnhancer enhancer) {
+        public WatchSession(String watchId, Class<?> targetClass, String className, String methodPattern,
+                            BlockingQueue<WatchResult> resultQueue, ClassEnhancer enhancer) {
             this.watchId = watchId;
+            this.targetClass = targetClass;
             this.className = className;
             this.methodPattern = methodPattern;
             this.resultQueue = resultQueue;
@@ -481,6 +514,7 @@ public class WatchCommand implements StreamCommand {
         }
 
         public String getWatchId() { return watchId; }
+        public Class<?> getTargetClass() { return targetClass; }
         public String getClassName() { return className; }
         public String getMethodPattern() { return methodPattern; }
         public BlockingQueue<WatchResult> getResultQueue() { return resultQueue; }

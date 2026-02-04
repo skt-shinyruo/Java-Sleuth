@@ -50,8 +50,26 @@ public class ConfigCommand implements Command {
 
             case "save":
                 try {
-                    config.saveConfiguration();
-                    return "Configuration saved to file successfully";
+                    boolean includeRuntime = false;
+                    if (args.length > 2) {
+                        for (int i = 2; i < args.length; i++) {
+                            String a = args[i];
+                            if (a == null) {
+                                continue;
+                            }
+                            String t = a.trim().toLowerCase();
+                            if (t.isEmpty()) {
+                                continue;
+                            }
+                            if ("--include-runtime".equals(t) || "--include-overrides".equals(t)) {
+                                includeRuntime = true;
+                            }
+                        }
+                    }
+                    config.saveConfiguration(includeRuntime);
+                    return includeRuntime
+                        ? "Configuration saved successfully (including runtime overrides)"
+                        : "Configuration saved to file successfully";
                 } catch (Exception e) {
                     return "Failed to save configuration: " + e.getMessage();
                 }
@@ -84,6 +102,13 @@ public class ConfigCommand implements Command {
                 show.append("performance.command.executor.queue.capacity = ").append(config.getCommandExecutorQueueCapacity()).append("\n");
                 show.append("performance.command.timeout = ").append(config.getCommandTimeout()).append("\n");
 
+                show.append("\n-- Jobs Settings --\n");
+                show.append("jobs.max = ").append(config.getJobsMax()).append("\n");
+                show.append("jobs.ttl.ms = ").append(config.getJobsTtlMs()).append("\n");
+                show.append("jobs.output.max.bytes = ").append(config.getJobsOutputMaxBytes()).append("\n");
+                show.append("jobs.max.running = ").append(config.getJobsMaxRunning()).append("\n");
+                show.append("jobs.queue.capacity = ").append(config.getJobsQueueCapacity()).append("\n");
+
                 show.append("\n-- Security Settings --\n");
                 show.append("security.input.validation = ").append(config.isInputValidationEnabled()).append("\n");
                 show.append("security.audit.logging = ").append(config.isAuditLoggingEnabled()).append("\n");
@@ -105,6 +130,12 @@ public class ConfigCommand implements Command {
                 show.append("protocol.streaming.enabled = ").append(config.isStreamingEnabled()).append("\n");
                 show.append("protocol.frame.max.payload = ").append(config.getFrameMaxPayload()).append("\n");
                 show.append("protocol.text.max.line.bytes = ").append(config.getInt("protocol.text.max.line.bytes", 8192)).append("\n");
+                show.append("protocol.text.end.marker.enabled = ").append(config.isTextEndMarkerEnabled()).append("\n");
+
+                show.append("\n-- Plugin Settings --\n");
+                show.append("plugins.enabled = ").append(config.isPluginsEnabled()).append("\n");
+                show.append("plugins.serviceloader.enabled = ").append(config.isPluginsServiceLoaderEnabled()).append("\n");
+                show.append("plugins.directory = ").append(config.getPluginDirectory()).append("\n");
 
                 show.append("\n-- Monitoring Settings --\n");
                 show.append("monitoring.metrics.enabled = ").append(config.isMetricsEnabled()).append("\n");

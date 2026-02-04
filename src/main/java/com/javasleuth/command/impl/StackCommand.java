@@ -211,7 +211,7 @@ public class StackCommand implements StreamCommand {
             StackInterceptor.register(stackId, q);
             interceptorRegistered = true;
 
-            transformer.addEnhancer(target.getName(), enhancer);
+            transformer.addEnhancer(target, enhancer);
             enhancerAdded = true;
 
             instrumentation.retransformClasses(target);
@@ -221,7 +221,7 @@ public class StackCommand implements StreamCommand {
             // Rollback partial state best-effort.
             if (enhancerAdded) {
                 try {
-                    transformer.removeEnhancer(target.getName(), enhancer);
+                    transformer.removeEnhancer(target, enhancer);
                 } catch (Exception ignore) {
                     // ignore
                 }
@@ -307,7 +307,7 @@ public class StackCommand implements StreamCommand {
             return false;
         }
         try {
-            transformer.removeEnhancer(session.target.getName(), session.enhancer);
+            transformer.removeEnhancer(session.target, session.enhancer);
             instrumentation.retransformClasses(session.target);
         } catch (Exception ignored) {
             // best-effort

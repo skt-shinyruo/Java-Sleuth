@@ -9,6 +9,8 @@ import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Map;
@@ -27,12 +29,24 @@ public class MemoryCompilerCommand implements Command {
         boolean verbose = false;
         String outputDir = null;
         String className = null;
+        Charset charset = StandardCharsets.UTF_8;
 
         for (int i = 2; i < args.length; i++) {
             switch (args[i]) {
                 case "-v":
                 case "--verbose":
                     verbose = true;
+                    break;
+                case "-e":
+                case "--encoding":
+                    if (i + 1 < args.length) {
+                        String enc = args[++i];
+                        try {
+                            charset = Charset.forName(enc);
+                        } catch (Exception e) {
+                            return "Invalid encoding: " + enc;
+                        }
+                    }
                     break;
                 case "-o":
                 case "--output":
@@ -52,19 +66,23 @@ public class MemoryCompilerCommand implements Command {
             }
         }
 
-        return compileJavaSource(sourceFilePath, className, outputDir, verbose);
+        return compileJavaSource(sourceFilePath, className, outputDir, charset, verbose);
     }
 
-    private String compileJavaSource(String sourceFilePath, String className, String outputDir, boolean verbose) {
+    private String compileJavaSource(String sourceFilePath, String className, String outputDir, Charset charset, boolean verbose) {
         try {
             // Check if source file exists
             File sourceFile = new File(sourceFilePath);
             if (!sourceFile.exists()) {
                 return "Source file not found: " + sourceFilePath;
             }
+            if (!SecurityValidator.canReadFile(sourceFilePath)) {
+                return "Source file path not allowed: " + sourceFilePath;
+            }
 
             // Read source code
-            String sourceCode = new String(Files.readAllBytes(Paths.get(sourceFilePath)));
+            Charset cs = charset != null ? charset : StandardCharsets.UTF_8;
+            String sourceCode = new String(Files.readAllBytes(Paths.get(sourceFilePath)), cs);
 
             // Extract class name if not provided
             if (className == null) {
@@ -251,12 +269,14 @@ public class MemoryCompilerCommand implements Command {
                "Options:\n" +
                "  -c, --class <name>     Specify the fully qualified class name\n" +
                "  -o, --output <dir>     Output directory to save compiled .class files\n" +
+               "  -e, --encoding <name>  Source file encoding (default: UTF-8)\n" +
                "  -v, --verbose          Show detailed compilation information\n" +
                "  -h, --help             Show this help\n\n" +
                "Examples:\n" +
                "  mc MyClass.java\n" +
                "  mc src/com/example/Service.java -c com.example.Service\n" +
-               "  mc MyClass.java -o ./target/classes -v\n\n" +
+               "  mc MyClass.java -o ./target/classes -v\n" +
+               "  mc MyClass.java --encoding UTF-8 -v\n\n" +
                "Workflow:\n" +
                "  1. Use 'mc' to compile Java source to .class files\n" +
                "  2. Use 'redefine' to hot-swap the compiled class into running JVM\n\n" +

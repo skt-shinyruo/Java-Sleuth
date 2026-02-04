@@ -44,6 +44,8 @@ public class StatusCommand implements Command {
             status.append("Active Enhancers: ").append(transformer.getActiveEnhancersCount()).append("\n");
             status.append("Transformations: ").append(transformer.getTransformationCount()).append("\n");
             status.append("Enhancement Failures: ").append(transformer.getEnhancementFailureCount()).append("\n");
+            status.append("Enhancement Cooldown Targets: ").append(transformer.getEnhancementCooldownCount()).append("\n");
+            status.append("Enhancement Suppressed (cooldown skips): ").append(transformer.getEnhancementSuppressedCount()).append("\n");
         }
 
         // System information

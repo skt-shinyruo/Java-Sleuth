@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 默认配置、外部配置、系统属性覆盖
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-03
+- **Last Updated:** 2026-02-04
 
 ## Specifications
 
@@ -29,6 +29,7 @@
 - `protocol.handshake.enabled`：默认 true
 - `protocol.mode`：legacy|framed|binary（默认 framed）
 - `protocol.text.max.line.bytes`：文本协议单行最大字节数上限
+- `protocol.text.end.marker.enabled`：legacy 文本协议流式输出是否追加 END marker（降低“超时猜结束”截断风险）
 - `protocol.frame.max.payload`：分帧/二进制协议单帧 payload 最大字节数
 - `security.mode`：off|hmac（默认 hmac）
 - `security.anonymous.viewer`：默认 false（仅当会话角色为 viewer 时生效；hmac 模式下默认自举为 operator）
@@ -44,8 +45,11 @@
 - `performance.command.timeout.max`：命令超时的上限护栏（避免被 runtime config 放大到不可控）
 - `performance.command.executor.core` / `performance.command.executor.max` / `performance.command.executor.queue.capacity`：命令执行线程池与队列上限（避免 `newCachedThreadPool` 线程膨胀）
 - `performance.maintenance.force_gc`：维护线程是否强制 `System.gc()`（默认 false）
+- `enhancement.failure.cooldown.ms` / `enhancement.failure.log.interval.ms`：插桩失败冷却与日志限频（失败可重试，避免静默失效）
 - `jobs.max` / `jobs.ttl.ms` / `jobs.output.max.bytes`：后台任务（jobs/流式命令）保留数量、TTL 与单任务输出上限
+- `jobs.max.running` / `jobs.queue.capacity`：后台任务并发硬上限与队列上限（背压）
 - `plugins.enabled`：插件目录加载开关（默认 false）
+- `plugins.serviceloader.enabled`：是否允许从目标进程 classpath 通过 ServiceLoader 加载 CommandProvider（默认 false）
 - `plugins.allowlist.sha256`：插件 allowlist（jarName:sha256hex）
 - `logging.audit.console.enabled`：审计事件是否镜像到控制台（默认 false）
 - `logging.audit.file.path` / `logging.security.file.path`：审计/安全日志落盘路径（留空默认落到 tmp 并带 pid 后缀）
@@ -65,6 +69,11 @@
 - 读取配置时优先使用运行时覆盖（其次系统属性，再其次文件配置）  
 - 对敏感 key 的 value 输出会自动脱敏
 
+#### Scenario: config save 持久化（可选）运行时覆盖
+前置：需要把临时调试配置固化到配置文件  
+- `config save`：仅保存文件配置（properties），不包含 runtime overrides
+- `config save --include-runtime`：合并保存 runtime overrides（覆盖同名 key），便于“调试 -> 固化 -> 重启验证”
+
 ## API Interfaces
 N/A
 
@@ -81,3 +90,4 @@ N/A
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - 启动稳定化与安全自举相关配置项补齐
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - logging.performance.enabled 默认关闭与监控队列策略文档补齐
 - 202602021233_quality_audit_more_issues (history/2026-02/202602021233_quality_audit_more_issues/) - 默认配置/生产模板对齐与协议上限文档补齐
+- 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - jobs 并发上限、END marker、插件 ServiceLoader 开关与 config save 持久化语义补齐

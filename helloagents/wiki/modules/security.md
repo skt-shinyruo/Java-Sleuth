@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** InputValidator/AuditLogger/Auth/AuthZ/SecurityValidator
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-03
+- **Last Updated:** 2026-02-04
 
 ## Specifications
 
@@ -18,6 +18,20 @@
 前置：收到命令  
 - 校验命令与参数
 - 清洗输出防注入
+- 流式命令输出同样统一走 `InputValidator.sanitizeOutput`（按 chunk），避免 watch/trace/tt/monitor/stack 绕过输出治理
+
+### Requirement: 插件与文件路径安全边界一致性
+**Module:** security / command / config
+避免“配置宣称默认禁用/限制，但实现仍会加载或读取”的可预期性问题。
+
+#### Scenario: 默认禁用插件时不加载 classpath provider
+前置：`plugins.enabled=false`  
+- 默认不加载目标进程 classpath 上的 `ServiceLoader` provider（需显式开启 `plugins.serviceloader.enabled=true`）
+
+#### Scenario: 文件读取写入统一走 SecurityValidator
+前置：命令需要访问文件  
+- `mc` 读取源码与 `redefine` 读取 `.class` 前均通过 `SecurityValidator.canReadFile` 校验
+- 产物写入（例如 `mc -o` 输出）通过 `SecurityValidator.canWriteFile` 校验
 
 ### Requirement: 会话认证与授权
 **Module:** security
@@ -121,3 +135,4 @@ N/A
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 默认匿名策略收敛、非回环绑定保护、审计脱敏加强
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - 移除硬编码口令、HMAC 会话自举与审计输出可控
 - 202602021233_quality_audit_more_issues (history/2026-02/202602021233_quality_audit_more_issues/) - 危险命令标记/限流与关键安全边界单测补齐
+- 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - 流式输出治理统一化、插件 ServiceLoader 默认禁用与文件路径校验一致性

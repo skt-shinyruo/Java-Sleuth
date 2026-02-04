@@ -67,6 +67,10 @@ public class CommandProcessor {
                 this.config.getJobsTtlMs(),
                 this.config.getJobsOutputMaxBytes()
             );
+            JobManager.getInstance().configureExecution(
+                this.config.getJobsMaxRunning(),
+                this.config.getJobsQueueCapacity()
+            );
         } catch (Exception ignore) {
             // ignore
         }
@@ -440,7 +444,6 @@ public class CommandProcessor {
                     String[] execArgs = precheck.getArgs();
                     if (streamRequested && config.isStreamingEnabled() && entry.getMeta().isStreamable()
                         && entry.getCommand() instanceof StreamCommand) {
-                        StreamCommand streamCommand = (StreamCommand) entry.getCommand();
                         boolean streamSuccess = false;
                         StreamSink sink = new StreamSink() {
                             @Override
@@ -494,17 +497,21 @@ public class CommandProcessor {
                             }
                         };
 
-                        streamCommand.executeStream(execArgs, sink);
-                        streamSuccess = true;
-                        // For legacy clients (non-framed), also emit END marker to support launcher improvements.
-                        if (!framedRequested) {
-                            try {
-                                Utf8LineCodec.writeLine(out, "END", true);
-                            } catch (Exception ignore) {
-                                // ignore
+                        try {
+                            CommandPipeline.StreamResult streamResult = pipeline.executeStreamPrechecked(entry, execArgs, context, sink);
+                            streamSuccess = streamResult != null && streamResult.isSuccess();
+                        } finally {
+                            // For legacy clients (non-framed), always emit END marker to avoid client-side "timeout-guessing".
+                            if (!framedRequested && config.isTextEndMarkerEnabled()) {
+                                try {
+                                    Utf8LineCodec.writeLine(out, "END", true);
+                                } catch (Exception ignore) {
+                                    // ignore
+                                }
                             }
                         }
-                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, true);
+
+                        auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, streamSuccess);
                         long duration = System.currentTimeMillis() - commandStart;
                         if (streamSuccess) {
                             metricsCollector.recordCommandComplete(commandName, duration);
@@ -690,7 +697,6 @@ public class CommandProcessor {
                 String[] execArgs = precheck.getArgs();
                 if (streamRequested && config.isStreamingEnabled() && entry.getMeta().isStreamable()
                     && entry.getCommand() instanceof StreamCommand) {
-                    StreamCommand streamCommand = (StreamCommand) entry.getCommand();
                     boolean streamSuccess = false;
                     StreamSink sink = new StreamSink() {
                         @Override
@@ -742,9 +748,9 @@ public class CommandProcessor {
                         }
                     };
 
-                    streamCommand.executeStream(execArgs, sink);
-                    streamSuccess = true;
-                    auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, true);
+                    CommandPipeline.StreamResult streamResult = pipeline.executeStreamPrechecked(entry, execArgs, context, sink);
+                    streamSuccess = streamResult != null && streamResult.isSuccess();
+                    auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, streamSuccess);
                     long duration = System.currentTimeMillis() - commandStart;
                     if (streamSuccess) {
                         metricsCollector.recordCommandComplete(commandName, duration);

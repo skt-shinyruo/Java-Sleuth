@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** PerformanceOptimizer/MemoryOptimizer/JvmUtils + 诊断辅助工具
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-01
+- **Last Updated:** 2026-02-04
 
 ## Specifications
 
@@ -48,6 +48,7 @@ N/A
 
 ## Utilities Added
 - WildcardMatcher：统一 `*` 通配符匹配（避免将用户输入当作正则）
+- LoadedClassResolver：已加载类解析/选择（输出候选 + loaderId），用于多 ClassLoader 场景稳定选择目标类并避免回滚错对象
 - RingBuffer：jobs/tt 等能力复用的环形缓冲
 - SleuthValueFormatter：安全可读化（限深/限长/脱敏）
 - SleuthValueSnapshotter / SleuthSnapshotValue：采集阶段“值快照”（避免 watch/tt 强引用复杂对象图导致内存压力）
@@ -60,3 +61,4 @@ N/A
 - 202601281100_init_kb (planned)
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - maintenance GC 默认关闭、引入 SleuthLogger
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - Java 8 兼容 + jad/session/regex/trace/watch/tt 稳定性与安全加固
+- 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - LoadedClassResolver（多 ClassLoader 选类/回滚稳定性）
