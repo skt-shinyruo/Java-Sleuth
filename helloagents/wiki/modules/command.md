@@ -30,6 +30,24 @@
 - 参数解析与校验 SSOT（数值/范围/错误码）：`CommandArgs.getInt/getLong/requireInt/requireLong`（统一错误码：`E_ARGS_MISSING`/`E_ARGS_INVALID`/`E_ARGS_RANGE`；缺省用默认值，越界/非法格式返回可读错误）
 - Locale 归一化 SSOT（核心链路）：命令名使用 `toLowerCase(Locale.ROOT)`；握手关键字使用 `regionMatches(ignoreCase=true)`，避免默认 Locale 影响命令识别
 
+### Requirement: 异常分层与用户错误最小披露（结果输出 vs 诊断日志）
+**Module:** command / util
+命令失败时必须做到“用户输出稳定可读 + 内部诊断可追溯”，避免堆栈回显污染协议/控制台。
+
+#### Scenario: 命令实现抛出异常（RuntimeException/受检异常）
+前置：命令进入 `CommandPipeline.executePrechecked`  
+- 对外（用户/协议）：返回短错误（不含堆栈），并附带可关联字段 `errorId`（以及在握手场景可选 `connId`）
+- 对内（诊断日志）：统一通过 `SleuthLogger.error(..., throwable)` 输出完整诊断堆栈，并带同一个 `errorId` 便于检索
+
+实现要点（SSOT）：
+- 用户错误映射：`CommandErrorMapper`（最小披露 + 脱敏 + 生成/透传 `errorId`）
+- 统一兜底点：`CommandPipeline`（sync）与 `CommandRequestExecutor`（协议入口）
+
+#### Scenario: 协议入口兜底（避免堆栈回写到 ERR 帧/文本协议）
+前置：协议 handler 调用 `CommandRequestExecutor.execute(...)`  
+- `reply.sendError(...)` 仅发送 `CommandErrorMapper` 产物，不拼接堆栈/异常类型
+- 诊断堆栈只进入 stderr 日志通道（`SleuthLogger`）
+
 ### Requirement: 统一传输层与协议状态机（握手/升级）
 **Module:** command / protocol
 服务端与客户端在同一底层 `InputStream/OutputStream` 上完成文本行协议与二进制帧协议的协商与升级，避免混用多层缓冲导致的边界错位。
@@ -160,3 +178,4 @@ N/A
 - 202602051031_command_pipeline_step_chain (history/2026-02/202602051031_command_pipeline_step_chain/) - CommandPipeline Step/Interceptor 链重构 + CommandProcessor 拆分
 - 202602051334_giant_files_split_handlers_stack_tt (history/2026-02/202602051334_giant_files_split_handlers_stack_tt/) - 继续压小巨型文件：协议 handler 拆分 + Stack/TT 子模块化
 - 202602051436_command_args_validation_logging (history/2026-02/202602051436_command_args_validation_logging/) - 参数解析/异常处理/Locale 归一化加固（避免坏输入中断与吞异常黑洞）
+- 202602051743_exception_handling_logging (history/2026-02/202602051743_exception_handling_logging/) - 异常分层 + 用户错误最小披露（errorId 关联）+ 协议 ERR 不回显堆栈

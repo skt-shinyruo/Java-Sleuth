@@ -14,6 +14,7 @@ import com.javasleuth.command.pipeline.SyncInvocation;
 import com.javasleuth.security.AuthorizationManager;
 import com.javasleuth.security.DangerousCommandConfirmationManager;
 import com.javasleuth.security.InputValidator;
+import com.javasleuth.util.SleuthLogger;
 import java.util.Arrays;
 import java.util.Locale;
 
@@ -160,8 +161,10 @@ public class CommandPipeline {
             String output = syncChain.handle(inv);
             return new Result(true, output, null);
         } catch (Exception e) {
-            String msg = e.getMessage() != null ? e.getMessage() : "Command execution failed";
-            return new Result(false, null, msg);
+            String errorId = CommandErrorMapper.newErrorId();
+            SleuthLogger.error("Command execution failed (errorId=" + errorId + ")", e);
+            String userError = CommandErrorMapper.toUserMessage(e, errorId, context);
+            return new Result(false, null, userError);
         }
     }
 

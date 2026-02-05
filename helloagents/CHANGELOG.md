@@ -114,6 +114,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - trace 语义：同一类内“可被 trace 的方法调用”不再产生重复 SUB_METHOD_CALL；采样以根调用为单位并向子调用继承，降低碎片化树
 - stdout/stderr 污染：`logging.performance.enabled` 默认关闭（可配置开启）
 - 日志/输出收敛：业务逻辑中零散的 `System.out/err` 统一改用 `SleuthLogger`，并补齐上下文字段（clientId/sessionId/connId/command）与 `logging.console.enabled` 开关，降低线上聚合成本与单测噪声
+- 异常兜底与最小披露：新增 `CommandErrorMapper` + `errorId` 关联字段；命令失败不再把堆栈/内部细节写入用户输出或协议 ERR，仅在 `SleuthLogger` 诊断日志中保留堆栈
 - `tt replay` 模板输出移除 TODO 占位，改为明确限制说明与更可复制的 Java 模板
 - `profiler` 文案澄清当前实现不依赖 async-profiler（避免误导）
 - 多 ClassLoader 场景稳定性：watch/trace/redefine 支持 `--loader` 精确选类，session 回滚绑定同一 `Class<?>`，避免同名类选错/回滚错

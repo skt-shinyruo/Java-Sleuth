@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** InputValidator/AuditLogger/Auth/AuthZ/SecurityValidator
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-04
+- **Last Updated:** 2026-02-05
 
 ## Specifications
 
@@ -81,6 +81,10 @@
 - `logging.audit.file.path` / `logging.security.file.path` 可指定绝对路径
 - 若路径留空：默认落到 `java.io.tmpdir` 并带 pid 后缀，降低权限/覆盖风险
 
+补充约束（SSOT）：
+- 控制台镜像输出走 stderr（不写 stdout），并且不依赖 `logging.level`/`logging.console.enabled` 的组合语义，避免“审计已开启但控制台无输出”的误判
+- 具体实现：`AuditLogger` 在 `logging.audit.console.enabled=true` 时，通过 `SleuthLogger.auditConsole(...)` 镜像到控制台
+
 ### Requirement: 可选请求签名与防重放（security.mode=hmac）
 **Module:** security
 默认启用 HMAC（`security.mode=hmac`），提供完整性校验与基础防重放能力；如需临时关闭需显式选择（例如 Launcher `--insecure`）。
@@ -136,3 +140,4 @@ N/A
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - 移除硬编码口令、HMAC 会话自举与审计输出可控
 - 202602021233_quality_audit_more_issues (history/2026-02/202602021233_quality_audit_more_issues/) - 危险命令标记/限流与关键安全边界单测补齐
 - 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - 流式输出治理统一化、插件 ServiceLoader 默认禁用与文件路径校验一致性
+- 202602051743_exception_handling_logging (history/2026-02/202602051743_exception_handling_logging/) - 审计控制台镜像语义收敛（stderr-only）+ 异常最小披露规范补充

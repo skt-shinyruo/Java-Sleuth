@@ -3,6 +3,7 @@ package com.javasleuth.command.server.protocol;
 import com.javasleuth.command.CommandContext;
 import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.command.CommandParser;
+import com.javasleuth.command.CommandErrorMapper;
 import com.javasleuth.command.CommandPipeline;
 import com.javasleuth.command.CommandRegistry;
 import com.javasleuth.command.StreamCommand;
@@ -199,7 +200,9 @@ public final class CommandRequestExecutor {
         } catch (ClientDisconnectedException disconnected) {
             throw disconnected;
         } catch (Exception e) {
-            reply.sendError("Error executing command: " + e.getMessage());
+            String errorId = CommandErrorMapper.newErrorId();
+            SleuthLogger.error("Command request execution failed (errorId=" + errorId + ")", e);
+            reply.sendError(CommandErrorMapper.toUserMessage(e, errorId, context));
             metricsCollector.recordError("command_execution");
             auditLogger.logCommandExecution(clientId, clientInfo, commandName, parts, false);
             return false;

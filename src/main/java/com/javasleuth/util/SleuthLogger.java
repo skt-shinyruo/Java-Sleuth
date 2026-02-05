@@ -7,7 +7,9 @@ import java.io.PrintStream;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.IdentityHashMap;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Lightweight logger with runtime-configurable level.
@@ -79,10 +81,29 @@ public final class SleuthLogger {
     }
 
     private static void log(Level level, String message, Throwable t) {
-        if (!isEnabled(level)) {
+        log(level, message, t, false, false);
+    }
+
+    /**
+     * Writes a line to the console regardless of configured logger level and console enablement.
+     *
+     * <p>Intended for audit console mirroring where the dedicated audit-console switch is the source of truth.</p>
+     */
+    public static void auditConsole(Level level, String message) {
+        Level effective = level != null ? level : Level.INFO;
+        log(effective, message, null, true, true);
+    }
+
+    public static void auditConsole(Level level, String message, Throwable t) {
+        Level effective = level != null ? level : Level.INFO;
+        log(effective, message, t, true, true);
+    }
+
+    private static void log(Level level, String message, Throwable t, boolean forceEnabled, boolean forceConsole) {
+        if (!forceEnabled && !isEnabled(level)) {
             return;
         }
-        if (!isConsoleEnabled()) {
+        if (!forceConsole && !isConsoleEnabled()) {
             return;
         }
 
@@ -104,12 +125,76 @@ public final class SleuthLogger {
         out.println("SLEUTH: " + line);
 
         if (t != null) {
-            // Only print stack traces when debug logs are enabled to avoid production log spam.
-            if (isEnabled(Level.DEBUG)) {
-                t.printStackTrace(out);
-            } else {
-                out.println("SLEUTH: [" + t.getClass().getName() + "] " + String.valueOf(t.getMessage()));
+            boolean includeStack = level.ordinal() >= Level.ERROR.ordinal() || isEnabled(Level.DEBUG);
+            writeThrowable(out, t, includeStack);
+        }
+    }
+
+    private static void writeThrowable(PrintStream out, Throwable t, boolean includeStack) {
+        if (out == null || t == null) {
+            return;
+        }
+        Map<Throwable, Boolean> seen = new IdentityHashMap<>();
+        writeThrowable(out, t, includeStack, seen, 0);
+    }
+
+    private static void writeThrowable(PrintStream out,
+                                       Throwable t,
+                                       boolean includeStack,
+                                       Map<Throwable, Boolean> seen,
+                                       int depth) {
+        if (t == null) {
+            return;
+        }
+        if (seen != null && seen.put(t, Boolean.TRUE) != null) {
+            out.println("SLEUTH: [throwable-loop] " + t.getClass().getName());
+            return;
+        }
+
+        String cls = t.getClass().getName();
+        String msg = t.getMessage() != null ? sanitize(t.getMessage()) : "";
+        String header = msg.isEmpty() ? cls : (cls + ": " + msg);
+        if (depth == 0) {
+            out.println("SLEUTH: " + header);
+        } else {
+            out.println("SLEUTH: Caused by: " + header);
+        }
+
+        if (includeStack) {
+            final int maxFrames = 80;
+            StackTraceElement[] frames = t.getStackTrace();
+            int limit = frames != null ? Math.min(frames.length, maxFrames) : 0;
+            for (int i = 0; i < limit; i++) {
+                out.println("SLEUTH:     at " + frames[i]);
             }
+            if (frames != null && frames.length > limit) {
+                out.println("SLEUTH:     ... " + (frames.length - limit) + " more");
+            }
+
+            Throwable[] suppressed = t.getSuppressed();
+            if (suppressed != null && suppressed.length > 0) {
+                int supLimit = Math.min(suppressed.length, 5);
+                for (int i = 0; i < supLimit; i++) {
+                    Throwable s = suppressed[i];
+                    if (s == null) {
+                        continue;
+                    }
+                    String sm = s.getMessage() != null ? sanitize(s.getMessage()) : "";
+                    if (sm.isEmpty()) {
+                        out.println("SLEUTH: Suppressed: " + s.getClass().getName());
+                    } else {
+                        out.println("SLEUTH: Suppressed: " + s.getClass().getName() + ": " + sm);
+                    }
+                }
+                if (suppressed.length > supLimit) {
+                    out.println("SLEUTH: ... " + (suppressed.length - supLimit) + " more suppressed");
+                }
+            }
+        }
+
+        Throwable cause = t.getCause();
+        if (cause != null && cause != t && depth < 10) {
+            writeThrowable(out, cause, includeStack, seen, depth + 1);
         }
     }
 

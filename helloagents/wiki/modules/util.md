@@ -37,6 +37,16 @@
 - `SleuthLogger` 统一输出前缀 `SLEUTH:`，并将系统日志写入 stderr（避免污染 stdout 与协议/用户输出混杂）
 - 审计日志（AuditLogger）独立通道，默认不镜像到控制台（避免污染目标 JVM 输出）
 
+#### Scenario: Throwable 输出可控（禁止 printStackTrace）
+前置：异常路径触发 `SleuthLogger.*(msg, throwable)`  
+- `SleuthLogger` 不使用 `Throwable.printStackTrace()`，改为受控格式化输出（可限制最大栈帧数，避免极端情况下刷屏）
+- ERROR 级别默认输出诊断堆栈（用于快速定位）；WARN/INFO 等级在未开启 DEBUG 时尽量保持简洁
+
+#### Scenario: 审计控制台镜像独立于 logging.level
+前置：`logging.audit.console.enabled=true`  
+- 审计控制台镜像以 `logging.audit.console.enabled` 为唯一开关（SSOT），不依赖 `logging.level`/`logging.console.enabled` 的组合语义
+- 通过 `SleuthLogger.auditConsole(Level, msg)` 写入 stderr，避免污染 stdout
+
 #### Scenario: 统一上下文字段（clientId/sessionId/connId/command）
 前置：命令执行链路已建立 `CommandContext`  
 - 处于命令处理线程时，`SleuthLogger` 自动追加上下文字段（脱敏 sessionId/connId），便于线上聚合与检索
@@ -74,3 +84,4 @@ N/A
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - Java 8 兼容 + jad/session/regex/trace/watch/tt 稳定性与安全加固
 - 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - LoadedClassResolver（多 ClassLoader 选类/回滚稳定性）
 - 202602042257_vmtool_instance_diagnostics (history/2026-02/202602042257_vmtool_instance_diagnostics/) - SleuthObjectInspector（对象字段检视）
+- 202602051743_exception_handling_logging (history/2026-02/202602051743_exception_handling_logging/) - SleuthLogger throwable 可控格式化与审计控制台镜像语义收敛

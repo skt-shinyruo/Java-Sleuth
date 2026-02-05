@@ -12,6 +12,7 @@ public final class ReflectionUtils {
             m = AccessibleObject.class.getMethod("canAccess", Object.class);
         } catch (Exception ignored) {
             // Java 8 doesn't have canAccess(Object)
+            SleuthLogger.trace("AccessibleObject.canAccess(Object) not available; falling back to isAccessible()");
         }
         CAN_ACCESS_METHOD = m;
     }
@@ -30,6 +31,7 @@ public final class ReflectionUtils {
                 }
             } catch (Exception ignored) {
                 // fall back
+                SleuthLogger.trace("ReflectionUtils.canAccess invoke failed; falling back to isAccessible(): " + ignored.getMessage());
             }
         }
         return obj.isAccessible();
@@ -42,7 +44,8 @@ public final class ReflectionUtils {
         try {
             obj.setAccessible(true);
             return true;
-        } catch (Throwable ignored) {
+        } catch (RuntimeException e) {
+            SleuthLogger.trace("ReflectionUtils.trySetAccessible failed: " + e.getMessage());
             return false;
         }
     }

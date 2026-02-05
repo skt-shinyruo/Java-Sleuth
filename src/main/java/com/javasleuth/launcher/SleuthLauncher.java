@@ -10,6 +10,7 @@ import com.javasleuth.command.protocol.FrameCodec;
 import com.javasleuth.command.protocol.Utf8LineCodec;
 import com.javasleuth.security.RequestSecurityManager;
 import com.javasleuth.util.JarLocator;
+import com.javasleuth.util.SleuthLogger;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
 import org.jline.terminal.Terminal;
@@ -35,7 +36,7 @@ public class SleuthLauncher {
         } catch (Exception e) {
             System.err.println("Failed to start Java-Sleuth: " + e.getMessage());
             if (Boolean.getBoolean("sleuth.launcher.debug")) {
-                e.printStackTrace();
+                SleuthLogger.error("Launcher failure stacktrace (sleuth.launcher.debug=true)", e);
             }
             System.exit(1);
         }

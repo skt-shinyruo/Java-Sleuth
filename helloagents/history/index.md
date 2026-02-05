@@ -27,6 +27,7 @@ This file records index of all completed changes for traceability and query.
 | 202602051031 | command_pipeline_step_chain | Refactor | ✅Completed | history/2026-02/202602051031_command_pipeline_step_chain/ |
 | 202602051334 | giant_files_split_handlers_stack_tt | Refactor | ✅Completed | history/2026-02/202602051334_giant_files_split_handlers_stack_tt/ |
 | 202602051436 | command_args_validation_logging | Refactor | ✅Completed | history/2026-02/202602051436_command_args_validation_logging/ |
+| 202602051743 | exception_handling_logging | Refactor | ✅Completed | history/2026-02/202602051743_exception_handling_logging/ |
 
 ---
 
@@ -56,3 +57,4 @@ This file records index of all completed changes for traceability and query.
 - 202602051031_command_pipeline_step_chain (2026-02/202602051031_command_pipeline_step_chain/) - 命令执行链显式化（Step/Interceptor）+ CommandProcessor 拆分（降巨型类耦合）
 - 202602051334_giant_files_split_handlers_stack_tt (2026-02/202602051334_giant_files_split_handlers_stack_tt/) - 继续压小巨型文件：协议 handler 拆分 + Stack/TT 子模块化
 - 202602051436_command_args_validation_logging (2026-02/202602051436_command_args_validation_logging/) - 参数解析/异常处理/Locale 归一化加固
+- 202602051743_exception_handling_logging (2026-02/202602051743_exception_handling_logging/) - 异常处理与输出/日志策略统一（errorId + 最小披露）

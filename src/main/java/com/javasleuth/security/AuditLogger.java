@@ -61,10 +61,8 @@ public class AuditLogger {
             String securityPath = config.getSecurityLogFilePath();
             auditWriter = openWriter(auditPath);
             securityWriter = openWriter(securityPath);
-        } catch (IOException e) {
-            SleuthLogger.warn("Failed to initialize audit log writers: " + e.getMessage());
-        } catch (Exception e) {
-            SleuthLogger.warn("Failed to initialize audit log writers: " + e.getMessage());
+        } catch (IOException | RuntimeException e) {
+            SleuthLogger.warn("Failed to initialize audit log writers: " + e.getMessage(), e);
         }
     }
 
@@ -99,7 +97,7 @@ public class AuditLogger {
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
-                SleuthLogger.warn("Error processing audit event: " + e.getMessage());
+                SleuthLogger.warn("Error processing audit event: " + e.getMessage(), e);
             }
         }
     }
@@ -111,11 +109,15 @@ public class AuditLogger {
 
         // Optional: mirror audit events to console (disabled by default to avoid polluting target JVM stdout/stderr)
         if (config.isAuditConsoleEnabled()) {
-            if ("SECURITY".equals(event.getCategory()) || "ERROR".equals(event.getLevel())) {
-                System.err.println("AUDIT: " + logEntry);
-            } else {
-                System.out.println("AUDIT: " + logEntry);
+            String line = "AUDIT: " + logEntry;
+            String lvl = event.getLevel() != null ? event.getLevel().trim().toUpperCase() : "";
+            SleuthLogger.Level outLevel = SleuthLogger.Level.INFO;
+            if ("ERROR".equals(lvl)) {
+                outLevel = SleuthLogger.Level.ERROR;
+            } else if ("WARN".equals(lvl)) {
+                outLevel = SleuthLogger.Level.WARN;
             }
+            SleuthLogger.auditConsole(outLevel, line);
         }
 
         // Write to appropriate log file(s)
@@ -529,7 +531,7 @@ public class AuditLogger {
     public void enableEmergencyAuditMode() {
         logSystemEvent("EMERGENCY_AUDIT_MODE", "Emergency audit mode enabled - all events will be logged");
         if (config.isAuditConsoleEnabled()) {
-            System.out.println("🚨 EMERGENCY AUDIT MODE ENABLED - All activities are being logged");
+            SleuthLogger.auditConsole(SleuthLogger.Level.WARN, "🚨 EMERGENCY AUDIT MODE ENABLED - All activities are being logged");
         }
     }
 

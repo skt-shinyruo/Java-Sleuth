@@ -4,14 +4,17 @@ import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.security.AuditLogger;
+import com.javasleuth.util.SleuthLogger;
 import com.javasleuth.security.AuthorizationManager;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.lang.instrument.Instrumentation;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -19,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
+import java.util.ServiceConfigurationError;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class CommandRegistry {
@@ -83,8 +87,8 @@ public class CommandRegistry {
         if (loader != null) {
             try {
                 loader.close();
-            } catch (Exception ignore) {
-                // ignore
+            } catch (IOException e) {
+                SleuthLogger.debug("Failed to close plugin classloader (ignored): " + e.getMessage(), e);
             }
         }
     }
@@ -192,17 +196,26 @@ public class CommandRegistry {
                 }
                 pluginClassLoader = loader;
                 return providers;
-            } catch (Exception e) {
-                if (loader != null) {
+            } catch (ServiceConfigurationError e) {
+                SleuthLogger.warn("Plugin ServiceLoader configuration error: " + e.getMessage());
+                return Collections.emptyList();
+            } catch (RuntimeException e) {
+                SleuthLogger.warn("Plugin ServiceLoader failed: " + e.getMessage(), e);
+                return Collections.emptyList();
+            } finally {
+                if (loader != null && loader != pluginClassLoader) {
                     try {
                         loader.close();
-                    } catch (Exception ignore) {
-                        // ignore
+                    } catch (IOException e) {
+                        SleuthLogger.debug("Failed to close failed plugin loader (ignored): " + e.getMessage(), e);
                     }
                 }
-                return Collections.emptyList();
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
+            SleuthLogger.warn("Failed to load plugins from directory: " + e.getMessage(), e);
+            return Collections.emptyList();
+        } catch (RuntimeException e) {
+            SleuthLogger.warn("Failed to load plugins from directory: " + e.getMessage(), e);
             return Collections.emptyList();
         }
     }
@@ -259,7 +272,8 @@ public class CommandRegistry {
                 sb.append(hex);
             }
             return sb.toString();
-        } catch (Exception e) {
+        } catch (IOException | NoSuchAlgorithmException | SecurityException e) {
+            SleuthLogger.debug("Failed to compute sha256 for " + file.getAbsolutePath() + ": " + e.getMessage(), e);
             return null;
         }
     }
@@ -270,8 +284,8 @@ public class CommandRegistry {
         }
         try {
             auditLogger.logSecurityViolation(null, "plugin-loader", violation, details);
-        } catch (Exception ignore) {
-            // ignore
+        } catch (RuntimeException e) {
+            SleuthLogger.debug("Failed to write plugin rejection audit (ignored): " + e.getMessage(), e);
         }
     }
 
