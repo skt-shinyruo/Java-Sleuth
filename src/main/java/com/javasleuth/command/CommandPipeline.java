@@ -2,23 +2,20 @@ package com.javasleuth.command;
 
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.command.session.ClientDisconnectedException;
+import com.javasleuth.command.pipeline.CacheInterceptor;
+import com.javasleuth.command.pipeline.CommandExecutionEngine;
+import com.javasleuth.command.pipeline.GuardedStreamInterceptor;
+import com.javasleuth.command.pipeline.PipelineChain;
+import com.javasleuth.command.pipeline.PrecheckDecision;
+import com.javasleuth.command.pipeline.PrecheckPipeline;
+import com.javasleuth.command.pipeline.OutputSanitizeInterceptor;
+import com.javasleuth.command.pipeline.StreamInvocation;
+import com.javasleuth.command.pipeline.SyncInvocation;
 import com.javasleuth.security.AuthorizationManager;
 import com.javasleuth.security.DangerousCommandConfirmationManager;
 import com.javasleuth.security.InputValidator;
-import com.javasleuth.util.PerformanceOptimizer;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Arrays;
+import java.util.Locale;
 
 public class CommandPipeline {
     public static class PrecheckResult {
@@ -108,47 +105,39 @@ public class CommandPipeline {
     }
 
     private final InputValidator inputValidator;
-    private final AuthorizationManager authorizationManager;
-    private final DangerousCommandConfirmationManager dangerousConfirm;
     private final ProductionConfig config;
 
-    // Dedicated executor for command execution (avoid ForkJoinPool contention).
-    private final ThreadPoolExecutor commandExecutor;
-
-    private static final Object HIGH_IMPACT_LOCK = new Object();
-    private static volatile Semaphore HIGH_IMPACT_SEMAPHORE;
-    private static volatile int HIGH_IMPACT_LIMIT = -1;
+    private final PrecheckPipeline precheckPipeline;
+    private final CommandExecutionEngine executionEngine;
+    private final PipelineChain<SyncInvocation, String> syncChain;
+    private final PipelineChain<StreamInvocation, StreamResult> streamChain;
 
     public CommandPipeline(InputValidator inputValidator, AuthorizationManager authorizationManager, ProductionConfig config) {
         this.inputValidator = inputValidator;
-        this.authorizationManager = authorizationManager;
         this.config = config;
-        this.dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
-        final int coreSize = config.getCommandExecutorCoreSize();
-        final int maxSize = config.getCommandExecutorMaxSize();
-        final int queueCapacity = config.getCommandExecutorQueueCapacity();
+        DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
+        this.precheckPipeline = new PrecheckPipeline(inputValidator, authorizationManager, dangerousConfirm, config);
+        this.executionEngine = new CommandExecutionEngine(config);
 
-        BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(queueCapacity);
-        AtomicLong threadSeq = new AtomicLong(0);
-        ThreadPoolExecutor tpe = new ThreadPoolExecutor(
-            coreSize,
-            Math.max(coreSize, maxSize),
-            60L,
-            TimeUnit.SECONDS,
-            queue,
-            r -> {
-                Thread t = new Thread(r, "sleuth-cmd-exec-" + threadSeq.incrementAndGet());
-                t.setDaemon(true);
-                return t;
-            },
-            new ThreadPoolExecutor.AbortPolicy()
+        this.syncChain = PipelineChain.of(
+            inv -> executionEngine.executeSync(inv.getCommand(), inv.getArgs(), inv.getMeta(), inv.getTimeoutMs()),
+            Arrays.asList(
+                new OutputSanitizeInterceptor(inputValidator),
+                new CacheInterceptor()
+            )
         );
-        tpe.allowCoreThreadTimeOut(true);
-        this.commandExecutor = tpe;
+
+        this.streamChain = PipelineChain.of(
+            inv -> {
+                executionEngine.executeStream(inv.getCommand(), inv.getArgs(), inv.getMeta(), inv.getTimeoutMs(), inv.getSink());
+                return StreamResult.ok();
+            },
+            Arrays.asList(new GuardedStreamInterceptor(inputValidator))
+        );
     }
 
     public Result execute(CommandRegistry.Entry entry, String[] args, CommandContext context) {
-        String commandName = args[0].toLowerCase();
+        String commandName = args[0].toLowerCase(Locale.ROOT);
         PrecheckResult precheck = precheck(entry, commandName, args, context);
         if (!precheck.isOk()) {
             return new Result(false, null, precheck.getError());
@@ -160,298 +149,35 @@ public class CommandPipeline {
         if (args == null || args.length == 0) {
             return new Result(false, null, "Empty command");
         }
-        String commandName = args[0].toLowerCase();
-
-        Command command = entry.getCommand();
-        CommandMeta meta = entry.getMeta();
-        String result;
-        long timeoutMs = config.getCommandTimeout();
-        boolean cacheable = meta != null && meta.isCacheable() && isSafeToCache(commandName, args);
-        if (cacheable) {
-            String clientKey = context != null && context.getClientId() != null ? context.getClientId() : "unknown";
-            String cacheKey = clientKey + ":" + commandName + ":" + String.join(":", args);
-            try {
-                result = PerformanceOptimizer.getCachedResult(cacheKey, () -> {
-                    ImpactPermit permit;
-                    try {
-                        permit = acquireImpactPermit(meta);
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                    try {
-                        return executeWithTimeout(command, args, timeoutMs, permit);
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-            } catch (RuntimeException e) {
-                Throwable cause = e.getCause();
-                String message = cause != null ? cause.getMessage() : e.getMessage();
-                return new Result(false, null, message != null ? message : "Command execution failed");
-            }
-        } else {
-            try {
-                ImpactPermit permit = acquireImpactPermit(meta);
-                result = executeWithTimeout(command, args, timeoutMs, permit);
-            } catch (Exception e) {
-                return new Result(false, null, e.getMessage());
-            }
-        }
-
-        InputValidator.ValidationResult outputValidation = inputValidator.sanitizeOutput(result);
-        String sanitized = outputValidation.getSanitizedOutput() != null ? outputValidation.getSanitizedOutput() : result;
-        return new Result(true, sanitized, null);
-    }
-
-    private boolean isSafeToCache(String commandName, String[] args) {
-        if (commandName == null) {
-            return false;
-        }
-        // Avoid caching context-sensitive commands.
-        if ("session".equals(commandName)) {
-            return false;
-        }
-        // dashboard realtime explicitly requests no caching (still allow cached default dashboard).
-        if ("dashboard".equals(commandName) && args != null) {
-            for (int i = 1; i < args.length; i++) {
-                String a = args[i];
-                if (a == null) {
-                    continue;
-                }
-                if ("realtime".equalsIgnoreCase(a.trim())) {
-                    return false;
-                }
-            }
-        }
-        // Avoid caching state-changing subcommands.
-        if ("sysprop".equals(commandName) && args != null && args.length > 1) {
-            if ("set".equalsIgnoreCase(args[1])) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static final class ImpactPermit {
-        private final Semaphore semaphore;
-        private final AtomicBoolean released = new AtomicBoolean(false);
-
-        private ImpactPermit(Semaphore semaphore) {
-            this.semaphore = semaphore;
-        }
-
-        static ImpactPermit none() {
-            return new ImpactPermit(null);
-        }
-
-        void release() {
-            if (semaphore == null) {
-                return;
-            }
-            if (released.compareAndSet(false, true)) {
-                semaphore.release();
-            }
-        }
-    }
-
-    private static final class PermitFutureTask extends FutureTask<String> {
-        private final ImpactPermit permit;
-
-        private PermitFutureTask(ImpactPermit permit, java.util.concurrent.Callable<String> callable) {
-            super(callable);
-            this.permit = permit;
-        }
-
-        @Override
-        public void run() {
-            try {
-                super.run();
-            } finally {
-                if (permit != null) {
-                    permit.release();
-                }
-            }
-        }
-    }
-
-    private static final class PermitFutureTaskVoid extends FutureTask<Void> {
-        private final ImpactPermit permit;
-
-        private PermitFutureTaskVoid(ImpactPermit permit, java.util.concurrent.Callable<Void> callable) {
-            super(callable);
-            this.permit = permit;
-        }
-
-        @Override
-        public void run() {
-            try {
-                super.run();
-            } finally {
-                if (permit != null) {
-                    permit.release();
-                }
-            }
-        }
-    }
-
-    private static final class GuardedStreamSink implements StreamSink {
-        private final StreamSink delegate;
-        private final InputValidator validator;
-        private final AtomicBoolean ended = new AtomicBoolean(false);
-
-        private GuardedStreamSink(StreamSink delegate, InputValidator validator) {
-            this.delegate = delegate;
-            this.validator = validator;
-        }
-
-        @Override
-        public void send(String data) {
-            if (delegate == null || ended.get()) {
-                return;
-            }
-            delegate.send(sanitize(data));
-        }
-
-        @Override
-        public void close(String summary) {
-            if (delegate == null) {
-                return;
-            }
-            if (!ended.compareAndSet(false, true)) {
-                return;
-            }
-            delegate.close(sanitize(summary));
-        }
-
-        @Override
-        public void error(String message) {
-            if (delegate == null) {
-                return;
-            }
-            if (!ended.compareAndSet(false, true)) {
-                return;
-            }
-            delegate.error(sanitize(message));
-        }
-
-        private String sanitize(String raw) {
-            if (validator == null) {
-                return raw == null ? "" : raw;
-            }
-            InputValidator.ValidationResult r = validator.sanitizeOutput(raw);
-            String out = r != null ? r.getSanitizedOutput() : null;
-            return out != null ? out : (raw == null ? "" : raw);
-        }
-
-        private void ensureClosed() {
-            if (delegate == null) {
-                return;
-            }
-            if (!ended.compareAndSet(false, true)) {
-                return;
-            }
-            delegate.close(null);
-        }
-    }
-
-    private ImpactPermit acquireImpactPermit(CommandMeta meta) throws Exception {
-        if (meta == null || meta.getImpactLevel() != CommandMeta.ImpactLevel.HIGH) {
-            return ImpactPermit.none();
-        }
-
-        int limit = config.getHighImpactConcurrentLimit();
-        if (limit <= 0) {
-            return ImpactPermit.none();
-        }
-
-        Semaphore sem = getOrCreateHighImpactSemaphore(limit);
-        if (sem == null) {
-            return ImpactPermit.none();
-        }
-
-        if (!sem.tryAcquire()) {
-            throw new Exception("High impact command is already running; please retry later");
-        }
-
-        return new ImpactPermit(sem);
-    }
-
-    private Semaphore getOrCreateHighImpactSemaphore(int limit) {
-        if (limit <= 0) {
-            return null;
-        }
-        Semaphore existing = HIGH_IMPACT_SEMAPHORE;
-        if (existing != null && HIGH_IMPACT_LIMIT == limit) {
-            return existing;
-        }
-        synchronized (HIGH_IMPACT_LOCK) {
-            if (HIGH_IMPACT_SEMAPHORE == null || HIGH_IMPACT_LIMIT != limit) {
-                HIGH_IMPACT_SEMAPHORE = new Semaphore(limit, true);
-                HIGH_IMPACT_LIMIT = limit;
-            }
-            return HIGH_IMPACT_SEMAPHORE;
-        }
-    }
-
-    private String executeWithTimeout(Command command, String[] args, long timeoutMs, ImpactPermit permit) throws Exception {
-        if (timeoutMs <= 0) {
-            try {
-                return command.execute(args);
-            } finally {
-                if (permit != null) {
-                    permit.release();
-                }
-            }
-        }
-
-        PermitFutureTask task = new PermitFutureTask(permit, () -> command.execute(args));
-        try {
-            commandExecutor.execute(task);
-        } catch (RejectedExecutionException rejected) {
-            if (permit != null) {
-                permit.release();
-            }
-            throw new Exception("Server is busy: command execution queue is full");
+        String commandName = args[0].toLowerCase(Locale.ROOT);
+        if (entry == null || entry.getCommand() == null) {
+            return new Result(false, null, "Unknown command: " + commandName);
         }
 
         try {
-            return task.get(timeoutMs, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            task.cancel(true);
-            boolean removed = false;
-            try {
-                removed = commandExecutor.remove(task);
-            } catch (Exception ignore) {
-                // ignore
-            }
-            if (removed && permit != null) {
-                // Task won't run: PermitFutureTask.run() won't execute, release here.
-                permit.release();
-            }
-            throw new Exception("Command timed out after " + timeoutMs + "ms");
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof RuntimeException && cause.getCause() != null) {
-                cause = cause.getCause();
-            }
-            if (cause instanceof Exception) {
-                throw (Exception) cause;
-            }
-            throw new Exception(cause != null ? cause.getMessage() : "Command execution failed");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            task.cancel(true);
-            boolean removed = false;
-            try {
-                removed = commandExecutor.remove(task);
-            } catch (Exception ignore) {
-                // ignore
-            }
-            if (removed && permit != null) {
-                permit.release();
-            }
-            throw new Exception("Command interrupted");
+            long timeoutMs = config.getCommandTimeout();
+            SyncInvocation inv = new SyncInvocation(entry, entry.getCommand(), entry.getMeta(), commandName, args, context, timeoutMs);
+            String output = syncChain.handle(inv);
+            return new Result(true, output, null);
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : "Command execution failed";
+            return new Result(false, null, msg);
         }
+    }
+
+    public String validateAndAuthorize(CommandRegistry.Entry entry, String commandName, String[] args, CommandContext context) {
+        PrecheckResult pre = precheck(entry, commandName, args, context);
+        return pre.isOk() ? null : pre.getError();
+    }
+
+    public PrecheckResult precheck(CommandRegistry.Entry entry, String commandName, String[] args, CommandContext context) {
+        PrecheckDecision decision = precheckPipeline.precheck(entry, commandName, args, context);
+        if (decision != null && decision.isOk()) {
+            return PrecheckResult.ok(decision.getArgs());
+        }
+        String error = decision != null ? decision.getError() : "Command denied";
+        String[] outArgs = decision != null ? decision.getArgs() : args;
+        return PrecheckResult.denied(error, outArgs);
     }
 
     public StreamResult executeStreamPrechecked(CommandRegistry.Entry entry, String[] args, CommandContext context, StreamSink sink) throws Exception {
@@ -463,154 +189,13 @@ public class CommandPipeline {
             return StreamResult.failed("Command is not streamable");
         }
 
-        CommandMeta meta = entry != null ? entry.getMeta() : null;
+        String commandName = args[0].toLowerCase(Locale.ROOT);
         long timeoutMs = config.getCommandTimeout();
-        ImpactPermit permit = acquireImpactPermit(meta);
-        GuardedStreamSink guarded = new GuardedStreamSink(sink, inputValidator);
+        StreamInvocation inv = new StreamInvocation(entry, (StreamCommand) command, entry != null ? entry.getMeta() : null, commandName, args, context, timeoutMs, sink);
         try {
-            executeStreamWithTimeout((StreamCommand) command, args, timeoutMs, permit, guarded);
-            guarded.ensureClosed();
-            return StreamResult.ok();
+            return streamChain.handle(inv);
         } catch (ClientDisconnectedException e) {
             throw e;
-        } catch (Exception e) {
-            String message = e.getMessage() != null ? e.getMessage() : "Command execution failed";
-            guarded.error(message);
-            return StreamResult.failed(message);
         }
-    }
-
-    private void executeStreamWithTimeout(StreamCommand command, String[] args, long timeoutMs, ImpactPermit permit, StreamSink sink) throws Exception {
-        if (timeoutMs <= 0) {
-            try {
-                command.executeStream(args, sink);
-            } finally {
-                if (permit != null) {
-                    permit.release();
-                }
-            }
-            return;
-        }
-
-        PermitFutureTaskVoid task = new PermitFutureTaskVoid(permit, () -> {
-            command.executeStream(args, sink);
-            return null;
-        });
-        try {
-            commandExecutor.execute(task);
-        } catch (RejectedExecutionException rejected) {
-            if (permit != null) {
-                permit.release();
-            }
-            throw new Exception("Server is busy: command execution queue is full");
-        }
-
-        try {
-            task.get(timeoutMs, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            task.cancel(true);
-            boolean removed = false;
-            try {
-                removed = commandExecutor.remove(task);
-            } catch (Exception ignore) {
-                // ignore
-            }
-            if (removed && permit != null) {
-                // Task won't run: PermitFutureTaskVoid.run() won't execute, release here.
-                permit.release();
-            }
-            throw new Exception("Command timed out after " + timeoutMs + "ms");
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof RuntimeException && cause.getCause() != null) {
-                cause = cause.getCause();
-            }
-            if (cause instanceof ClientDisconnectedException) {
-                throw (ClientDisconnectedException) cause;
-            }
-            if (cause instanceof Exception) {
-                throw (Exception) cause;
-            }
-            throw new Exception(cause != null ? cause.getMessage() : "Command execution failed");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            task.cancel(true);
-            boolean removed = false;
-            try {
-                removed = commandExecutor.remove(task);
-            } catch (Exception ignore) {
-                // ignore
-            }
-            if (removed && permit != null) {
-                permit.release();
-            }
-            throw new Exception("Command interrupted");
-        }
-    }
-
-    public String validateAndAuthorize(CommandRegistry.Entry entry, String commandName, String[] args, CommandContext context) {
-        PrecheckResult pre = precheck(entry, commandName, args, context);
-        return pre.isOk() ? null : pre.getError();
-    }
-
-    public PrecheckResult precheck(CommandRegistry.Entry entry, String commandName, String[] args, CommandContext context) {
-        String[] argsForChecks = stripConfirmArgs(args);
-        InputValidator.ValidationResult validation =
-            inputValidator.validateCommand(context.getClientId(), context.getClientInfo(), commandName, argsForChecks);
-        if (!validation.isValid()) {
-            return PrecheckResult.denied("Security validation failed: " + validation.getMessage(), argsForChecks);
-        }
-
-        if (config.isAuthorizationEnabled() && !"auth".equals(commandName)) {
-            AuthorizationManager.AuthorizationResult authz =
-                authorizationManager.authorize(context.getSessionId(), commandName, argsForChecks, entry != null ? entry.getMeta() : null);
-            if (!authz.isAllowed()) {
-                return PrecheckResult.denied(authz.getReason(), argsForChecks);
-            }
-        }
-
-        DangerousCommandConfirmationManager.ConfirmationResult confirm =
-            dangerousConfirm.confirmIfRequired(
-                context.getSessionId(),
-                context.getClientInfo(),
-                commandName,
-                args,
-                entry != null ? entry.getMeta() : null
-            );
-        if (!confirm.isAllowed()) {
-            return PrecheckResult.denied(confirm.getError(), confirm.getNormalizedArgs() != null ? confirm.getNormalizedArgs() : args);
-        }
-
-        return PrecheckResult.ok(confirm.getNormalizedArgs());
-    }
-
-    private static String[] stripConfirmArgs(String[] args) {
-        if (args == null || args.length == 0) {
-            return new String[0];
-        }
-
-        List<String> out = new ArrayList<>(args.length);
-        for (int i = 0; i < args.length; i++) {
-            String a = args[i];
-            if (a == null) {
-                continue;
-            }
-            String t = a.trim();
-            if (t.isEmpty()) {
-                continue;
-            }
-
-            if ("--confirm".equalsIgnoreCase(t) || "-confirm".equalsIgnoreCase(t)) {
-                if (i + 1 < args.length) {
-                    i++;
-                }
-                continue;
-            }
-            if (t.toLowerCase().startsWith("--confirm=")) {
-                continue;
-            }
-            out.add(t);
-        }
-        return out.toArray(new String[0]);
     }
 }

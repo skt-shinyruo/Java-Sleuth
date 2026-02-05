@@ -1,6 +1,7 @@
 package com.javasleuth.security;
 
 import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.util.SleuthLogger;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -394,7 +395,7 @@ public class AuthenticationManager {
                     Thread.currentThread().interrupt();
                     break;
                 } catch (Exception e) {
-                    System.err.println("Error during session cleanup: " + e.getMessage());
+                    SleuthLogger.warn("Error during session cleanup: " + e.getMessage(), e);
                 }
             }
         }, "sleuth-session-cleanup");

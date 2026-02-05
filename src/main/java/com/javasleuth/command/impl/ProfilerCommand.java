@@ -2,6 +2,7 @@ package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
 import com.javasleuth.util.PerformanceOptimizer;
+import com.javasleuth.util.SleuthLogger;
 import com.javasleuth.util.StringUtils;
 import java.io.File;
 import java.io.FileWriter;
@@ -111,7 +112,7 @@ public class ProfilerCommand implements Command {
                     try {
                         stopProfiling();
                     } catch (Exception e) {
-                        System.err.println("Error auto-stopping profiler: " + e.getMessage());
+                        SleuthLogger.warn("Error auto-stopping profiler: " + e.getMessage(), e);
                     }
                 }, duration, TimeUnit.SECONDS);
             }

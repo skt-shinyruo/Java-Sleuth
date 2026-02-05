@@ -63,7 +63,7 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
         // Schedule cache cleanup
         memoryMonitor.scheduleAtFixedRate(this::performMemoryOptimization, 60, 60, TimeUnit.SECONDS);
 
-        System.out.println("Memory optimizer started with monitoring every 30 seconds");
+        SleuthLogger.debug("Memory optimizer started with monitoring every 30 seconds");
     }
 
     /**
@@ -75,12 +75,12 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
             double usageRatio = (double) heapUsage.getUsed() / heapUsage.getMax();
 
             if (usageRatio > MEMORY_CRITICAL_THRESHOLD) {
-                System.err.println("🚨 CRITICAL: Memory usage at " + String.format("%.1f%%", usageRatio * 100));
+                SleuthLogger.error("🚨 CRITICAL: Memory usage at " + String.format("%.1f%%", usageRatio * 100));
                 if (autoGcEnabled) {
                     performEmergencyGC();
                 }
             } else if (usageRatio > MEMORY_WARNING_THRESHOLD) {
-                System.out.println("⚠️ WARNING: Memory usage at " + String.format("%.1f%%", usageRatio * 100));
+                SleuthLogger.warn("⚠️ WARNING: Memory usage at " + String.format("%.1f%%", usageRatio * 100));
                 if (autoGcEnabled) {
                     suggestGC();
                 }
@@ -92,7 +92,7 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
             }
 
         } catch (Exception e) {
-            System.err.println("Error during memory check: " + e.getMessage());
+            SleuthLogger.warn("Error during memory check: " + e.getMessage(), e);
         }
     }
 
@@ -113,7 +113,7 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
             }
 
         } catch (Exception e) {
-            System.err.println("Error during memory optimization: " + e.getMessage());
+            SleuthLogger.warn("Error during memory optimization: " + e.getMessage(), e);
         }
     }
 
@@ -123,7 +123,7 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
     private void suggestGC() {
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastGcTime > gcCooldownMs) {
-            System.out.println("💾 Suggesting garbage collection for memory optimization...");
+            SleuthLogger.info("💾 Suggesting garbage collection for memory optimization...");
             System.gc();
             lastGcTime = currentTime;
         }
@@ -133,7 +133,7 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
      * Perform emergency GC for critical memory situations
      */
     private void performEmergencyGC() {
-        System.err.println("🚨 Performing emergency garbage collection!");
+        SleuthLogger.error("🚨 Performing emergency garbage collection!");
         System.gc();
         lastGcTime = System.currentTimeMillis();
 
@@ -144,9 +144,9 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
             double usageRatio = (double) heapUsage.getUsed() / heapUsage.getMax();
 
             if (usageRatio > MEMORY_CRITICAL_THRESHOLD) {
-                System.err.println("🚨 EMERGENCY: Memory still critical after GC - consider increasing heap size!");
+                SleuthLogger.error("🚨 EMERGENCY: Memory still critical after GC - consider increasing heap size!");
             } else {
-                System.out.println("✅ Emergency GC successful - memory usage reduced");
+                SleuthLogger.info("✅ Emergency GC successful - memory usage reduced");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -167,7 +167,7 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
         MemoryUsage nonHeapUsage = memoryBean.getNonHeapMemoryUsage();
         metrics.append(", NonHeap=").append(formatBytes(nonHeapUsage.getUsed()));
 
-        System.out.println("📊 " + metrics.toString());
+        SleuthLogger.info("📊 " + metrics.toString());
     }
 
     /**
@@ -345,7 +345,7 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
     @Override
     public void setAutoGcEnabled(boolean enabled) {
         this.autoGcEnabled = enabled;
-        System.out.println("Auto GC " + (enabled ? "enabled" : "disabled"));
+        SleuthLogger.info("Auto GC " + (enabled ? "enabled" : "disabled"));
     }
 
     @Override
@@ -356,19 +356,19 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
     @Override
     public void setGcCooldownMs(long cooldownMs) {
         this.gcCooldownMs = Math.max(5000, cooldownMs); // Minimum 5 seconds
-        System.out.println("GC cooldown set to " + this.gcCooldownMs + "ms");
+        SleuthLogger.info("GC cooldown set to " + this.gcCooldownMs + "ms");
     }
 
     @Override
     public void forceGarbageCollection() {
-        System.out.println("Manual garbage collection requested via JMX");
+        SleuthLogger.info("Manual garbage collection requested via JMX");
         System.gc();
         lastGcTime = System.currentTimeMillis();
     }
 
     @Override
     public void clearAllCaches() {
-        System.out.println("Clearing all caches via JMX");
+        SleuthLogger.info("Clearing all caches via JMX");
         PerformanceOptimizer.clearCache();
     }
 
@@ -391,10 +391,10 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
             ObjectName name = new ObjectName("com.javasleuth:type=MemoryOptimizer");
             if (!server.isRegistered(name)) {
                 server.registerMBean(this, name);
-                System.out.println("MemoryOptimizer MBean registered");
+                SleuthLogger.debug("MemoryOptimizer MBean registered");
             }
         } catch (Exception e) {
-            System.err.println("Failed to register MemoryOptimizer MBean: " + e.getMessage());
+            SleuthLogger.warn("Failed to register MemoryOptimizer MBean: " + e.getMessage(), e);
         }
     }
 
@@ -404,10 +404,10 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
             ObjectName name = new ObjectName("com.javasleuth:type=MemoryOptimizer");
             if (server.isRegistered(name)) {
                 server.unregisterMBean(name);
-                System.out.println("MemoryOptimizer MBean unregistered");
+                SleuthLogger.debug("MemoryOptimizer MBean unregistered");
             }
         } catch (Exception e) {
-            System.err.println("Failed to unregister MemoryOptimizer MBean: " + e.getMessage());
+            SleuthLogger.warn("Failed to unregister MemoryOptimizer MBean: " + e.getMessage(), e);
         }
     }
 
@@ -415,7 +415,7 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
      * Shutdown memory optimizer
      */
     public void shutdown() {
-        System.out.println("Shutting down memory optimizer...");
+        SleuthLogger.debug("Shutting down memory optimizer...");
 
         memoryMonitor.shutdown();
         try {
@@ -428,7 +428,7 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
         }
 
         unregisterMBean();
-        System.out.println("Memory optimizer shutdown complete");
+        SleuthLogger.debug("Memory optimizer shutdown complete");
     }
 
 }

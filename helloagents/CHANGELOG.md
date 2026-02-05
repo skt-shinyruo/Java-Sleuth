@@ -56,6 +56,9 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
 ### Changed
 - CommandProcessor 改为注册表 + 统一执行管线
+- CommandPipeline 执行链路显式化：引入 Step/Interceptor Chain（precheck/sync/stream），降低巨型类耦合并提升可测性
+- CommandProcessor 拆分出 CommandClientHandler（text/framed/binary 协议处理），CommandProcessor 聚焦监听/生命周期
+- CommandClientHandler 进一步按协议拆分：text/framed/binary handlers + 共享 CommandRequestExecutor，握手协商抽取为 HandshakeNegotiator
 - Launcher 支持 framed/stream 协议与端口配置读取
 - Enhancer 支持链式叠加与按会话移除
 - CommandProcessor 支持 bind address + handshake 协商并可升级 binary 通道
@@ -82,11 +85,13 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - loopback 自洽启动：当 `security.mode=hmac` 且 `security.hmac.secret` 为空时，回环绑定下可自动生成临时 secret（明文 secret 仅在交互控制台打印，`security.hmac.secret.autogen.*` 控制）
 - 高影响命令治理：`CommandMeta.impact=LOW|MEDIUM|HIGH` + `security.impact.high.*`（二次确认 + 并发限制，默认同一时刻仅允许 1 条高影响命令执行）
 - 流式命令执行链路统一：StreamCommand 走 `CommandPipeline` 的 executor/timeout/输出治理（sanitize/truncate），减少连接线程被长时间业务逻辑占用
+- `stack`/`tt` 实现子模块化：解析/会话/执行/格式化拆分到 `com.javasleuth.command.impl.stack.*` 与 `com.javasleuth.command.impl.tt.*`，降低巨型文件风险
 
 ### Fixed
 - watch/trace 队列增加背压与采样
 - TraceInterceptor ThreadLocal 在 map 为空时执行 remove，降低线程池场景潜在残留与固定开销
 - CommandParser 反斜杠转义字符解析修复
+- 命令参数解析与异常处理加固：统一数值解析/范围校验/错误码（`E_ARGS_*`），修复吞异常黑洞并补齐 DEBUG 日志；关键链路大小写归一化改为 Locale-independent（避免默认 Locale 影响命令识别）
 - PerformanceOptimizer/MemoryOptimizer 编译问题修复（静态 API/缓存清理/ MBean 接口）
 - Launcher 进程列表过滤后序号不一致导致的误选问题
 - Launcher 连接地址不再写死 localhost（按 bind 地址/协商信息解析，0.0.0.0/:: 回退 loopback）
@@ -108,6 +113,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - watch/tt 资源风险：采集阶段引入“值快照”（限深/限长），避免把参数/返回值/异常对象强引用驻留到队列/环形缓冲导致内存压力
 - trace 语义：同一类内“可被 trace 的方法调用”不再产生重复 SUB_METHOD_CALL；采样以根调用为单位并向子调用继承，降低碎片化树
 - stdout/stderr 污染：`logging.performance.enabled` 默认关闭（可配置开启）
+- 日志/输出收敛：业务逻辑中零散的 `System.out/err` 统一改用 `SleuthLogger`，并补齐上下文字段（clientId/sessionId/connId/command）与 `logging.console.enabled` 开关，降低线上聚合成本与单测噪声
 - `tt replay` 模板输出移除 TODO 占位，改为明确限制说明与更可复制的 Java 模板
 - `profiler` 文案澄清当前实现不依赖 async-profiler（避免误导）
 - 多 ClassLoader 场景稳定性：watch/trace/redefine 支持 `--loader` 精确选类，session 回滚绑定同一 `Class<?>`，避免同名类选错/回滚错

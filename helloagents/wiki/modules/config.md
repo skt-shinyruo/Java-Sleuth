@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 默认配置、外部配置、系统属性覆盖
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-04
+- **Last Updated:** 2026-02-05
 
 ## Specifications
 
@@ -51,6 +51,7 @@
 - `plugins.enabled`：插件目录加载开关（默认 false）
 - `plugins.serviceloader.enabled`：是否允许从目标进程 classpath 通过 ServiceLoader 加载 CommandProvider（默认 false）
 - `plugins.allowlist.sha256`：插件 allowlist（jarName:sha256hex）
+- `logging.console.enabled`：是否启用 SleuthLogger 控制台输出（写入 stderr，默认 true；单测可通过 `-Dsleuth.logging.level=ERROR` 降噪）
 - `logging.audit.console.enabled`：审计事件是否镜像到控制台（默认 false）
 - `logging.audit.file.path` / `logging.security.file.path`：审计/安全日志落盘路径（留空默认落到 tmp 并带 pid 后缀）
 - `logging.performance.enabled`：是否启用性能/健康相关 stdout/stderr 日志（默认 false）

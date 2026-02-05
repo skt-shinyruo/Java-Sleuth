@@ -1,0 +1,167 @@
+package com.javasleuth.command.pipeline;
+
+import com.javasleuth.command.CommandArgs;
+import com.javasleuth.command.CommandContext;
+import com.javasleuth.command.CommandMeta;
+import com.javasleuth.command.CommandRegistry;
+import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.security.AuthorizationManager;
+import com.javasleuth.security.DangerousCommandConfirmationManager;
+import com.javasleuth.security.InputValidator;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 命令 precheck 阶段（validate/authz/confirm）显式化。
+ *
+ * <p>该组件不做命令执行，仅判断是否允许执行并输出 normalized args。</p>
+ */
+public final class PrecheckPipeline {
+    private final List<PrecheckStep> steps;
+
+    public PrecheckPipeline(
+        InputValidator inputValidator,
+        AuthorizationManager authorizationManager,
+        DangerousCommandConfirmationManager dangerousConfirm,
+        ProductionConfig config
+    ) {
+        List<PrecheckStep> s = new ArrayList<>(3);
+        s.add(new ValidateStep(inputValidator));
+        s.add(new AuthorizationStep(authorizationManager, config));
+        s.add(new DangerousConfirmStep(dangerousConfirm));
+        this.steps = s;
+    }
+
+    public PrecheckDecision precheck(CommandRegistry.Entry entry, String commandName, String[] rawArgs, CommandContext context) {
+        String[] argsForChecks = CommandArgs.stripConfirmArgs(rawArgs);
+        CommandMeta meta = entry != null ? entry.getMeta() : null;
+
+        PrecheckState state = new PrecheckState(entry, meta, commandName, rawArgs, argsForChecks, context);
+        for (PrecheckStep step : steps) {
+            PrecheckDecision decision = step.apply(state);
+            if (decision != null && !decision.isOk()) {
+                return decision;
+            }
+        }
+
+        String[] normalized = state.normalizedArgs != null ? state.normalizedArgs : rawArgs;
+        return PrecheckDecision.ok(normalized);
+    }
+
+    private interface PrecheckStep {
+        PrecheckDecision apply(PrecheckState state);
+    }
+
+    private static final class PrecheckState {
+        private final CommandRegistry.Entry entry;
+        private final CommandMeta meta;
+        private final String commandName;
+        private final String[] rawArgs;
+        private final String[] argsForChecks;
+        private final CommandContext context;
+        private String[] normalizedArgs;
+
+        private PrecheckState(
+            CommandRegistry.Entry entry,
+            CommandMeta meta,
+            String commandName,
+            String[] rawArgs,
+            String[] argsForChecks,
+            CommandContext context
+        ) {
+            this.entry = entry;
+            this.meta = meta;
+            this.commandName = commandName;
+            this.rawArgs = rawArgs;
+            this.argsForChecks = argsForChecks;
+            this.context = context;
+        }
+    }
+
+    private static final class ValidateStep implements PrecheckStep {
+        private final InputValidator inputValidator;
+
+        private ValidateStep(InputValidator inputValidator) {
+            this.inputValidator = inputValidator;
+        }
+
+        @Override
+        public PrecheckDecision apply(PrecheckState state) {
+            if (state == null || state.context == null) {
+                return PrecheckDecision.denied("Invalid command context", state != null ? state.argsForChecks : null);
+            }
+            InputValidator.ValidationResult validation = inputValidator.validateCommand(
+                state.context.getClientId(),
+                state.context.getClientInfo(),
+                state.commandName,
+                state.argsForChecks
+            );
+            if (validation != null && !validation.isValid()) {
+                return PrecheckDecision.denied("Security validation failed: " + validation.getMessage(), state.argsForChecks);
+            }
+            return null;
+        }
+    }
+
+    private static final class AuthorizationStep implements PrecheckStep {
+        private final AuthorizationManager authorizationManager;
+        private final ProductionConfig config;
+
+        private AuthorizationStep(AuthorizationManager authorizationManager, ProductionConfig config) {
+            this.authorizationManager = authorizationManager;
+            this.config = config;
+        }
+
+        @Override
+        public PrecheckDecision apply(PrecheckState state) {
+            if (state == null) {
+                return PrecheckDecision.denied("Invalid command context", null);
+            }
+
+            if (config != null && config.isAuthorizationEnabled() && !"auth".equals(state.commandName)) {
+                AuthorizationManager.AuthorizationResult authz = authorizationManager.authorize(
+                    state.context.getSessionId(),
+                    state.commandName,
+                    state.argsForChecks,
+                    state.meta
+                );
+                if (authz != null && !authz.isAllowed()) {
+                    return PrecheckDecision.denied(authz.getReason(), state.argsForChecks);
+                }
+            }
+            return null;
+        }
+    }
+
+    private static final class DangerousConfirmStep implements PrecheckStep {
+        private final DangerousCommandConfirmationManager dangerousConfirm;
+
+        private DangerousConfirmStep(DangerousCommandConfirmationManager dangerousConfirm) {
+            this.dangerousConfirm = dangerousConfirm;
+        }
+
+        @Override
+        public PrecheckDecision apply(PrecheckState state) {
+            if (state == null) {
+                return PrecheckDecision.denied("Invalid command context", null);
+            }
+
+            DangerousCommandConfirmationManager.ConfirmationResult confirm =
+                dangerousConfirm.confirmIfRequired(
+                    state.context.getSessionId(),
+                    state.context.getClientInfo(),
+                    state.commandName,
+                    state.rawArgs,
+                    state.meta
+                );
+            if (confirm != null && !confirm.isAllowed()) {
+                String[] argsForReturn = confirm.getNormalizedArgs() != null ? confirm.getNormalizedArgs() : state.rawArgs;
+                return PrecheckDecision.denied(confirm.getError(), argsForReturn);
+            }
+
+            state.normalizedArgs = confirm != null ? confirm.getNormalizedArgs() : null;
+            return null;
+        }
+    }
+}
+

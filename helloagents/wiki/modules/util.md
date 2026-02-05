@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** PerformanceOptimizer/MemoryOptimizer/JvmUtils + 诊断辅助工具
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-04
+- **Last Updated:** 2026-02-05
 
 ## Specifications
 
@@ -30,12 +30,22 @@
 
 ### Requirement: 轻量日志封装（agent 侧降噪）
 **Module:** util
-提供不引入第三方框架的轻量日志封装，支持通过 `logging.level` 控制输出等级。
+提供不引入第三方框架的轻量日志封装，统一系统日志格式/等级/上下文字段，支持通过 `logging.level` 控制输出等级，并可通过 `logging.console.enabled` 控制是否输出到控制台（stderr）。
 
-#### Scenario: INFO 不刷屏，DEBUG 才输出增强细节
-前置：运行时设置 `logging.level`  
-- INFO/WARN/ERROR：仅输出关键事件  
-- DEBUG/TRACE：输出更详细的增强/调试信息（包含异常栈）
+#### Scenario: 系统日志与用户输出分层（stderr vs stdout/协议输出）
+前置：默认配置  
+- `SleuthLogger` 统一输出前缀 `SLEUTH:`，并将系统日志写入 stderr（避免污染 stdout 与协议/用户输出混杂）
+- 审计日志（AuditLogger）独立通道，默认不镜像到控制台（避免污染目标 JVM 输出）
+
+#### Scenario: 统一上下文字段（clientId/sessionId/connId/command）
+前置：命令执行链路已建立 `CommandContext`  
+- 处于命令处理线程时，`SleuthLogger` 自动追加上下文字段（脱敏 sessionId/connId），便于线上聚合与检索
+- 非命令执行阶段可通过 `SleuthLogContext` 写入连接级上下文（并在连接结束时 clear，避免线程池复用导致泄露）
+
+#### Scenario: 单测默认降噪
+前置：`mvn test`  
+- Surefire 默认设置 `-Dsleuth.logging.level=ERROR`，避免 INFO/WARN 日志刷屏淹没断言失败
+- 如需排查问题可临时提高：`-Dsleuth.logging.level=DEBUG`
 
 ## API Interfaces
 N/A

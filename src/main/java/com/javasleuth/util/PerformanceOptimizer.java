@@ -105,7 +105,7 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
                 if (duration > SLOW_OPERATION_THRESHOLD) {
                     slowOperations.incrementAndGet();
                     if (isPerformanceLogEnabled()) {
-                        System.out.println("Slow operation detected: " + operationName + " took " + duration + "ms");
+                        SleuthLogger.warn("Slow operation detected: " + operationName + " took " + duration + "ms");
                     }
                 }
 
@@ -165,7 +165,7 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
         resultCache.clear();
         longTermCache.clear();
         if (isPerformanceLogEnabled()) {
-            System.out.println("Performance cache cleared");
+            SleuthLogger.debug("Performance cache cleared");
         }
     }
 
@@ -184,7 +184,7 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
 
         if (expiredCount > 0) {
             if (isPerformanceLogEnabled()) {
-                System.out.println("Cleaned " + expiredCount + " expired cache entries");
+                SleuthLogger.debug("Cleaned " + expiredCount + " expired cache entries");
             }
         }
     }
@@ -198,7 +198,7 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
             }
         } catch (Exception e) {
             if (isPerformanceLogEnabled()) {
-                System.err.println("Error during performance maintenance: " + e.getMessage());
+                SleuthLogger.warn("Error during performance maintenance: " + e.getMessage(), e);
             }
         }
     }
@@ -223,7 +223,7 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
 
     private void shutdownInternal() {
         if (isPerformanceLogEnabled()) {
-            System.out.println("Shutting down performance optimizer...");
+            SleuthLogger.debug("Shutting down performance optimizer...");
         }
 
         // Shutdown maintenance first
@@ -234,12 +234,12 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
         try {
             if (!commandExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
                 if (isPerformanceLogEnabled()) {
-                    System.out.println("Command executor did not terminate gracefully, forcing shutdown...");
+                    SleuthLogger.warn("Command executor did not terminate gracefully, forcing shutdown...");
                 }
                 commandExecutor.shutdownNow();
                 if (!commandExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
                     if (isPerformanceLogEnabled()) {
-                        System.err.println("Command executor did not terminate after force shutdown");
+                        SleuthLogger.error("Command executor did not terminate after force shutdown");
                     }
                 }
             }
@@ -262,7 +262,7 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
         unregisterMBean();
 
         if (isPerformanceLogEnabled()) {
-            System.out.println("Performance optimizer shutdown complete");
+            SleuthLogger.debug("Performance optimizer shutdown complete");
         }
     }
 
@@ -274,12 +274,12 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
             if (!server.isRegistered(name)) {
                 server.registerMBean(this, name);
                 if (isPerformanceLogEnabled()) {
-                    System.out.println("PerformanceOptimizer MBean registered");
+                    SleuthLogger.debug("PerformanceOptimizer MBean registered");
                 }
             }
         } catch (Exception e) {
             if (isPerformanceLogEnabled()) {
-                System.err.println("Failed to register PerformanceOptimizer MBean: " + e.getMessage());
+                SleuthLogger.warn("Failed to register PerformanceOptimizer MBean: " + e.getMessage(), e);
             }
         }
     }
@@ -291,12 +291,12 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
             if (server.isRegistered(name)) {
                 server.unregisterMBean(name);
                 if (isPerformanceLogEnabled()) {
-                    System.out.println("PerformanceOptimizer MBean unregistered");
+                    SleuthLogger.debug("PerformanceOptimizer MBean unregistered");
                 }
             }
         } catch (Exception e) {
             if (isPerformanceLogEnabled()) {
-                System.err.println("Failed to unregister PerformanceOptimizer MBean: " + e.getMessage());
+                SleuthLogger.warn("Failed to unregister PerformanceOptimizer MBean: " + e.getMessage(), e);
             }
         }
     }

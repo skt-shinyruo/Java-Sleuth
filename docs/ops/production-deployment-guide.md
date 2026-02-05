@@ -1015,6 +1015,7 @@ monitoring.jmx.enabled=true
 
 # 日志配置
 logging.level=INFO
+logging.console.enabled=true
 logging.audit.enabled=true
 logging.performance.enabled=false
 
@@ -1060,4 +1061,3 @@ plugins.conflict.strategy=prefer-builtin
 ---
 
 *本指南建议每季度复审更新一次，或在发生重大系统变更后及时更新。*
-

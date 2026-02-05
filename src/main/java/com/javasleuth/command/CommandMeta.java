@@ -3,6 +3,7 @@ package com.javasleuth.command;
 import com.javasleuth.security.AuthenticationManager.UserRole;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 public class CommandMeta {
@@ -67,7 +68,7 @@ public class CommandMeta {
         if (args != null && args.length > 1 && !subcommandRoles.isEmpty()) {
             String sub = args[1];
             if (sub != null) {
-                UserRole role = subcommandRoles.get(sub.trim().toLowerCase());
+                UserRole role = subcommandRoles.get(sub.trim().toLowerCase(Locale.ROOT));
                 if (role != null) {
                     return role;
                 }
@@ -127,7 +128,7 @@ public class CommandMeta {
             return this;
         }
         Map<String, UserRole> next = new HashMap<>(subcommandRoles);
-        next.put(subcommand.trim().toLowerCase(), role);
+        next.put(subcommand.trim().toLowerCase(Locale.ROOT), role);
         return new CommandMeta(requiredRole, cacheable, streamable, requiresAudit, maxExecutionsPerMinute, dangerous, impact,
             Collections.unmodifiableMap(next));
     }

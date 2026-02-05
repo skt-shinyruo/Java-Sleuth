@@ -14,12 +14,12 @@ public class SleuthAgent {
 
     public static void agentmain(String agentArgs, Instrumentation inst) {
         if (!ATTACHED.compareAndSet(false, true)) {
-            System.out.println("Java-Sleuth agent is already attached to this JVM");
+            SleuthLogger.warn("Java-Sleuth agent is already attached to this JVM");
             return;
         }
 
         instrumentation = inst;
-        System.out.println("Java-Sleuth agent attached successfully");
+        SleuthLogger.info("Java-Sleuth agent attached successfully");
 
         try {
             applyAgentArgs(agentArgs);
@@ -159,12 +159,12 @@ public class SleuthAgent {
             try {
                 inst.removeTransformer(tx);
             } catch (Exception e) {
-                System.err.println("Java-Sleuth: Failed to remove transformer: " + e.getMessage());
+                SleuthLogger.warn("Java-Sleuth: Failed to remove transformer: " + e.getMessage(), e);
             }
         }
 
         ATTACHED.set(false);
-        System.out.println("Java-Sleuth agent shutdown");
+        SleuthLogger.info("Java-Sleuth agent shutdown");
     }
 
     private static void applyAgentArgs(String agentArgs) {

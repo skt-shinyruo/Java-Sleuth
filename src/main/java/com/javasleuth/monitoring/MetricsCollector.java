@@ -1,6 +1,7 @@
 package com.javasleuth.monitoring;
 
 import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.util.SleuthLogger;
 import java.lang.management.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -98,7 +99,7 @@ public class MetricsCollector implements MetricsCollectorMBean {
             }
         } catch (Exception e) {
             if (isPerformanceLogEnabled()) {
-                System.err.println("Error collecting periodic metrics: " + e.getMessage());
+                SleuthLogger.warn("Error collecting periodic metrics: " + e.getMessage(), e);
             }
         }
     }
@@ -112,12 +113,12 @@ public class MetricsCollector implements MetricsCollectorMBean {
         double heapUsedPercent = (double) heapMemory.getUsed() / heapMemory.getMax() * 100;
 
         if (heapUsedPercent > MEMORY_WARNING_THRESHOLD) {
-            System.out.println("WARNING: High memory usage detected: " + String.format("%.1f%%", heapUsedPercent));
+            SleuthLogger.warn("WARNING: High memory usage detected: " + String.format("%.1f%%", heapUsedPercent));
         }
 
         double errorRate = calculateErrorRate();
         if (errorRate > ERROR_RATE_THRESHOLD) {
-            System.out.println("WARNING: High error rate detected: " + String.format("%.1f%%", errorRate));
+            SleuthLogger.warn("WARNING: High error rate detected: " + String.format("%.1f%%", errorRate));
         }
     }
 
@@ -163,7 +164,7 @@ public class MetricsCollector implements MetricsCollectorMBean {
 
             if (durationMs > SLOW_COMMAND_THRESHOLD) {
                 if (isPerformanceLogEnabled()) {
-                    System.out.println("SLOW COMMAND: " + commandName + " took " + durationMs + "ms");
+                    SleuthLogger.warn("SLOW COMMAND: " + commandName + " took " + durationMs + "ms");
                 }
             }
         }
@@ -474,7 +475,7 @@ public class MetricsCollector implements MetricsCollectorMBean {
         commandDurations.clear();
         errorCounts.clear();
         commandMetrics.clear();
-        System.out.println("All metrics have been reset");
+        SleuthLogger.info("All metrics have been reset");
     }
 
     @Override
@@ -500,10 +501,10 @@ public class MetricsCollector implements MetricsCollectorMBean {
             ObjectName name = new ObjectName("com.javasleuth:type=MetricsCollector");
             if (!server.isRegistered(name)) {
                 server.registerMBean(this, name);
-                System.out.println("MetricsCollector MBean registered");
+                SleuthLogger.debug("MetricsCollector MBean registered");
             }
         } catch (Exception e) {
-            System.err.println("Failed to register MetricsCollector MBean: " + e.getMessage());
+            SleuthLogger.warn("Failed to register MetricsCollector MBean: " + e.getMessage(), e);
         }
     }
 
@@ -513,15 +514,15 @@ public class MetricsCollector implements MetricsCollectorMBean {
             ObjectName name = new ObjectName("com.javasleuth:type=MetricsCollector");
             if (server.isRegistered(name)) {
                 server.unregisterMBean(name);
-                System.out.println("MetricsCollector MBean unregistered");
+                SleuthLogger.debug("MetricsCollector MBean unregistered");
             }
         } catch (Exception e) {
-            System.err.println("Failed to unregister MetricsCollector MBean: " + e.getMessage());
+            SleuthLogger.warn("Failed to unregister MetricsCollector MBean: " + e.getMessage(), e);
         }
     }
 
     public void shutdown() {
-        System.out.println("Shutting down metrics collector...");
+        SleuthLogger.debug("Shutting down metrics collector...");
 
         metricsExecutor.shutdown();
         try {
@@ -534,6 +535,6 @@ public class MetricsCollector implements MetricsCollectorMBean {
         }
 
         unregisterMBean();
-        System.out.println("Metrics collector shutdown complete");
+        SleuthLogger.debug("Metrics collector shutdown complete");
     }
 }

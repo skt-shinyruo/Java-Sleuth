@@ -124,12 +124,18 @@ quit         - Exit the Java-Sleuth session
 - `performance.command.executor.queue.capacity`：命令执行线程池排队上限（过载会返回明确错误，避免无限排队/线程膨胀）
 - `performance.command.timeout`：命令执行超时（避免长耗时命令永久占用线程）
 - `logging.performance.enabled=false`：默认关闭性能/健康相关的 stdout/stderr 输出（生产环境建议保持关闭）
+- `logging.console.enabled=true`：控制 SleuthLogger 是否输出系统日志到控制台（写入 stderr，便于与 stdout 的用户输出/协议输出分层）
 
 插桩日志与代理类覆盖：
 
 - 默认允许对常见代理类（如 Spring/CGLIB `$$EnhancerBySpringCGLIB$$`）执行 watch/trace
 - 仍会过滤噪音类（如 `$$Lambda$`）
 - `logging.level=DEBUG` 时会输出每次 transform 的增强日志，`INFO` 默认不刷屏
+
+日志/输出分层说明：
+
+- **用户交互输出**：Launcher 的命令输出/提示走 stdout；Agent/Server 协议回写走 Socket
+- **系统日志**：统一通过 `SleuthLogger` 输出到 stderr（前缀 `SLEUTH:`），并在命令执行时自动携带上下文字段（clientId/sessionId/connId/command，token 默认脱敏）
 
 命令与安全细节补充：
 

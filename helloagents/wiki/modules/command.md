@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 命令解析、校验、执行、输出
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-04
+- **Last Updated:** 2026-02-05
 
 ## Specifications
 
@@ -20,6 +20,16 @@
 - 命令执行
 - 结果清洗与返回
 
+实现要点（SSOT）：
+- `CommandPipeline` 作为对外门面（Facade），对外签名保持稳定
+- 内部执行链路显式化为 Step/Interceptor 链（`com.javasleuth.command.pipeline.*`），避免在单个类中堆叠条件分支
+  - precheck：`PrecheckPipeline`（Validate/Authz/DangerousConfirm）
+  - sync：`PipelineChain` + `CacheInterceptor` + `OutputSanitizeInterceptor` + `CommandExecutionEngine`
+  - stream：`GuardedStreamInterceptor`（按 chunk sanitize + close/error 语义收敛）+ `CommandExecutionEngine`
+- confirm 参数剥离 SSOT：`CommandArgs.stripConfirmArgs`（校验/授权阶段不应受 confirm token 影响）
+- 参数解析与校验 SSOT（数值/范围/错误码）：`CommandArgs.getInt/getLong/requireInt/requireLong`（统一错误码：`E_ARGS_MISSING`/`E_ARGS_INVALID`/`E_ARGS_RANGE`；缺省用默认值，越界/非法格式返回可读错误）
+- Locale 归一化 SSOT（核心链路）：命令名使用 `toLowerCase(Locale.ROOT)`；握手关键字使用 `regionMatches(ignoreCase=true)`，避免默认 Locale 影响命令识别
+
 ### Requirement: 统一传输层与协议状态机（握手/升级）
 **Module:** command / protocol
 服务端与客户端在同一底层 `InputStream/OutputStream` 上完成文本行协议与二进制帧协议的协商与升级，避免混用多层缓冲导致的边界错位。
@@ -29,6 +39,7 @@
 - 客户端发送 `HELLO ... protocols=legacy,framed,binary`  
 - 服务端返回 `CONFIG v=1 protocol=<selected> ...`  
 - 若选择 binary：客户端发送 `UPGRADE BINARY` 后进入严格二进制帧通道
+- 握手关键字匹配需避免 Locale 相关大小写陷阱（使用 locale-independent 的 ignoreCase 匹配）
 
 ### Requirement: 资源治理与 DoS 防护（连接/行长度/超时）
 **Module:** command
@@ -86,6 +97,9 @@
 - **流式命令同样走 `CommandPipeline`**：统一 executor/timeout/impact permit，并对每个输出 chunk 执行 `InputValidator.sanitizeOutput`（脱控制字符 + 截断）
 - legacy 文本协议的流式输出会追加单行 END marker（`protocol.text.end.marker.enabled=true`），降低客户端“超时猜结束”导致的截断风险
 
+实现要点：
+- 连接协议与回写逻辑：`CommandProcessor` → `CommandClientHandler`（连接生命周期） → `com.javasleuth.command.server.protocol.*`（text/framed/binary handlers + shared `CommandRequestExecutor`）
+
 ### Requirement: 高风险命令二次确认（防误触 + 可审计）
 **Module:** command / security
 高风险命令默认启用一次性 token 二次确认，降低误触/脚本误用风险。
@@ -114,6 +128,7 @@
 - reset：一键清理增强与会话并回滚 retransform
 - stop/session/perm/version/logger/dump/getstatic/vmoption：诊断与管理补齐
 - vmtool（lite）：实例追踪（track/instances/inspect）+ 受控方法调用（invoke/invoke-static，需二次确认）+ histogram（HotSpot best-effort）
+- `StackCommand`/`TtCommand` 子模块化：解析/会话/执行/格式化下沉到 `com.javasleuth.command.impl.stack.*` 与 `com.javasleuth.command.impl.tt.*`，主命令仅保留 subcommand 分发与 jobs 提交
 
 #### Scenario: 严格二进制帧输出
 前置：握手选择 binary 模式  
@@ -142,3 +157,6 @@ N/A
 - 202602021233_quality_audit_more_issues (history/2026-02/202602021233_quality_audit_more_issues/) - 协议上限/危险命令元信息与关键边界单测补齐
 - 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - 流式命令纳入 Pipeline、legacy END marker、后台 jobs 并发上限与多 ClassLoader 选类回滚一致性
 - 202602042257_vmtool_instance_diagnostics (history/2026-02/202602042257_vmtool_instance_diagnostics/) - vmtool（lite）：实例追踪/检视/受控调用
+- 202602051031_command_pipeline_step_chain (history/2026-02/202602051031_command_pipeline_step_chain/) - CommandPipeline Step/Interceptor 链重构 + CommandProcessor 拆分
+- 202602051334_giant_files_split_handlers_stack_tt (history/2026-02/202602051334_giant_files_split_handlers_stack_tt/) - 继续压小巨型文件：协议 handler 拆分 + Stack/TT 子模块化
+- 202602051436_command_args_validation_logging (history/2026-02/202602051436_command_args_validation_logging/) - 参数解析/异常处理/Locale 归一化加固（避免坏输入中断与吞异常黑洞）

@@ -1,9 +1,11 @@
 package com.javasleuth.config;
 
+import com.javasleuth.util.SleuthLogger;
 import java.io.*;
 import java.lang.management.ManagementFactory;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ProductionConfig {
@@ -16,6 +18,7 @@ public class ProductionConfig {
     private volatile boolean configLoaded = false;
 
     private static ProductionConfig instance;
+    private static final AtomicBoolean LOADING = new AtomicBoolean(false);
 
     private ProductionConfig() {
         this.properties = new Properties();
@@ -31,39 +34,44 @@ public class ProductionConfig {
     }
 
     private void loadConfiguration() {
+        LOADING.set(true);
         try {
-            // First load default configuration from resources
-            InputStream defaultStream = getClass().getResourceAsStream(DEFAULT_CONFIG);
-            if (defaultStream != null) {
-                properties.load(defaultStream);
-                defaultStream.close();
-            }
-
-            // Then load external configuration file (explicit path > default filename)
-            String explicitConfigPath = System.getProperty(CONFIG_FILE_PROPERTY);
-            File configFile = explicitConfigPath != null && !explicitConfigPath.trim().isEmpty()
-                ? new File(explicitConfigPath)
-                : new File(CONFIG_FILE);
-            if (configFile.exists()) {
-                try (FileInputStream fileStream = new FileInputStream(configFile)) {
-                    properties.load(fileStream);
-                    System.out.println("Loaded configuration from: " + configFile.getAbsolutePath());
+            try {
+                // First load default configuration from resources
+                InputStream defaultStream = getClass().getResourceAsStream(DEFAULT_CONFIG);
+                if (defaultStream != null) {
+                    properties.load(defaultStream);
+                    defaultStream.close();
                 }
-            }
 
-            // Load system properties overrides
-            for (String key : properties.stringPropertyNames()) {
-                String sysProp = System.getProperty("sleuth." + key);
-                if (sysProp != null) {
-                    properties.setProperty(key, sysProp);
+                // Then load external configuration file (explicit path > default filename)
+                String explicitConfigPath = System.getProperty(CONFIG_FILE_PROPERTY);
+                File configFile = explicitConfigPath != null && !explicitConfigPath.trim().isEmpty()
+                    ? new File(explicitConfigPath)
+                    : new File(CONFIG_FILE);
+                if (configFile.exists()) {
+                    try (FileInputStream fileStream = new FileInputStream(configFile)) {
+                        properties.load(fileStream);
+                        SleuthLogger.info("Loaded configuration from: " + configFile.getAbsolutePath());
+                    }
                 }
-            }
 
-            configLoaded = true;
-        } catch (IOException e) {
-            System.err.println("Warning: Failed to load configuration: " + e.getMessage());
-            // Use defaults
-            setDefaults();
+                // Load system properties overrides
+                for (String key : properties.stringPropertyNames()) {
+                    String sysProp = System.getProperty("sleuth." + key);
+                    if (sysProp != null) {
+                        properties.setProperty(key, sysProp);
+                    }
+                }
+
+                configLoaded = true;
+            } catch (IOException e) {
+                SleuthLogger.warn("Warning: Failed to load configuration: " + e.getMessage(), e);
+                // Use defaults
+                setDefaults();
+            }
+        } finally {
+            LOADING.set(false);
         }
     }
 
@@ -166,6 +174,8 @@ public class ProductionConfig {
 
         // Logging configuration
         properties.setProperty("logging.level", "INFO");
+        // Console logging (stderr) is useful for local troubleshooting; tests may override via -Dsleuth.logging.level=ERROR.
+        properties.setProperty("logging.console.enabled", "true");
         properties.setProperty("logging.audit.enabled", "true");
         properties.setProperty("logging.audit.console.enabled", "false");
         properties.setProperty("logging.audit.file.path", "");
@@ -556,6 +566,10 @@ public class ProductionConfig {
     // Configuration status
     public boolean isConfigLoaded() {
         return configLoaded;
+    }
+
+    public static boolean isLoading() {
+        return LOADING.get();
     }
 
     public String getConfigStatus() {

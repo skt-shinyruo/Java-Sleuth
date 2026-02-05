@@ -24,6 +24,9 @@ This file records index of all completed changes for traceability and query.
 | 202602042137 | docs_tutorial | Refactor | ✅Completed | history/2026-02/202602042137_docs_tutorial/ |
 | 202602042207 | docs_tutorial_command_flow | Refactor | ✅Completed | history/2026-02/202602042207_docs_tutorial_command_flow/ |
 | 202602042257 | vmtool_instance_diagnostics | Feature | ✅Completed | history/2026-02/202602042257_vmtool_instance_diagnostics/ |
+| 202602051031 | command_pipeline_step_chain | Refactor | ✅Completed | history/2026-02/202602051031_command_pipeline_step_chain/ |
+| 202602051334 | giant_files_split_handlers_stack_tt | Refactor | ✅Completed | history/2026-02/202602051334_giant_files_split_handlers_stack_tt/ |
+| 202602051436 | command_args_validation_logging | Refactor | ✅Completed | history/2026-02/202602051436_command_args_validation_logging/ |
 
 ---
 
@@ -50,3 +53,6 @@ This file records index of all completed changes for traceability and query.
 - 202602042137_docs_tutorial (2026-02/202602042137_docs_tutorial/) - 新增 docs/tutorial 教学目录，整理 Attach/Instrumentation 基础知识
 - 202602042207_docs_tutorial_command_flow (2026-02/202602042207_docs_tutorial_command_flow/) - 教学文档补充：命令触发插桩与回滚链路（watch/trace/reset/stop）
 - 202602042257_vmtool_instance_diagnostics (2026-02/202602042257_vmtool_instance_diagnostics/) - vmtool（lite）：实例追踪/检视/受控调用
+- 202602051031_command_pipeline_step_chain (2026-02/202602051031_command_pipeline_step_chain/) - 命令执行链显式化（Step/Interceptor）+ CommandProcessor 拆分（降巨型类耦合）
+- 202602051334_giant_files_split_handlers_stack_tt (2026-02/202602051334_giant_files_split_handlers_stack_tt/) - 继续压小巨型文件：协议 handler 拆分 + Stack/TT 子模块化
+- 202602051436_command_args_validation_logging (2026-02/202602051436_command_args_validation_logging/) - 参数解析/异常处理/Locale 归一化加固
