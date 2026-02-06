@@ -1,5 +1,6 @@
 package com.javasleuth.test;
 
+// 示例应用：提供一个可 attach 的目标 JVM 进程，便于演示 Java-Sleuth 的观测/插桩能力。
 public class TestApplication {
     private static volatile boolean running = true;
 
@@ -7,7 +8,7 @@ public class TestApplication {
         System.out.println("Test Application Started - PID: " +
             java.lang.management.ManagementFactory.getRuntimeMXBean().getName().split("@")[0]);
 
-        // Simulate some work
+        // 模拟一些工作负载
         Thread worker = new Thread(() -> {
             int counter = 0;
             while (running) {
@@ -24,7 +25,7 @@ public class TestApplication {
 
         worker.start();
 
-        // Keep main thread alive
+        // 保持主线程存活
         while (running) {
             Thread.sleep(1000);
         }
@@ -34,7 +35,7 @@ public class TestApplication {
     }
 
     private static void doSomeWork(int iteration) {
-        // Simulate some CPU work
+        // 模拟 CPU 计算
         long startTime = System.currentTimeMillis();
         calculatePrimes(1000);
         long endTime = System.currentTimeMillis();
@@ -45,7 +46,7 @@ public class TestApplication {
     private static void calculatePrimes(int max) {
         for (int i = 2; i <= max; i++) {
             if (isPrime(i)) {
-                // Just counting primes
+                // 仅统计素数（占位）
             }
         }
     }
@@ -67,3 +68,4 @@ public class TestApplication {
         running = false;
     }
 }
+

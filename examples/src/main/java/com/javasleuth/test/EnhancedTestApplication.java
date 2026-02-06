@@ -2,6 +2,7 @@ package com.javasleuth.test;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+// 增强版示例应用：包含多线程、业务链路、计算与异常场景，适合演示 watch/trace/tt/stack/redefine 等命令。
 public class EnhancedTestApplication {
     private static volatile boolean running = true;
     private final AtomicInteger counter = new AtomicInteger(0);
@@ -18,7 +19,7 @@ public class EnhancedTestApplication {
     }
 
     public void start() throws InterruptedException {
-        // Create multiple worker threads to demonstrate different scenarios
+        // 创建多个工作线程，用于演示不同场景
         Thread workerThread = new Thread(this::workerLoop, "WorkerThread");
         Thread calculatorThread = new Thread(this::calculatorLoop, "CalculatorThread");
         Thread errorThread = new Thread(this::errorLoop, "ErrorThread");
@@ -27,7 +28,7 @@ public class EnhancedTestApplication {
         calculatorThread.start();
         errorThread.start();
 
-        // Main monitoring loop
+        // 主监控循环
         while (running) {
             Thread.sleep(1000);
             System.out.println("Application running... Counter: " + counter.get());
@@ -79,7 +80,7 @@ public class EnhancedTestApplication {
     public void processBusinessTask() {
         long startTime = System.currentTimeMillis();
 
-        // Chain of method calls for tracing demo
+        // 调用链：用于 tracing 演示
         String result = businessLogic.processOrder("ORDER-" + counter.get());
         businessLogic.saveResult(result);
         businessLogic.sendNotification(result);
@@ -91,7 +92,7 @@ public class EnhancedTestApplication {
     public void performCalculations() {
         int value = counter.get();
 
-        // Different types of calculations
+        // 多类型计算：便于观测不同方法/耗时
         long fibonacci = calculateFibonacci(value % 20 + 10);
         double sqrt = Math.sqrt(value * 1000);
         boolean isPrime = isPrime(value + 100);
@@ -119,12 +120,12 @@ public class EnhancedTestApplication {
         }
     }
 
-    // Method that can be redefined for hot-reload demo
+    // 可被 redefine 的方法：用于 hot-reload 演示
     public String getGreeting() {
         return "Hello from Java-Sleuth Test Application v1.0!";
     }
 
-    // Method for watch/trace demo
+    // 适合 watch/trace 的递归方法
     public long calculateFibonacci(int n) {
         if (n <= 1) return n;
         return calculateFibonacci(n - 1) + calculateFibonacci(n - 2);
@@ -151,7 +152,7 @@ public class EnhancedTestApplication {
         running = false;
     }
 
-    // Inner class for business logic demonstration
+    // 业务逻辑示例：用于方法链路/异常场景演示
     private static class BusinessLogic {
 
         public String processOrder(String orderId) {
@@ -161,12 +162,12 @@ public class EnhancedTestApplication {
 
         public void saveResult(String result) {
             simulateWork(50, 150);
-            // Simulate database save
+            // 模拟数据库写入
         }
 
         public void sendNotification(String message) {
             simulateWork(25, 75);
-            // Simulate sending notification
+            // 模拟发送通知
         }
 
         public void riskyOperation(String input) throws RuntimeException {
@@ -199,3 +200,4 @@ public class EnhancedTestApplication {
         }
     }
 }
+

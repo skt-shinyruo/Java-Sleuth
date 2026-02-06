@@ -20,7 +20,8 @@ if [ -z "${JAR_FILE}" ] || [ ! -f "${JAR_FILE}" ]; then
 fi
 
 echo "1. Starting test application..."
-java -cp target/classes com.javasleuth.test.TestApplication &
+bash ./scripts/examples/compile-examples.sh > /dev/null
+java -cp target/examples-classes com.javasleuth.test.TestApplication &
 TEST_APP_PID=$!
 
 # Wait a moment for the test app to start

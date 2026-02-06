@@ -21,6 +21,9 @@ if [[ -z "${BASE_JAR}" ]] || [[ ! -f "${BASE_JAR}" ]]; then
     exit 1
 fi
 
+bash ./scripts/examples/compile-examples.sh > /dev/null
+EXAMPLES_CLASSES="$PROJECT_DIR/target/examples-classes"
+
 echo "Test 1: Java Version Compatibility"
 java -version 2>&1
 echo ""
@@ -39,7 +42,7 @@ echo "  Testing with security manager enabled:"
 java -javaagent:"$AGENT_JAR" \
      -Djava.security.manager \
      -Djava.security.policy=all.policy \
-     -cp "$BASE_JAR" \
+     -cp "$BASE_JAR:$EXAMPLES_CLASSES" \
      com.javasleuth.test.TestApplication > /tmp/security-test.log 2>&1 &
 SEC_PID=$!
 
@@ -59,7 +62,7 @@ echo "  Testing malicious input handling:"
 
 # Start clean test app
 java -javaagent:"$AGENT_JAR" \
-     -cp "$BASE_JAR" \
+     -cp "$BASE_JAR:$EXAMPLES_CLASSES" \
      com.javasleuth.test.TestApplication > /dev/null 2>&1 &
 APP_PID=$!
 
@@ -95,7 +98,7 @@ echo "  Testing file operations:"
 
 # Test heap dump to various paths
 java -javaagent:"$AGENT_JAR" \
-     -cp "$BASE_JAR" \
+     -cp "$BASE_JAR:$EXAMPLES_CLASSES" \
      com.javasleuth.test.TestApplication > /dev/null 2>&1 &
 APP_PID=$!
 
@@ -153,7 +156,7 @@ echo "  Initial file descriptors: $initial_fds"
 # Run multiple connection tests
 for i in {1..10}; do
     java -javaagent:"$AGENT_JAR" \
-         -cp "$BASE_JAR" \
+         -cp "$BASE_JAR:$EXAMPLES_CLASSES" \
          com.javasleuth.test.TestApplication > /dev/null 2>&1 &
     APP_PID=$!
 

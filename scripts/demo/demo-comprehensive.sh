@@ -33,7 +33,8 @@ if [ -z "${JAR_FILE}" ] || [ ! -f "${JAR_FILE}" ]; then
 fi
 
 echo -e "${BLUE}1. Starting Enhanced Test Application...${NC}"
-java -cp target/classes com.javasleuth.test.EnhancedTestApplication &
+bash ./scripts/examples/compile-examples.sh > /dev/null
+java -cp target/examples-classes com.javasleuth.test.EnhancedTestApplication &
 TEST_APP_PID=$!
 
 # Wait for the test app to start

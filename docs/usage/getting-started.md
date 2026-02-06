@@ -39,7 +39,7 @@ docker build -t java-sleuth-demo -f docker/demo/Dockerfile .
 docker run -d --name java-sleuth-demo java-sleuth-demo
 ```
 
-容器默认运行 `com.javasleuth.test.EnhancedTestApplication`，会周期性执行业务方法/计算/异常场景，适合演示 `watch/trace/thread` 等命令。
+容器默认运行 `com.javasleuth.test.EnhancedTestApplication`（构建阶段从 `examples/` 编译，运行时使用独立 classpath；示例类不在发布 jar/fat-jar 内），会周期性执行业务方法/计算/异常场景，适合演示 `watch/trace/thread` 等命令。
 
 ### 5.3 进入容器并启动 Java-Sleuth（交互式）
 

@@ -33,7 +33,7 @@
 | util | 性能/内存工具 | ✅Stable | [util](modules/util.md) |
 | compiler | 内存编译器 | ✅Stable | [compiler](modules/compiler.md) |
 | data | 监控结果模型 | ✅Stable | [data](modules/data.md) |
-| test | 示例应用与测试 | ✅Stable | [test](modules/test.md) |
+| test | 示例应用与测试（examples，不进发布 jar） | ✅Stable | [test](modules/test.md) |
 
 ---
 

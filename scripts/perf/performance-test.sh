@@ -21,6 +21,9 @@ if [[ -z "${BASE_JAR}" ]] || [[ ! -f "${BASE_JAR}" ]]; then
     exit 1
 fi
 
+bash ./scripts/examples/compile-examples.sh > /dev/null
+EXAMPLES_CLASSES="$PROJECT_DIR/target/examples-classes"
+
 # Test 1: Agent startup time
 echo "Test 1: Agent Startup Time"
 for i in {1..3}; do
@@ -29,7 +32,7 @@ for i in {1..3}; do
     sleep 1
 
     start_time=$(date +%s%N)
-    java -javaagent:"$AGENT_JAR" -cp "$BASE_JAR" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
+    java -javaagent:"$AGENT_JAR" -cp "$BASE_JAR:$EXAMPLES_CLASSES" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
     APP_PID=$!
 
     # Wait for agent to be ready
@@ -46,7 +49,7 @@ for i in {1..3}; do
 done
 
 # Start application for command performance tests
-java -javaagent:"$AGENT_JAR" -cp "$BASE_JAR" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
+java -javaagent:"$AGENT_JAR" -cp "$BASE_JAR:$EXAMPLES_CLASSES" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
 APP_PID=$!
 
 # Wait for agent to be ready
