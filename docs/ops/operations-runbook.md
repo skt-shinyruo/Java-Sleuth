@@ -1,6 +1,6 @@
 # Java-Sleuth 运维 Runbook
 
-> 注意：默认启用 `protocol.handshake.enabled=true` + `security.mode=hmac`，不再支持用 `nc` 直接发送明文命令。
+> 注意：默认启用 `protocol.handshake.enabled=true`（需要先 HELLO 握手协商协议），不再支持用 `nc` 直接发送单行明文命令（但可用于端口连通性探测）。
 > 运维排障建议使用 SleuthLauncher（`./sleuth.sh`）连接后执行 `health/status/metrics/...`。
 
 ## 快速参考
@@ -252,7 +252,7 @@ jstack $(pgrep -f java-sleuth) > /tmp/threadump-$(date +%Y%m%d-%H%M).txt
 # sleuth> metrics
 
 # 实时观察性能
-# NOTE: 默认启用握手 + HMAC，无法用 nc 轮询 status。
+# NOTE: 默认启用握手（HELLO），无法用 nc 直接轮询 status（但可用于端口连通性探测）。
 # 建议通过 JMX/监控系统观测，或在 SleuthLauncher 中手动多次执行 `status`。
 
 # 查看系统负载
@@ -478,7 +478,7 @@ systemctl is-active java-sleuth
 
 # 快速健康探测
 echo "健康检查："
-# 默认启用握手 + HMAC，无法用 nc 直接发命令；这里用端口连通性作为快速探测。
+# 默认启用握手（HELLO），无法用 nc 直接发命令；这里用端口连通性作为快速探测。
 timeout 2 nc -zv localhost 3658 || echo "失败"
 
 # 内存使用
@@ -772,4 +772,3 @@ grep "VIOLATION" /opt/java-sleuth/logs/sleuth-audit.log
 ---
 
 *Runbook 建议在每次事件后更新，并每月例行复审一次。*
-

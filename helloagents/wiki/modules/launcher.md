@@ -60,7 +60,7 @@
 
 ### Requirement: 本机单次排障的显式不安全开关（--insecure）
 **Module:** launcher / security
-允许在“明确知情 + 本机可信”的场景下临时关闭安全模式，但必须交互确认以降低误用风险。
+当用户已启用安全模式（例如 `security.mode=hmac`）但在“明确知情 + 本机可信”的场景下需要临时关闭时，可使用 `--insecure`；仍需交互确认以降低误用风险。
 
 #### Scenario: 使用 --insecure 启动
 前置：用户需要在本机快速排障且确认不会被端口转发/容器网络/代理暴露  
@@ -80,13 +80,13 @@
 
 ### Requirement: attach 时安全自举（HMAC secret 自动下发）
 **Module:** launcher / security
-在默认配置下避免“security.mode=off + 空 secret”的误用风险，并保证 Launcher 与 Agent 的安全配置一致。
+当显式启用 `security.mode=hmac` 时，为保证 Launcher 与 Agent 的 HMAC 配置一致，支持在 attach 阶段为“空 secret”自动生成并下发随机 secret（可选开关）。
 
 #### Scenario: attach 自动启用 HMAC 并同步会话角色
-前置：`security.bootstrap.hmac.on.attach=true`  
-- Launcher attach 时生成随机 `security.hmac.secret` 并通过 agentArgs 下发到目标 JVM
-- Launcher 本地同时启用 `security.mode=hmac` 并同步 `security.hmac.session.role`，保证后续命令发送会签名
-- 目标 JVM 侧按 `security.hmac.session.role` 自举初始会话角色（避免必须先 `auth`）
+前置：`security.mode=hmac` 且 `security.bootstrap.hmac.on.attach=true`  
+- 若 `security.hmac.secret` 为空：Launcher attach 时生成随机 `security.hmac.secret` 并通过 agentArgs 下发到目标 JVM
+- Launcher 本地同步 `security.hmac.secret` 与 `security.hmac.session.role`，保证后续命令发送会签名
+- 注意：该流程不会隐式切换 `security.mode`（`security.mode=off` 时自举逻辑不生效）
 
 ## API Interfaces
 N/A

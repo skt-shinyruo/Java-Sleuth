@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 默认配置、外部配置、系统属性覆盖
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-05
+- **Last Updated:** 2026-02-06
 
 ## Specifications
 
@@ -31,9 +31,9 @@
 - `protocol.text.max.line.bytes`：文本协议单行最大字节数上限
 - `protocol.text.end.marker.enabled`：legacy 文本协议流式输出是否追加 END marker（降低“超时猜结束”截断风险）
 - `protocol.frame.max.payload`：分帧/二进制协议单帧 payload 最大字节数
-- `security.mode`：off|hmac（默认 hmac）
-- `security.anonymous.viewer`：默认 false（仅当会话角色为 viewer 时生效；hmac 模式下默认自举为 operator）
-- `security.bootstrap.hmac.on.attach` / `security.bootstrap.hmac.secret.bytes`：Launcher attach 时 HMAC 自举开关与 secret 长度
+- `security.mode`：off|hmac（默认 off）
+- `security.anonymous.viewer`：默认 true（仅当启用 RBAC 且会话角色为 viewer 时生效；HMAC 模式下可按 session.role 自举）
+- `security.bootstrap.hmac.on.attach` / `security.bootstrap.hmac.secret.bytes`：Launcher attach 时 HMAC 自举开关与 secret 长度（默认关闭自举）
 - `security.hmac.session.role`：HMAC 模式下新连接的自举会话角色（viewer|operator|admin）
 - `security.hmac.secret.autogen.on.loopback` / `security.hmac.secret.autogen.print`：loopback 下空 secret 自洽启动（自动生成临时 secret + 是否打印）
 - `security.auth.password.enabled`：口令认证开关（默认 false）
@@ -65,7 +65,7 @@
 支持通过命令在运行时覆写部分配置项（优先级高于默认配置与外部文件），用于临时调试与回滚。
 
 #### Scenario: config set/get 生效
-前置：已连接并具备足够权限（建议 ADMIN）  
+前置：已连接；若启用 RBAC（`security.authorization.enabled=true`），建议以 ADMIN 执行  
 - `config set <key> <value>` 写入运行时覆盖  
 - 读取配置时优先使用运行时覆盖（其次系统属性，再其次文件配置）  
 - 对敏感 key 的 value 输出会自动脱敏

@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** InputValidator/AuditLogger/Auth/AuthZ/SecurityValidator
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-05
+- **Last Updated:** 2026-02-06
 
 ## Specifications
 
@@ -39,10 +39,10 @@
 
 #### Scenario: 匿名会话与登录升级
 前置：新连接建立  
-- 默认关闭匿名 viewer（`security.anonymous.viewer=false`）
+- 默认允许匿名 viewer（`security.anonymous.viewer=true`），并默认关闭 RBAC（`security.authorization.enabled=false`）
 - 口令认证默认关闭（`security.auth.password.enabled=false`），且不再提供任何硬编码默认口令；如需启用需显式配置密码或使用环境变量
-- 当 `security.mode=hmac` 时，连接会按 `security.hmac.session.role` 自举会话角色（免口令），并依赖请求签名作为“持有 secret”证明
-- `auth` 命令用于在开启口令认证后升级会话角色
+- 当显式启用 `security.mode=hmac` 时，连接会按 `security.hmac.session.role` 自举会话角色（免口令），并依赖请求签名作为“持有 secret”证明
+- `auth` 命令用于在开启口令认证 + RBAC 后升级会话角色
 - 高危命令强制授权
 
 ### Requirement: 安全默认策略收敛（非回环绑定保护）
@@ -87,7 +87,7 @@
 
 ### Requirement: 可选请求签名与防重放（security.mode=hmac）
 **Module:** security
-默认启用 HMAC（`security.mode=hmac`），提供完整性校验与基础防重放能力；如需临时关闭需显式选择（例如 Launcher `--insecure`）。
+可选启用 HMAC（`security.mode=hmac`；默认 `security.mode=off`），提供完整性校验与基础防重放能力；需要时再显式开启。
 
 #### Scenario: SIG 包装命令校验
 前置：`security.mode=hmac`  
@@ -98,7 +98,7 @@
 
 ### Requirement: 高风险命令二次确认（防误触 + 可审计）
 **Module:** security / command
-对标“手术刀级别能力”的工程实践：危险命令与高影响命令默认需要一次性确认 token，降低误触与脚本误用风险。
+对标“手术刀级别能力”的工程实践：危险命令与高影响命令支持一次性确认 token（默认关闭，可选开启），用于降低误触与脚本误用风险。
 
 #### Scenario: 危险命令需 --confirm <token>
 前置：命令被标记为 dangerous（例如 redefine/retransform/mc/heapdump/reset/stop）  
@@ -106,7 +106,7 @@
 - 二次执行：校验 token（一次性、过期失效），通过后才执行危险操作
 - challenge/confirm 会写入审计日志，便于追溯
 配置项：
-- `security.dangerous.confirm.enabled`（默认 true）
+- `security.dangerous.confirm.enabled`（默认 false）
 - `security.dangerous.confirm.ttl.ms`
 - `security.dangerous.confirm.token.bytes`
 - `security.dangerous.confirm.cache.size`
@@ -116,7 +116,7 @@
 - 首次执行：返回一次性确认 token（同上）
 - 同一时刻仅允许有限并发（默认 1），避免多个重型操作叠加导致停顿/峰值
 配置项：
-- `security.impact.high.confirm.enabled`（默认 true）
+- `security.impact.high.confirm.enabled`（默认 false）
 - `security.impact.high.concurrent.limit`（默认 1）
 
 ### Requirement: 安全默认边界

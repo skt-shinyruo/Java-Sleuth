@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 命令解析、校验、执行、输出
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-05
+- **Last Updated:** 2026-02-06
 
 ## Specifications
 
@@ -120,17 +120,17 @@
 
 ### Requirement: 高风险命令二次确认（防误触 + 可审计）
 **Module:** command / security
-高风险命令默认启用一次性 token 二次确认，降低误触/脚本误用风险。
+高风险命令支持一次性 token 二次确认（可选开启），用于降低误触/脚本误用风险。
 
 #### Scenario: redefine/heapdump 等需确认 token
-前置：命令 meta 标记 dangerous  
+前置：命令 meta 标记 dangerous，且启用 `security.dangerous.confirm.enabled=true`  
 - 第一次执行：返回 challenge token（不执行）
 - 第二次执行：追加 `--confirm <token>` 且 token 校验通过才执行
 - `--confirm` 参数会在执行前从 args 中剥离，避免影响原命令参数解析
 
 #### Scenario: impact=HIGH 命令治理（确认 + 并发限制）
 前置：命令 meta 标记 `impact=HIGH`（例如 heapdump/redefine/retransform/mc/reset/stop/jad/dump）  
-- 默认同样需要 `--confirm <token>`（可通过 `security.impact.high.confirm.enabled` 关闭）
+- 当启用 `security.impact.high.confirm.enabled=true` 时，同样需要 `--confirm <token>`
 - 默认同一时刻仅允许有限并发（`security.impact.high.concurrent.limit`，默认 1），避免多个重型操作叠加导致停顿/峰值
 
 ### Requirement: Arthas-like 命令集（简化版）

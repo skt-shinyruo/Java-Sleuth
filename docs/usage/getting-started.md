@@ -20,7 +20,8 @@
 
 ## 4. 配置与安全（重要）
 
-- 本地使用推荐保持默认回环绑定（`127.0.0.1`）+ HMAC；不要在未配置密钥的情况下暴露到公网/局域网
+- 本地使用推荐保持默认回环绑定（`127.0.0.1`）+ `security.mode=off`（当前默认不做认证/签名校验）；不要将端口暴露到公网/局域网
+- 如需在非回环地址或多用户环境使用，请显式启用 `security.mode=hmac` 并配置 `security.hmac.secret`（并建议开启权限控制与危险命令二次确认）
 - 生产部署、端口、安全与运维：见 `docs/ops/production-deployment-guide.md` 与 `docs/ops/operations-runbook.md`
 
 ## 5. Docker 演示环境（纯交互，无需暴露端口）

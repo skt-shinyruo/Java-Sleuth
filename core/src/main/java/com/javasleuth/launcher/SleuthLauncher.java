@@ -196,23 +196,24 @@ public class SleuthLauncher {
             String securityMode = config.getSecurityMode();
             String hmacSecret = config.getSecurityHmacSecret();
             String hmacSessionRole = config.getHmacSessionRole();
+
             if (insecureMode) {
                 securityMode = "off";
                 config.setRuntimeConfig("security.mode", "off");
-            } else if (config.isHmacBootstrapOnAttachEnabled()) {
-                securityMode = "hmac";
-                if (hmacSecret == null || hmacSecret.trim().isEmpty()) {
-                    int bytes = config.getHmacBootstrapSecretBytes();
-                    hmacSecret = generateHmacSecret(bytes);
-                    config.setRuntimeConfig("security.hmac.secret", hmacSecret);
+            } else if ("hmac".equalsIgnoreCase(securityMode)) {
+                // HMAC bootstrap is an optional helper: it should not silently force-enable HMAC.
+                if (config.isHmacBootstrapOnAttachEnabled()) {
+                    if (hmacSecret == null || hmacSecret.trim().isEmpty()) {
+                        int bytes = config.getHmacBootstrapSecretBytes();
+                        hmacSecret = generateHmacSecret(bytes);
+                        config.setRuntimeConfig("security.hmac.secret", hmacSecret);
+                    }
+                    config.setRuntimeConfig("security.hmac.session.role", hmacSessionRole);
                 }
-                config.setRuntimeConfig("security.mode", "hmac");
-                config.setRuntimeConfig("security.hmac.session.role", hmacSessionRole);
-            }
-            if ("hmac".equalsIgnoreCase(securityMode)) {
+
                 if (hmacSecret == null || hmacSecret.trim().isEmpty()) {
                     System.err.println("SECURITY ERROR: security.mode=hmac but empty security.hmac.secret");
-                    System.err.println("Fix: set security.hmac.secret in configuration, or enable security.bootstrap.hmac.on.attach=true");
+                    System.err.println("Fix: set security.hmac.secret in configuration, or disable HMAC (security.mode=off)");
                     return;
                 }
             }

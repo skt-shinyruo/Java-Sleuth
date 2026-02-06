@@ -4,7 +4,7 @@
 
 说明：本镜像会在构建阶段通过 Maven 编译 `examples/` 模块下的示例应用，并在容器启动时以独立 classpath 运行示例主类（`/opt/java-sleuth/examples-classes`）。因此示例类不会进入发布 jar/fat-jar，产物边界更干净。
 
-> 提示：默认会话角色通常为 `operator`（可运行大多数观测/插桩命令）；若要演示 `config/audit/heapdump/mc/redefine/...` 等管理与高风险命令，推荐用下文的 **admin 会话启动方式**。
+> 提示：当前项目默认不启用任何认证/签名校验（更接近 Arthas 的“本机端口边界”用法）。建议仅在容器内/本机回环地址使用，避免将端口暴露到不受信任网络。
 
 ## 构建镜像
 
@@ -28,15 +28,9 @@ docker exec -it java-sleuth-demo ./sleuth.sh
 
 进入 `sleuth>` 后，从进程列表里选择 `EnhancedTestApplication` 对应的 PID，然后即可手动演示命令（例如 `dashboard/thread/sc/sm/watch/trace`）。
 
-## （推荐）以 admin 会话启动（用于演示全部命令）
+## 会话与权限
 
-> 该方式只影响启动 Launcher 的配置（通过 `JAVA_TOOL_OPTIONS` 注入 `sleuth.*` system property），便于在 demo 环境中演示 `admin` 权限命令；不建议照搬到生产环境。
-
-```bash
-docker exec -it java-sleuth-demo bash -lc 'JAVA_TOOL_OPTIONS="-Dsleuth.security.hmac.session.role=admin" ./sleuth.sh'
-```
-
-进入 `sleuth>` 后，可以先执行 `perm` 了解权限模型；如果你需要演示口令认证，再看下方 `auth` 示例。
+当前 Demo 镜像默认关闭权限/二次确认相关限制，因此 `perm/session` 更多用于观察运行状态（不是“必须登录/必须管理员”）。
 
 ## Demo 目标类/方法（可直接用于 class/method pattern）
 
@@ -197,12 +191,10 @@ logger set com.javasleuth DEBUG
 ### 7) 反编译 / 导出 / 静态字段
 
 ```text
-# jad / dump 属于高影响命令：默认需要二次确认（先拿 token，再追加 --confirm 重试）
+# jad / dump（当前默认无需二次确认）
 jad com.javasleuth.test.EnhancedTestApplication
-jad com.javasleuth.test.EnhancedTestApplication --confirm <token>
 
 dump *EnhancedTestApplication* --output /tmp/sleuth-dump --limit 20
-dump *EnhancedTestApplication* --output /tmp/sleuth-dump --limit 20 --confirm <token>
 getstatic com.javasleuth.test.EnhancedTestApplication * --limit 50 --deep 1
 ```
 
@@ -215,7 +207,6 @@ metrics summary
 metrics detailed
 metrics json
 
-# 下面两个命令需要 admin（可用“admin 会话启动”方式进入）
 config status
 config show
 audit status
@@ -225,50 +216,26 @@ audit security 50
 audit search COMMAND 50
 ```
 
-### 9) 危险命令（admin + 二次确认）
+### 9) 危险命令
 
-> 说明：`mc / redefine / retransform / heapdump / reset / stop` 属于高风险命令。默认需要二次确认：
-> 1) 先执行一次命令获取一次性 `token`
-> 2) 在 60 秒内追加 `--confirm <token>` 重试同一条命令
+> 说明：`mc / redefine / retransform / heapdump / reset / stop` 属于高风险命令。Demo 环境中默认不做二次确认与权限限制，请谨慎使用。
 
 ```text
 # heapdump（示例：导出 live 对象）
 heapdump --live --file=/tmp/heapdump.hprof
-heapdump --live --file=/tmp/heapdump.hprof --confirm <token>
 
 # reset（清空增强/会话并尽力回滚字节码）
 reset
-reset --confirm <token>
 
 # stop（停止目标 JVM 内 agent）
 stop
-stop --confirm <token>
 
 # retransform / redefine / mc（需要准备 class/source 文件，且只允许方法体变更）
 retransform *EnhancedTestApplication* --list
-retransform *EnhancedTestApplication* --confirm <token>
 
 mc /tmp/YourClass.java -c com.example.YourClass -o /tmp
-mc /tmp/YourClass.java -c com.example.YourClass -o /tmp --confirm <token>
 
 redefine com.example.YourClass /tmp/com/example/YourClass.class
-redefine com.example.YourClass /tmp/com/example/YourClass.class --confirm <token>
-```
-
-## 可选：演示 `auth`（口令认证）
-
-> 默认配置可能关闭口令认证（`security.auth.password.enabled=false`）。如需演示 `auth`，可通过 `JAVA_TOOL_OPTIONS` 临时开启并注入口令（仅 demo 用）。
-
-```bash
-docker exec -it java-sleuth-demo bash -lc 'JAVA_TOOL_OPTIONS="-Dsleuth.security.auth.password.enabled=true -Dsleuth.security.auth.admin.password=admin -Dsleuth.security.auth.operator.password=operator -Dsleuth.security.auth.viewer.password=viewer" ./sleuth.sh'
-```
-
-在 `sleuth>` 中执行：
-
-```text
-auth admin admin
-auth operator operator
-auth viewer viewer
 ```
 
 ## 清理

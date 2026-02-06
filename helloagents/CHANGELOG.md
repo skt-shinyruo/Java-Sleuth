@@ -11,8 +11,8 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - Docker 演示镜像：内置 `EnhancedTestApplication`，支持 `docker exec -it` 纯交互 attach 与命令演示
 - auth 命令与会话角色绑定
 - HELLO/CONFIG 握手协商与 binary 严格二进制帧协议
-- security.mode=off|hmac（默认 hmac）与 HMAC+nonce 请求签名/基础防重放
-- 危险命令二次确认（默认开启）：`security.dangerous.confirm.*` + `--confirm <token>`（一次性、短 TTL）
+- security.mode=off|hmac（默认 off）与可选 HMAC+nonce 请求签名/基础防重放
+- 危险命令二次确认（默认关闭，可选开启）：`security.dangerous.confirm.*` + `--confirm <token>`（一次性、短 TTL）
 - Launcher 支持 `--insecure`（需交互确认 `I UNDERSTAND`）用于本机单次排障开启 `security.mode=off`
 - server.bind.address 默认 127.0.0.1（降低默认口令/明文传输暴露面）
 - ClientSessionRegistry/ClientSession：监控类命令注册断连清理动作，连接写失败时快速终止并回收增强/队列
@@ -20,7 +20,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - watch/trace 事件丢弃/采样计数与 status 输出
 - UTF-8 行编解码（Utf8LineCodec）与 `protocol.text.max.line.bytes` 单行字节数上限
 - 轻量日志封装 `SleuthLogger`（通过 `logging.level` 控制增强日志等级）
-- 安全默认策略开关：`security.anonymous.viewer`（默认 false）
+- 安全默认策略开关：`security.anonymous.viewer`（默认 true）
 - Arthas-like 核心能力（简化版）：watch/trace/monitor/tt/jobs/reset 及管理命令集
 - `jobs`（JobManager + list/tail/stop）与 `--bg` 后台执行（watch/trace/monitor/tt）
 - `tt`（TT-lite）：record/list/detail（不含 replay）
@@ -37,7 +37,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - `tt replay <recordId>`：生成复现代码模板（lite，不在目标 JVM 执行）
 - 插桩健壮性回归：Watch/Tt 增强器的返回值/异常语义与字节码校验（VerifyError）测试
 - `JarLocator`：启动/发布不再依赖硬编码 jar 名称，支持 `-Dsleuth.agent.jar` / `SLEUTH_AGENT_JAR` 覆盖
-- 安全自举配置：`security.bootstrap.hmac.*`、`security.hmac.session.role`（attach 默认启用 hmac 并下发 secret）
+- 安全自举配置：`security.bootstrap.hmac.*`、`security.hmac.session.role`（当 `security.mode=hmac` 时可选下发/补齐 secret）
 - 口令认证开关与配置：`security.auth.password.enabled` + `security.auth.*.password`（支持 `SLEUTH_AUTH_*_PASSWORD`）
 - 插件加固配置：`plugins.enabled`（默认关闭）+ `plugins.allowlist.sha256`
 - trace 调用级采样覆盖：`trace --sample <rate>`（支持按 trace 会话覆盖采样率）
@@ -69,7 +69,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 授权策略 SSOT：以 CommandMeta 为唯一权限来源，AuthorizationManager 不再维护命令名特判/映射；插件命令必须提供 meta
 - 项目根目录结构整理：文档集中到 docs/，脚本归档到 scripts/
 - docs/ 文档中文化：用户/开发/运维文档说明文字统一为简体中文（保留命令/配置示例可复制）
-- 安全默认：关闭匿名 viewer（`security.anonymous.viewer=false`），连接后需要先执行 `auth`
+- 安全默认调整：默认不启用认证/签名校验（`security.mode=off`），并默认关闭 RBAC（`security.authorization.enabled=false`）
 - sysprop 写入改为显式子命令 `sysprop set <key> <value>`（并要求更高权限）
 - 插桩过滤策略放开常见代理类（例如 Spring/CGLIB `$$EnhancerBySpringCGLIB$$`），transform 逐次日志默认降噪（DEBUG 才输出）
 - 性能维护策略：默认不再定时触发 `System.gc()`（由 `performance.maintenance.force_gc` 控制）

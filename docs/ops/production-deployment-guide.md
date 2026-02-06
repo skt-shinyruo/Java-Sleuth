@@ -408,7 +408,7 @@ sudo logrotate -d /etc/logrotate.d/java-sleuth
 
 ```bash
 # NOTE:
-# 默认启用 `protocol.handshake.enabled=true` + `security.mode=hmac`，不能再用 nc 直接发送明文命令。
+# 默认启用 `protocol.handshake.enabled=true`（需要先 HELLO 握手协商协议），不能再用 nc 直接发送单行明文命令。
 # 推荐做法：使用 SleuthLauncher 连接后执行 health/status/metrics 等诊断命令（本机排障）。
 ./sleuth.sh
 # sleuth> health

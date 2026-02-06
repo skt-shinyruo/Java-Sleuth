@@ -114,23 +114,23 @@ public class ProductionConfig {
         properties.setProperty("security.audit.logging", "true");
         properties.setProperty("security.max.command.length", "1000");
         properties.setProperty("security.allowed.commands", "*");
-        properties.setProperty("security.authorization.enabled", "true");
-        properties.setProperty("security.anonymous.viewer", "false");
-        properties.setProperty("security.mode", "hmac");
+        properties.setProperty("security.authorization.enabled", "false");
+        properties.setProperty("security.anonymous.viewer", "true");
+        properties.setProperty("security.mode", "off");
         properties.setProperty("security.hmac.secret", "");
         // Loopback self-contained startup: auto-generate temporary secret if empty.
         properties.setProperty("security.hmac.secret.autogen.on.loopback", "true");
         properties.setProperty("security.hmac.secret.autogen.print", "true");
         properties.setProperty("security.hmac.timestamp.window.ms", "30000");
         properties.setProperty("security.hmac.nonce.cache.size", "10000");
-        properties.setProperty("security.dangerous.confirm.enabled", "true");
+        properties.setProperty("security.dangerous.confirm.enabled", "false");
         properties.setProperty("security.dangerous.confirm.ttl.ms", "60000");
         properties.setProperty("security.dangerous.confirm.token.bytes", "12");
         properties.setProperty("security.dangerous.confirm.cache.size", "2000");
         // High impact commands governance (non-privileged but performance-risky operations)
-        properties.setProperty("security.impact.high.confirm.enabled", "true");
+        properties.setProperty("security.impact.high.confirm.enabled", "false");
         properties.setProperty("security.impact.high.concurrent.limit", "1");
-        properties.setProperty("security.bootstrap.hmac.on.attach", "true");
+        properties.setProperty("security.bootstrap.hmac.on.attach", "false");
         properties.setProperty("security.bootstrap.hmac.secret.bytes", "32");
         properties.setProperty("security.hmac.session.role", "operator");
         properties.setProperty("security.auth.password.enabled", "false");

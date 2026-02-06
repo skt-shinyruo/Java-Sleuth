@@ -200,11 +200,13 @@ public class CommandProcessorTest {
     @Test
     public void testAuthorizationManagerDangerousCommandUpgradesToAdmin() {
         String oldAnon = System.getProperty("sleuth.security.anonymous.viewer");
+        String oldAuthz = System.getProperty("sleuth.security.authorization.enabled");
         AuthorizationManager authorizationManager = AuthorizationManager.getInstance();
         AuthenticationManager authenticationManager = AuthenticationManager.getInstance();
 
         try {
             System.setProperty("sleuth.security.anonymous.viewer", "true");
+            System.setProperty("sleuth.security.authorization.enabled", "true");
 
             AuthenticationManager.AuthenticationResult session =
                 authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test-client");
@@ -216,6 +218,7 @@ public class CommandProcessorTest {
             assertFalse(result.isAllowed());
         } finally {
             setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
+            setOrClearProperty("sleuth.security.authorization.enabled", oldAuthz);
         }
     }
 
