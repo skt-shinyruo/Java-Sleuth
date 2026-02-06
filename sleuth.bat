@@ -6,15 +6,31 @@ REM Java-Sleuth Startup Script for Windows
 set SCRIPT_DIR=%~dp0
 set JAR_FILE=
 
+for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%core\target\*-jar-with-dependencies.jar" 2^>nul') do (
+    set JAR_FILE=%SCRIPT_DIR%core\target\%%f
+    goto :jar_found
+)
 for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%target\*-jar-with-dependencies.jar" 2^>nul') do (
     set JAR_FILE=%SCRIPT_DIR%target\%%f
+    goto :jar_found
+)
+for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%lib\*-jar-with-dependencies.jar" 2^>nul') do (
+    set JAR_FILE=%SCRIPT_DIR%lib\%%f
+    goto :jar_found
+)
+for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%..\lib\*-jar-with-dependencies.jar" 2^>nul') do (
+    set JAR_FILE=%SCRIPT_DIR%..\lib\%%f
     goto :jar_found
 )
 
 :jar_found
 
 if "%JAR_FILE%"=="" (
-    echo Java-Sleuth JAR file not found under: %SCRIPT_DIR%target\
+    echo Java-Sleuth JAR file not found under:
+    echo   - %SCRIPT_DIR%core\target\
+    echo   - %SCRIPT_DIR%target\
+    echo   - %SCRIPT_DIR%lib\
+    echo   - %SCRIPT_DIR%..\lib\
     echo Please build the project first with: mvn clean package
     exit /b 1
 )

@@ -55,7 +55,7 @@ mvn clean package
 sleuth.bat
 
 # Or run the fat-jar directly (Launcher entrypoint)
-java -jar target/java-sleuth-*-jar-with-dependencies.jar
+java -jar core/target/java-sleuth-*-jar-with-dependencies.jar
 ```
 
 ### 3. Select Target JVM
@@ -285,7 +285,7 @@ Java-Sleuth consists of several key components:
 
 ## Project Structure
 ```
-src/main/java/com/javasleuth/
+core/src/main/java/com/javasleuth/
 ├── agent/          # Java agent implementation
 ├── launcher/       # JVM discovery and attachment
 ├── command/        # Command system
@@ -294,8 +294,11 @@ src/main/java/com/javasleuth/
 ├── monitor/        # Method interception and monitoring
 ├── data/           # Data structures for monitoring results
 ├── compiler/       # Memory compilation system
-├── util/           # Utility classes
-└── test/           # Test application
+└── util/           # Utility classes
+
+examples/src/main/java/com/javasleuth/test/
+├── TestApplication.java
+└── EnhancedTestApplication.java
 ```
 
 ## Build Configuration
@@ -310,7 +313,7 @@ Maven configuration with key features:
 
 ### Agent JAR Not Found
 ```
-Agent JAR not found: target/java-sleuth-*-jar-with-dependencies.jar
+Agent JAR not found: core/target/java-sleuth-*-jar-with-dependencies.jar
 Please build the project first with: mvn clean package
 ```
 **Solution**:

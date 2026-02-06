@@ -2,7 +2,7 @@
 
 目标：容器启动后先常驻一个 Demo JVM 进程；你再 `docker exec -it` 进入容器手动运行 `./sleuth.sh`，在 `sleuth>` 中敲命令演示。
 
-说明：本镜像会在构建阶段编译 `examples/` 下的示例应用，并在容器启动时以独立 classpath 运行示例主类（`/opt/java-sleuth/examples-classes`）。因此示例类不会进入发布 jar/fat-jar，产物边界更干净。
+说明：本镜像会在构建阶段通过 Maven 编译 `examples/` 模块下的示例应用，并在容器启动时以独立 classpath 运行示例主类（`/opt/java-sleuth/examples-classes`）。因此示例类不会进入发布 jar/fat-jar，产物边界更干净。
 
 > 提示：默认会话角色通常为 `operator`（可运行大多数观测/插桩命令）；若要演示 `config/audit/heapdump/mc/redefine/...` 等管理与高风险命令，推荐用下文的 **admin 会话启动方式**。
 

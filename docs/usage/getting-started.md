@@ -11,7 +11,7 @@
 
 - Linux/macOS：`./sleuth.sh`
 - Windows：`sleuth.bat`
-- 或直接运行 fat-jar：`java -jar target/java-sleuth-*-jar-with-dependencies.jar`
+- 或直接运行 fat-jar：`java -jar core/target/java-sleuth-*-jar-with-dependencies.jar`
 
 ## 3. 选择目标 JVM 并开始诊断
 

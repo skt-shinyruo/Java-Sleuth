@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** JVM 选择、Attach、Socket 交互
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-03
+- **Last Updated:** 2026-02-06
 
 ## Specifications
 
@@ -76,7 +76,7 @@
 前置：以 `java -jar` 运行 launcher（fat jar）或 IDE classpath 运行  
 - 优先使用 `-Dsleuth.agent.jar=<path>` / 环境变量 `SLEUTH_AGENT_JAR` 覆盖
 - 运行在 jar 内：基于 `CodeSource` 定位自身 jar
-- IDE/classpath：回退扫描 `target/*-jar-with-dependencies.jar` 或当前目录
+- IDE/classpath：回退扫描 `core/target/*-jar-with-dependencies.jar`（或 legacy `target/*-jar-with-dependencies.jar`）或当前目录
 
 ### Requirement: attach 时安全自举（HMAC secret 自动下发）
 **Module:** launcher / security

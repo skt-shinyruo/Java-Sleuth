@@ -56,6 +56,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
 ### Changed
 - 示例/测试应用从 main 源集迁移到 `examples/`，发布 jar/fat-jar 不再包含 `com.javasleuth.test.*`（Docker demo 与脚本改为运行 examples 编译产物）
+- Maven 多模块化：根工程改为 parent/aggregator（`packaging=pom`），主产物迁移到 `core/` 模块，示例应用作为 `examples/` 模块独立构建；脚本/Docker/文档同步更新
 - CommandProcessor 改为注册表 + 统一执行管线
 - CommandPipeline 执行链路显式化：引入 Step/Interceptor Chain（precheck/sync/stream），降低巨型类耦合并提升可测性
 - CommandProcessor 拆分出 CommandClientHandler（text/framed/binary 协议处理），CommandProcessor 聚焦监听/生命周期

@@ -7,10 +7,23 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-JAR_FILE="$(ls -1t "$SCRIPT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+JAR_FILE="$(ls -1t "$SCRIPT_DIR"/core/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+if [ -z "${JAR_FILE}" ]; then
+    JAR_FILE="$(ls -1t "$SCRIPT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+fi
+if [ -z "${JAR_FILE}" ]; then
+    JAR_FILE="$(ls -1t "$SCRIPT_DIR"/lib/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+fi
+if [ -z "${JAR_FILE}" ]; then
+    JAR_FILE="$(ls -1t "$SCRIPT_DIR"/../lib/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+fi
 
 if [ -z "${JAR_FILE}" ] || [ ! -f "$JAR_FILE" ]; then
-    echo "Java-Sleuth agent/launcher JAR not found under: $SCRIPT_DIR/target/"
+    echo "Java-Sleuth agent/launcher JAR not found under:"
+    echo "  - $SCRIPT_DIR/core/target/"
+    echo "  - $SCRIPT_DIR/target/"
+    echo "  - $SCRIPT_DIR/lib/"
+    echo "  - $SCRIPT_DIR/../lib/"
     echo "Please build the project first with: mvn clean package"
     exit 1
 fi

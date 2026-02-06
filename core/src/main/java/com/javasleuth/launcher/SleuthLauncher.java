@@ -61,7 +61,7 @@ public class SleuthLauncher {
             if (override != null && !override.trim().isEmpty()) {
                 System.err.println("Agent JAR not found at override path: " + override.trim());
             } else {
-                System.err.println("Agent JAR not found on classpath/CodeSource/target/.");
+                System.err.println("Agent JAR not found on classpath/CodeSource/(core/target|target)/.");
             }
             System.err.println("Please build the project first with: mvn clean package");
             System.err.println("Or set -D" + JarLocator.AGENT_JAR_OVERRIDE_PROPERTY + "=<path> (or env " + JarLocator.AGENT_JAR_OVERRIDE_ENV + ")");

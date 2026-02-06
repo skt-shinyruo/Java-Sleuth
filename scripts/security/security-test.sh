@@ -9,15 +9,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_DIR"
 
-AGENT_JAR="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
-BASE_JAR="$(ls -1t "$PROJECT_DIR"/target/*.jar 2>/dev/null | grep -v 'jar-with-dependencies' | head -n 1 || true)"
+AGENT_JAR="$(ls -1t "$PROJECT_DIR"/core/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+if [[ -z "${AGENT_JAR}" ]]; then
+    AGENT_JAR="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+fi
+
+BASE_JAR="$(ls -1t "$PROJECT_DIR"/core/target/*.jar 2>/dev/null | grep -v 'jar-with-dependencies' | head -n 1 || true)"
+if [[ -z "${BASE_JAR}" ]]; then
+    BASE_JAR="$(ls -1t "$PROJECT_DIR"/target/*.jar 2>/dev/null | grep -v 'jar-with-dependencies' | head -n 1 || true)"
+fi
 
 if [[ -z "${AGENT_JAR}" ]] || [[ ! -f "${AGENT_JAR}" ]]; then
     echo "Please build the project first with: mvn clean package"
     exit 1
 fi
 if [[ -z "${BASE_JAR}" ]] || [[ ! -f "${BASE_JAR}" ]]; then
-    echo "Base JAR not found under: $PROJECT_DIR/target/ (expected a non -jar-with-dependencies jar)"
+    echo "Base JAR not found under: $PROJECT_DIR/core/target/ (or legacy $PROJECT_DIR/target/) (expected a non -jar-with-dependencies jar)"
     exit 1
 fi
 

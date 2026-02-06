@@ -26,7 +26,10 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Check if JAR exists
-JAR_FILE="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+JAR_FILE="$(ls -1t "$PROJECT_DIR"/core/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+if [ -z "${JAR_FILE}" ]; then
+    JAR_FILE="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+fi
 if [ -z "${JAR_FILE}" ] || [ ! -f "${JAR_FILE}" ]; then
     echo -e "${RED}Please build the project first with: mvn clean package${NC}"
     exit 1

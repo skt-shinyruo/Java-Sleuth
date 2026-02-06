@@ -36,7 +36,11 @@ public final class JarLocator {
             return fromCodeSource;
         }
 
-        // Fallback: scan common build directory under current working directory
+        // Fallback: scan common build directories under current working directory
+        File fromCoreTarget = locateNewestJarBySuffix(new File("core/target"), DEFAULT_AGENT_JAR_SUFFIX);
+        if (fromCoreTarget != null) {
+            return fromCoreTarget;
+        }
         return locateNewestJarBySuffix(new File("target"), DEFAULT_AGENT_JAR_SUFFIX);
     }
 
@@ -151,4 +155,3 @@ public final class JarLocator {
         return candidates.get(0);
     }
 }
-

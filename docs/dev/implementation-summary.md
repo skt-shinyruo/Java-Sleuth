@@ -8,7 +8,7 @@
 ### Phase 4 - 高优先级命令
 
 #### 1. 增强版 JVM 命令（`jvm`）
-- **位置**: `src/main/java/com/javasleuth/command/impl/JvmCommand.java`
+- **位置**: `core/src/main/java/com/javasleuth/command/impl/JvmCommand.java`
 - **能力**:
   - 全面的 VM 信息（名称、版本、供应商、规格）
   - 操作系统详情（CPU 与内存指标）
@@ -20,7 +20,7 @@
 - **用法**: `jvm [--help]`
 
 #### 2. 系统属性命令（`sysprop`）
-- **位置**: `src/main/java/com/javasleuth/command/impl/SysPropCommand.java`
+- **位置**: `core/src/main/java/com/javasleuth/command/impl/SysPropCommand.java`
 - **能力**:
   - 查看所有系统属性
   - 获取指定属性值
@@ -30,7 +30,7 @@
 - **用法**: `sysprop [key] [value]` 或 `sysprop <pattern>`
 
 #### 3. 系统环境变量命令（`sysenv`）
-- **位置**: `src/main/java/com/javasleuth/command/impl/SysEnvCommand.java`
+- **位置**: `core/src/main/java/com/javasleuth/command/impl/SysEnvCommand.java`
 - **能力**:
   - 列出全部环境变量
   - 支持通配符模式搜索
@@ -40,7 +40,7 @@
 - **用法**: `sysenv [key]` 或 `sysenv <pattern>`
 
 #### 4. VM 选项命令（`vmoption`）
-- **位置**: `src/main/java/com/javasleuth/command/impl/VmOptionCommand.java`
+- **位置**: `core/src/main/java/com/javasleuth/command/impl/VmOptionCommand.java`
 - **能力**:
   - 分类展示 JVM 选项（内存、GC、性能、调试等）
   - 通过模式在 VM 参数中搜索
@@ -49,7 +49,7 @@
 - **用法**: `vmoption [pattern]`
 
 #### 5. 增强版内存命令（`memory`）
-- **位置**: `src/main/java/com/javasleuth/command/impl/MemoryCommand.java`
+- **位置**: `core/src/main/java/com/javasleuth/command/impl/MemoryCommand.java`
 - **能力**:
   - 综合内存概览
   - 详细的内存池分析
@@ -60,7 +60,7 @@
 - **用法**: `memory [overview|pools|gc|heap|nonheap|direct]`
 
 #### 6. 堆转储命令（`heapdump`）
-- **位置**: `src/main/java/com/javasleuth/command/impl/HeapDumpCommand.java`
+- **位置**: `core/src/main/java/com/javasleuth/command/impl/HeapDumpCommand.java`
 - **能力**:
   - 生成堆转储文件用于内存分析
   - 支持仅导出 live 对象或导出全部对象
@@ -72,7 +72,7 @@
 ### Phase 5 - 生产关键命令
 
 #### 7. 类反编译命令（`jad`）
-- **位置**: `src/main/java/com/javasleuth/command/impl/JadCommand.java`
+- **位置**: `core/src/main/java/com/javasleuth/command/impl/JadCommand.java`
 - **能力**:
   - 使用 CFR 反编译器，支持较新 Java 语法
   - 将已加载类反编译为可读源码
@@ -83,7 +83,7 @@
 - **用法**: `jad <classname> [--lines] [--verbose] [--method=<pattern>]`
 
 #### 8. 增强版 ClassLoader 分析命令（`classloader`）
-- **位置**: `src/main/java/com/javasleuth/command/impl/ClassLoaderCommand.java`
+- **位置**: `core/src/main/java/com/javasleuth/command/impl/ClassLoaderCommand.java`
 - **能力**:
   - 分层展示 ClassLoader 树
   - 类分布统计
@@ -94,7 +94,7 @@
 - **用法**: `classloader [list|tree|stats|classes|urls|find] [options]`
 
 #### 9. MBean 查看器（`mbean`）
-- **位置**: `src/main/java/com/javasleuth/command/impl/MBeanCommand.java`
+- **位置**: `core/src/main/java/com/javasleuth/command/impl/MBeanCommand.java`
 - **能力**:
   - 完整的 JMX MBean 集成
   - 按 pattern 列出与搜索 MBeans
@@ -108,7 +108,7 @@
 
 ### 新增依赖
 - **CFR 反编译器**: `org.benf:cfr:0.152` - 高质量 Java 反编译器
-- 已添加到 `pom.xml`
+- 已添加到 `core/pom.xml`
 
 ### 架构集成
 - 所有命令遵循现有 `Command` 接口模式
@@ -192,19 +192,18 @@ mbean invoke java.lang:type=Memory gc
 ## 修改/新增文件
 
 ### 新增命令文件
-- `src/main/java/com/javasleuth/command/impl/JvmCommand.java`
-- `src/main/java/com/javasleuth/command/impl/SysPropCommand.java`
-- `src/main/java/com/javasleuth/command/impl/SysEnvCommand.java`
-- `src/main/java/com/javasleuth/command/impl/VmOptionCommand.java`
-- `src/main/java/com/javasleuth/command/impl/MemoryCommand.java`
-- `src/main/java/com/javasleuth/command/impl/HeapDumpCommand.java`
-- `src/main/java/com/javasleuth/command/impl/JadCommand.java`
-- `src/main/java/com/javasleuth/command/impl/ClassLoaderCommand.java`
-- `src/main/java/com/javasleuth/command/impl/MBeanCommand.java`
+- `core/src/main/java/com/javasleuth/command/impl/JvmCommand.java`
+- `core/src/main/java/com/javasleuth/command/impl/SysPropCommand.java`
+- `core/src/main/java/com/javasleuth/command/impl/SysEnvCommand.java`
+- `core/src/main/java/com/javasleuth/command/impl/VmOptionCommand.java`
+- `core/src/main/java/com/javasleuth/command/impl/MemoryCommand.java`
+- `core/src/main/java/com/javasleuth/command/impl/HeapDumpCommand.java`
+- `core/src/main/java/com/javasleuth/command/impl/JadCommand.java`
+- `core/src/main/java/com/javasleuth/command/impl/ClassLoaderCommand.java`
+- `core/src/main/java/com/javasleuth/command/impl/MBeanCommand.java`
 
 ### 修改文件
-- `pom.xml` - 添加 CFR 依赖
-- `src/main/java/com/javasleuth/command/BuiltinCommandProvider.java` - 注册新命令
+- `core/pom.xml` - 添加 CFR 依赖
+- `core/src/main/java/com/javasleuth/command/BuiltinCommandProvider.java` - 注册新命令
 
 本次实现将 Java-Sleuth 增强为更贴近生产可用的诊断工具，覆盖 JVM 内部信息、内存管理、类加载分析与运行时行为的可观测能力。
-

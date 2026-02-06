@@ -16,7 +16,7 @@
 
 #### Scenario: 运行测试应用
 前置：构建完成  
-- 编译 examples：`./scripts/examples/compile-examples.sh`（输出到 `target/examples-classes`）
+- 编译 examples：`./scripts/examples/compile-examples.sh`（内部使用 Maven 编译 `examples` 模块，并输出到 `target/examples-classes`）
 - 启动 TestApplication：`java -cp target/examples-classes com.javasleuth.test.TestApplication`
 - 供 watch/trace 测试
 

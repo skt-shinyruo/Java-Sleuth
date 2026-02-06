@@ -46,13 +46,19 @@ setup_benchmark() {
     mkdir -p "$BENCHMARK_DIR"
 
     # Check if JAR exists
-    JAR_FILE="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+    JAR_FILE="$(ls -1t "$PROJECT_DIR"/core/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+    if [[ -z "$JAR_FILE" ]] || [[ ! -f "$JAR_FILE" ]]; then
+        JAR_FILE="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+    fi
     if [[ -z "$JAR_FILE" ]] || [[ ! -f "$JAR_FILE" ]]; then
         log "Building project..."
         (cd "$PROJECT_DIR" && mvn clean package -DskipTests)
-        JAR_FILE="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+        JAR_FILE="$(ls -1t "$PROJECT_DIR"/core/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
         if [[ -z "$JAR_FILE" ]] || [[ ! -f "$JAR_FILE" ]]; then
-            error "Failed to build agent JAR under: $PROJECT_DIR/target/"
+            JAR_FILE="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+        fi
+        if [[ -z "$JAR_FILE" ]] || [[ ! -f "$JAR_FILE" ]]; then
+            error "Failed to build agent JAR under: $PROJECT_DIR/core/target/ (or legacy $PROJECT_DIR/target/)"
         fi
     fi
 }

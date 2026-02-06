@@ -120,7 +120,7 @@ cd java-sleuth
 mvn clean package -DskipTests
 
 # 校验构建产物
-ls -la target/java-sleuth-*-jar-with-dependencies.jar
+ls -la core/target/java-sleuth-*-jar-with-dependencies.jar
 ```
 
 #### 步骤 2：创建目录结构
@@ -138,7 +138,7 @@ sudo chmod 755 /opt/java-sleuth
 
 ```bash
 # 复制 JAR 文件
-cp target/java-sleuth-*-jar-with-dependencies.jar /opt/java-sleuth/lib/
+cp core/target/java-sleuth-*-jar-with-dependencies.jar /opt/java-sleuth/lib/
 
 # 复制配置文件
 cp config-templates/production-sleuth.properties /opt/java-sleuth/config/sleuth.properties
@@ -156,7 +156,7 @@ chmod +x /opt/java-sleuth/bin/sleuth.sh
 ```dockerfile
 FROM openjdk:8-jre-alpine
 
-COPY target/java-sleuth-*-jar-with-dependencies.jar /app/java-sleuth.jar
+COPY core/target/java-sleuth-*-jar-with-dependencies.jar /app/java-sleuth.jar
 COPY config-templates/production-sleuth.properties /app/config/sleuth.properties
 
 EXPOSE 3658 9999
