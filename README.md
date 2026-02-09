@@ -114,7 +114,6 @@ quit         - Exit the Java-Sleuth session
 
 传输层与资源治理相关配置：
 
-- `protocol.handshake.enabled=true`：CLI 与 Agent 会先握手协商协议，再按协商结果进入 legacy/framed/binary
 - `protocol.mode=framed`：默认使用分帧协议，便于长输出与流式命令（watch/trace/monitor/tt/stack）
 - `protocol.text.max.line.bytes`：文本协议单行最大字节数，避免超长输入导致资源耗尽
 - `server.max.connections`：并发连接上限（超限新连接会被拒绝）

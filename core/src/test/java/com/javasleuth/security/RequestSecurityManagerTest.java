@@ -7,7 +7,7 @@ import static org.junit.Assert.*;
 public class RequestSecurityManagerTest {
 
     @Test
-    public void v2SignatureMismatchIfSidChanges() {
+    public void signatureMismatchIfSidChanges() {
         // ProductionConfig reads sysprops as `sleuth.<key>`.
         System.setProperty("sleuth.security.mode", "hmac");
         System.setProperty("sleuth.security.hmac.secret", "test-secret");
@@ -15,7 +15,7 @@ public class RequestSecurityManagerTest {
 
         RequestSecurityManager mgr = RequestSecurityManager.getInstance();
 
-        String signed = mgr.signCommandV2("help", System.currentTimeMillis(), "nonce1", "connA");
+        String signed = mgr.signCommand("help", System.currentTimeMillis(), "nonce1", "connA");
         assertTrue(signed.startsWith("SIG "));
 
         // Same wrapper but different sid should fail verification.
@@ -32,10 +32,10 @@ public class RequestSecurityManagerTest {
 
         RequestSecurityManager mgr = RequestSecurityManager.getInstance();
 
-        String signed1 = mgr.signCommandV2("help", System.currentTimeMillis(), "nonce2", "connC");
+        String signed1 = mgr.signCommand("help", System.currentTimeMillis(), "nonce2", "connC");
         assertTrue(mgr.verifyAndExtract("session", signed1).isOk());
 
-        String signed2 = mgr.signCommandV2("help", System.currentTimeMillis(), "nonce2", "connC");
+        String signed2 = mgr.signCommand("help", System.currentTimeMillis(), "nonce2", "connC");
         assertFalse(mgr.verifyAndExtract("session", signed2).isOk());
     }
 }

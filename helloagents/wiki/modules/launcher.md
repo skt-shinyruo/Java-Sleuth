@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** JVM 选择、Attach、Socket 交互
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-06
+- **Last Updated:** 2026-02-08
 
 ## Specifications
 
@@ -36,9 +36,9 @@
 #### Scenario: HELLO/CONFIG 握手
 前置：连接建立并收到 welcome 行  
 - 发送 `HELLO v=1 protocols=...`
-- 读取 `CONFIG ... protocol=<legacy|framed|binary>`
+- 读取 `CONFIG ... protocol=<framed|binary>`
 - 若选择 binary：发送 `UPGRADE BINARY` 并切换到 BinaryFrame 通道
-- 在 `security.mode=hmac` 且握手开启时，Launcher 采用 `SIG v=2`（sid 绑定到握手协商的 connId）
+- 在 `security.mode=hmac` 时，Launcher 采用单一 `SIG` 格式（`sid` 绑定到握手协商的 `connId`，且不允许 `v` 字段）
 
 ### Requirement: 分帧协议与流式支持
 **Module:** launcher
@@ -76,7 +76,7 @@
 前置：以 `java -jar` 运行 launcher（fat jar）或 IDE classpath 运行  
 - 优先使用 `-Dsleuth.agent.jar=<path>` / 环境变量 `SLEUTH_AGENT_JAR` 覆盖
 - 运行在 jar 内：基于 `CodeSource` 定位自身 jar
-- IDE/classpath：回退扫描 `core/target/*-jar-with-dependencies.jar`（或 legacy `target/*-jar-with-dependencies.jar`）或当前目录
+- IDE/classpath：回退扫描 `core/target/*-jar-with-dependencies.jar`（或历史 `target/*-jar-with-dependencies.jar`）或当前目录
 
 ### Requirement: attach 时安全自举（HMAC secret 自动下发）
 **Module:** launcher / security
@@ -104,3 +104,10 @@ N/A
 - 202601281301_sleuth_handshake_secure_frames (history/2026-01/202601281301_sleuth_handshake_secure_frames/) - handshake + binary + 可选 SIG 签名
 - 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 进程选择修复与连接地址解析增强
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - jar 自动定位 + HMAC 自举与启动稳定性增强
+- 202602081630_drop_legacy_protocol (history/2026-02/202602081630_drop_legacy_protocol/) - 协议收敛：仅使用 framed/binary（HELLO/CONFIG + 可选升级 binary）
+- 202602081959_remove_compat_paths (history/2026-02/202602081959_remove_compat_paths/) - 握手与升级严格化（不回退）+ SIG 单一格式收敛
+
+## 2026-02-08 Launcher 协议行为
+
+- Launcher 始终执行握手 `HELLO/CONFIG`，并携带 `connId` 以绑定 `SIG`（`sid=connId`，且不允许 `v` 字段）。
+- `binary` 仅在握手后通过 `UPGRADE BINARY` 切换；否则使用 `framed`。

@@ -3,7 +3,6 @@ package com.javasleuth.command.impl;
 import com.javasleuth.command.JobManager;
 import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
-import com.javasleuth.command.impl.stack.StackLegacyOperations;
 import com.javasleuth.command.impl.stack.StackTraceLiteEngine;
 import com.javasleuth.command.impl.stack.StackTraceLiteParser;
 import com.javasleuth.config.ProductionConfig;
@@ -19,14 +18,12 @@ import java.util.Locale;
  * 2) 方法触发栈追踪（Arthas 风格简化版）：stack <class-pattern> <method-pattern> [options]
  */
 public class StackCommand implements StreamCommand {
-    private final StackLegacyOperations legacy;
-    private final StackTraceLiteParser traceParser;
+private final StackTraceLiteParser traceParser;
     private final StackTraceLiteEngine traceEngine;
 
     public StackCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
         ProductionConfig config = ProductionConfig.getInstance();
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
-        this.legacy = new StackLegacyOperations(threadMXBean);
         this.traceParser = new StackTraceLiteParser();
         this.traceEngine = new StackTraceLiteEngine(instrumentation, transformer, config);
     }
@@ -52,11 +49,6 @@ public class StackCommand implements StreamCommand {
         }
 
         String action = sub.toLowerCase(Locale.ROOT);
-        if (legacy.isLegacyAction(action)) {
-            // 兼容原有线程栈采样/分析命令（非 streaming 模式）
-            return legacy.handle(action, args);
-        }
-
         // Arthas-like: stack <class-pattern> <method-pattern> [options]
         if (args.length < 3) {
             return getTraceHelp();

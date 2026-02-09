@@ -1,24 +1,14 @@
 package com.javasleuth.command.protocol;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
-public class BinaryFrame {
-    public static final int MAGIC = 0x4A534C45; // 'JSLE'
-    public static final byte VERSION = 1;
-
-    public static final byte FLAG_STREAM = 1;
-    public static final byte FLAG_STDERR = 2;
-
+public final class BinaryFrame {
     public enum Type {
-        HELLO(1),
-        CONFIG(2),
-        REQUEST(3),
-        DATA(4),
-        ERR(5),
-        END(6),
-        PING(7),
-        PONG(8);
+        CMD(1),
+        STREAM(2),
+        DATA(3),
+        ERR(4),
+        END(5);
 
         private final int code;
 
@@ -41,80 +31,53 @@ public class BinaryFrame {
     }
 
     private final Type type;
-    private final byte flags;
+    private final int flags;
     private final byte[] payload;
 
-    public BinaryFrame(Type type, byte flags, byte[] payload) {
+    private BinaryFrame(Type type, int flags, byte[] payload) {
         this.type = type;
         this.flags = flags;
         this.payload = payload != null ? payload : new byte[0];
+    }
+
+    public static BinaryFrame of(Type type, int flags, byte[] payload) {
+        return new BinaryFrame(type, flags, payload);
+    }
+
+    public static BinaryFrame request(String payloadUtf8, boolean stream) {
+        Type t = stream ? Type.STREAM : Type.CMD;
+        return new BinaryFrame(t, 0, utf8(payloadUtf8));
+    }
+
+    public static BinaryFrame data(String payloadUtf8) {
+        return new BinaryFrame(Type.DATA, 0, utf8(payloadUtf8));
+    }
+
+    public static BinaryFrame err(String payloadUtf8) {
+        return new BinaryFrame(Type.ERR, 0, utf8(payloadUtf8));
+    }
+
+    public static BinaryFrame end() {
+        return new BinaryFrame(Type.END, 0, new byte[0]);
+    }
+
+    private static byte[] utf8(String s) {
+        return (s != null ? s : "").getBytes(StandardCharsets.UTF_8);
     }
 
     public Type getType() {
         return type;
     }
 
-    public byte getFlags() {
+    public int getFlags() {
         return flags;
     }
 
-    public boolean isStream() {
-        return (flags & FLAG_STREAM) != 0;
-    }
-
-    public boolean isStderr() {
-        return (flags & FLAG_STDERR) != 0;
-    }
-
     public byte[] getPayload() {
-        return Arrays.copyOf(payload, payload.length);
+        return payload;
     }
 
     public String getPayloadUtf8() {
         return new String(payload, StandardCharsets.UTF_8);
     }
-
-    public static BinaryFrame hello(String payload) {
-        return new BinaryFrame(Type.HELLO, (byte) 0, utf8Bytes(payload));
-    }
-
-    public static BinaryFrame config(String payload) {
-        return new BinaryFrame(Type.CONFIG, (byte) 0, utf8Bytes(payload));
-    }
-
-    public static BinaryFrame request(String commandLine, boolean stream) {
-        byte flags = 0;
-        if (stream) {
-            flags |= FLAG_STREAM;
-        }
-        return new BinaryFrame(Type.REQUEST, flags, utf8Bytes(commandLine));
-    }
-
-    public static BinaryFrame data(String payload) {
-        return new BinaryFrame(Type.DATA, (byte) 0, utf8Bytes(payload));
-    }
-
-    public static BinaryFrame err(String payload) {
-        return new BinaryFrame(Type.ERR, FLAG_STDERR, utf8Bytes(payload));
-    }
-
-    public static BinaryFrame end() {
-        return new BinaryFrame(Type.END, (byte) 0, new byte[0]);
-    }
-
-    public static BinaryFrame ping() {
-        return new BinaryFrame(Type.PING, (byte) 0, new byte[0]);
-    }
-
-    public static BinaryFrame pong() {
-        return new BinaryFrame(Type.PONG, (byte) 0, new byte[0]);
-    }
-
-    private static byte[] utf8Bytes(String s) {
-        if (s == null) {
-            return new byte[0];
-        }
-        return s.getBytes(StandardCharsets.UTF_8);
-    }
 }
-

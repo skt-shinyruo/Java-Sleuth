@@ -233,7 +233,7 @@ public class InputValidator {
 
         // Truncate if too long
         if (sanitized.length() > 10000) {
-            sanitized = sanitized.substring(0, 10000) + "\n... [Output truncated for security]";
+            sanitized = sanitized.substring(0, 10000) + " ... [Output truncated for security]";
         }
 
         return ValidationResult.valid(sanitized);

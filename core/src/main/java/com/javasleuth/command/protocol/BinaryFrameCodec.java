@@ -5,25 +5,26 @@ import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
 
-public class BinaryFrameCodec {
-    private BinaryFrameCodec() {}
+public final class BinaryFrameCodec {
+    private static final int MAGIC = 0x534C4555; // "SLEU"
+    private static final int VERSION = 1;
 
-    // Header layout:
-    // [int magic][byte version][byte type][byte flags][byte reserved][int length][payload...]
-    private static final int HEADER_BYTES = 12;
+    private BinaryFrameCodec() {}
 
     public static void writeFrame(DataOutputStream out, BinaryFrame frame, int maxPayloadBytes) throws IOException {
         if (out == null || frame == null) {
             return;
         }
 
+        BinaryFrame.Type type = frame.getType();
+        int flags = frame.getFlags();
         byte[] payload = frame.getPayload();
         if (payload == null) {
             payload = new byte[0];
         }
 
         int max = normalizeMax(maxPayloadBytes);
-        if (max > 0 && payload.length > max && (frame.getType() == BinaryFrame.Type.DATA || frame.getType() == BinaryFrame.Type.ERR)) {
+        if ((type == BinaryFrame.Type.DATA || type == BinaryFrame.Type.ERR) && payload.length > max) {
             int offset = 0;
             while (offset < payload.length) {
                 int end = Math.min(payload.length, offset + max);
@@ -31,13 +32,17 @@ public class BinaryFrameCodec {
                 if (end <= offset) {
                     end = Math.min(payload.length, offset + max);
                 }
-                writeSingle(out, frame.getType(), frame.getFlags(), payload, offset, end - offset);
+
+                int len = end - offset;
+                byte[] chunk = new byte[len];
+                System.arraycopy(payload, offset, chunk, 0, len);
+                writeSingle(out, type, flags, chunk);
                 offset = end;
             }
             return;
         }
 
-        writeSingle(out, frame.getType(), frame.getFlags(), payload, 0, payload.length);
+        writeSingle(out, type, flags, payload);
     }
 
     public static BinaryFrame readFrame(DataInputStream in, int maxPayloadBytes) throws IOException {
@@ -45,70 +50,74 @@ public class BinaryFrameCodec {
             return null;
         }
 
+        final int magic;
         try {
-            int magic = in.readInt();
-            if (magic != BinaryFrame.MAGIC) {
-                throw new IOException("Invalid binary frame magic");
-            }
-
-            byte version = in.readByte();
-            if (version != BinaryFrame.VERSION) {
-                throw new IOException("Unsupported binary frame version: " + version);
-            }
-
-            int typeCode = in.readUnsignedByte();
-            byte flags = in.readByte();
-            in.readByte(); // reserved
-            int length = in.readInt();
-            if (length < 0) {
-                throw new IOException("Invalid binary frame length: " + length);
-            }
-
-            int max = normalizeMax(maxPayloadBytes);
-            if (max > 0 && length > max) {
-                throw new IOException("Binary frame payload too large: " + length);
-            }
-
-            byte[] payload = new byte[length];
-            in.readFully(payload);
-
-            BinaryFrame.Type type = BinaryFrame.Type.fromCode(typeCode);
-            if (type == null) {
-                throw new IOException("Unknown binary frame type: " + typeCode);
-            }
-
-            return new BinaryFrame(type, flags, payload);
+            magic = in.readInt();
         } catch (EOFException eof) {
             return null;
         }
+
+        if (magic != MAGIC) {
+            throw new IOException("Invalid binary frame magic: 0x" + Integer.toHexString(magic));
+        }
+
+        int version = in.readUnsignedByte();
+        if (version != VERSION) {
+            throw new IOException("Unsupported binary frame version: " + version);
+        }
+
+        int typeCode = in.readUnsignedByte();
+        BinaryFrame.Type type = BinaryFrame.Type.fromCode(typeCode);
+        if (type == null) {
+            throw new IOException("Unsupported binary frame type: " + typeCode);
+        }
+
+        int flags = in.readUnsignedShort();
+        int len = in.readInt();
+        if (len < 0) {
+            throw new IOException("Invalid binary frame length: " + len);
+        }
+        int max = normalizeMax(maxPayloadBytes);
+        if (len > max) {
+            throw new IOException("Binary frame payload too large: " + len + " (maxPayloadBytes=" + max + ")");
+        }
+
+        byte[] payload = new byte[len];
+        if (len > 0) {
+            in.readFully(payload);
+        }
+
+        return BinaryFrame.of(type, flags, payload);
     }
 
-    private static void writeSingle(DataOutputStream out, BinaryFrame.Type type, byte flags, byte[] payload, int offset, int len)
-        throws IOException {
-        out.writeInt(BinaryFrame.MAGIC);
-        out.writeByte(BinaryFrame.VERSION);
+    private static int normalizeMax(int maxPayloadBytes) {
+        if (maxPayloadBytes <= 0) {
+            return Integer.MAX_VALUE;
+        }
+        return Math.max(maxPayloadBytes, 16);
+    }
+
+    private static void writeSingle(DataOutputStream out, BinaryFrame.Type type, int flags, byte[] payload) throws IOException {
+        if (out == null) {
+            return;
+        }
+        if (payload == null) {
+            payload = new byte[0];
+        }
+
+        int len = (type == BinaryFrame.Type.END) ? 0 : payload.length;
+
+        out.writeInt(MAGIC);
+        out.writeByte(VERSION);
         out.writeByte(type.getCode());
-        out.writeByte(flags);
-        out.writeByte(0); // reserved
+        out.writeShort(flags & 0xFFFF);
         out.writeInt(len);
         if (len > 0) {
-            out.write(payload, offset, len);
+            out.write(payload, 0, len);
         }
         out.flush();
     }
 
-    private static int normalizeMax(int max) {
-        if (max <= 0) {
-            return 0;
-        }
-        // Prevent pathological small max values that can break UTF-8 chunking.
-        return Math.max(max, 16);
-    }
-
-    /**
-     * Best-effort UTF-8 chunk boundary alignment to avoid splitting multibyte sequences.
-     * If payload is not UTF-8, this still keeps chunk size within [offset,end].
-     */
     private static int adjustUtf8ChunkEnd(byte[] bytes, int offset, int end) {
         if (end - offset < 1) {
             return end;
@@ -138,7 +147,6 @@ public class BinaryFrameCodec {
                 return candidate;
             }
 
-            // We cut in the middle of a sequence; drop the partial char.
             candidate = leadIndex;
         }
 
@@ -166,4 +174,3 @@ public class BinaryFrameCodec {
         return 1;
     }
 }
-

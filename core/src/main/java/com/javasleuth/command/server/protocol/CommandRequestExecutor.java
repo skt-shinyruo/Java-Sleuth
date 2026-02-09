@@ -76,21 +76,23 @@ public final class CommandRequestExecutor {
             verifyKey = clientId;
         }
 
-        if (config.isHandshakeEnabled() && "hmac".equalsIgnoreCase(config.getSecurityMode())) {
+        if ("hmac".equalsIgnoreCase(config.getSecurityMode())) {
             Map<String, String> sigKv = HandshakeNegotiator.parseHandshakeKv(raw);
-            String v = sigKv.get("v");
             String sid = sigKv.get("sid");
-            if (!"2".equals(v)) {
-                reply.sendError("Handshake enabled: signed commands must use SIG v=2");
+            if (sigKv.containsKey("v")) {
+                reply.sendError("HMAC security: unsupported SIG field: v");
                 metricsCollector.recordError("security_sig_version");
                 return false;
             }
-            if (connId != null && !connId.trim().isEmpty()) {
-                if (sid == null || !connId.equals(sid)) {
-                    reply.sendError("Handshake enabled: SIG sid must match negotiated connId");
-                    metricsCollector.recordError("security_sig_sid");
-                    return false;
-                }
+            if (connId == null || connId.trim().isEmpty()) {
+                reply.sendError("HMAC security: connId is required (handshake missing)");
+                metricsCollector.recordError("security_sig_connid");
+                return false;
+            }
+            if (sid == null || !connId.equals(sid)) {
+                reply.sendError("HMAC security: SIG sid must match negotiated connId");
+                metricsCollector.recordError("security_sig_sid");
+                return false;
             }
         }
 
@@ -157,19 +159,8 @@ public final class CommandRequestExecutor {
                     errorDisconnectedMessage
                 );
 
-                try {
-                    CommandPipeline.StreamResult streamResult = pipeline.executeStreamPrechecked(entry, execArgs, context, sink);
-                    streamSuccess = streamResult != null && streamResult.isSuccess();
-                } finally {
-                    // For legacy clients (non-framed), always emit END marker to avoid client-side "timeout-guessing".
-                    if (!framedRequested && config.isTextEndMarkerEnabled()) {
-                        try {
-                            reply.sendLegacyEndMarker();
-                        } catch (Exception ignore) {
-                            SleuthLogger.debug("Failed to send legacy END marker: " + ignore.getMessage(), ignore);
-                        }
-                    }
-                }
+                CommandPipeline.StreamResult streamResult = pipeline.executeStreamPrechecked(entry, execArgs, context, sink);
+                streamSuccess = streamResult != null && streamResult.isSuccess();
 
                 auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, streamSuccess);
                 long duration = System.currentTimeMillis() - commandStart;
@@ -182,9 +173,7 @@ public final class CommandRequestExecutor {
                 CommandPipeline.Result result = pipeline.executePrechecked(entry, execArgs, context);
                 if (result.isSuccess()) {
                     reply.sendData(result.getOutput());
-                    if (framedRequested) {
-                        reply.end();
-                    }
+                    reply.end();
                     auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, true);
                     long duration = System.currentTimeMillis() - commandStart;
                     metricsCollector.recordCommandComplete(commandName, duration);

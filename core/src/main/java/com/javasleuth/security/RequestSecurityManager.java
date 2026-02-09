@@ -17,11 +17,10 @@ import javax.crypto.spec.SecretKeySpec;
  * Supported: hmac (security.mode=hmac)
  *
  * Request wrapper format (command line level):
- *   SIG v=<1|2> ts=<epoch_ms> nonce=<base64url> sid=<session_id_or_conn_id> sig=<hex> cmd=<base64url>
+ *   SIG ts=<epoch_ms> nonce=<base64url> sid=<conn_id> sig=<hex> cmd=<base64url>
  *
  * Signature base string:
- *   v1: ts + "\\n" + nonce + "\\n" + cmd
- *   v2: sid + "\\n" + ts + "\\n" + nonce + "\\n" + cmd
+ *   sid + "\\n" + ts + "\\n" + nonce + "\\n" + cmd
  */
 public class RequestSecurityManager {
     public static class VerificationResult {
@@ -61,7 +60,7 @@ public class RequestSecurityManager {
     private final AuditLogger auditLogger;
 
     // Key: bindingId:nonce -> timestamp
-    // bindingId is per-connection by default (sid from handshake); fallback is server sessionId.
+    // bindingId is per-connection (sid from handshake).
     private final ConcurrentHashMap<String, Long> seenNonces = new ConcurrentHashMap<>();
 
     private RequestSecurityManager() {
@@ -96,24 +95,20 @@ public class RequestSecurityManager {
         }
 
         Map<String, String> kv = parseKv(raw);
-        String versionStr = kv.get("v");
-        int version = parseIntSafe(versionStr, 1);
-        if (version != 1 && version != 2) {
-            return VerificationResult.denied("Invalid SIG v value");
+        if (kv.containsKey("v")) {
+            return VerificationResult.denied("Unsupported SIG field: v");
         }
-
         String tsStr = kv.get("ts");
         String nonce = kv.get("nonce");
         String sigHex = kv.get("sig");
         String cmdB64 = kv.get("cmd");
         String sid = kv.get("sid");
+        if (sid == null || sid.trim().isEmpty()) {
+            return VerificationResult.denied("SIG requires sid");
+        }
         if (tsStr == null || nonce == null || sigHex == null || cmdB64 == null) {
             return VerificationResult.denied("Invalid SIG format: required fields ts/nonce/sig/cmd");
         }
-        if (version == 2 && (sid == null || sid.trim().isEmpty())) {
-            return VerificationResult.denied("Invalid SIG format: v=2 requires sid");
-        }
-
         Long ts = parseLongSafe(tsStr);
         if (ts == null) {
             return VerificationResult.denied("Invalid SIG ts value");
@@ -129,8 +124,7 @@ public class RequestSecurityManager {
         }
 
         // Replay detection must be bound to the signature binding id.
-        // For v2, that is sid (per-connection). For v1, fall back to sessionId.
-        String bindingId = (version == 2) ? sid.trim() : (sessionId != null ? sessionId : "anonymous");
+        String bindingId = sid.trim();
         String nonceKey = bindingId + ":" + nonce;
         Long existing = seenNonces.putIfAbsent(nonceKey, ts);
         if (existing != null) {
@@ -143,12 +137,7 @@ public class RequestSecurityManager {
             pruneOldNonces(now, windowMs);
         }
 
-        String base;
-        if (version == 2) {
-            base = sid.trim() + "\n" + tsStr + "\n" + nonce + "\n" + cmdB64;
-        } else {
-            base = tsStr + "\n" + nonce + "\n" + cmdB64;
-        }
+        String base = bindingId + "\n" + tsStr + "\n" + nonce + "\n" + cmdB64;
         byte[] expected;
         try {
             expected = hmacSha256(secret, base);
@@ -176,11 +165,8 @@ public class RequestSecurityManager {
         return VerificationResult.ok(command);
     }
 
-    public String signCommand(String command, long timestampMs, String nonce) {
-        return signCommandV2(command, timestampMs, nonce, null);
-    }
 
-    public String signCommandV2(String command, long timestampMs, String nonce, String sid) {
+    public String signCommand(String command, long timestampMs, String nonce, String sid) {
         String mode = config.getSecurityMode();
         if (mode == null || !"hmac".equalsIgnoreCase(mode)) {
             return command;
@@ -190,27 +176,18 @@ public class RequestSecurityManager {
             return command;
         }
 
+        if (sid == null || sid.trim().isEmpty()) {
+            throw new IllegalArgumentException("sid is required for SIG");
+        }
         String cmdB64 = Base64.getUrlEncoder().withoutPadding().encodeToString((command != null ? command : "").getBytes(StandardCharsets.UTF_8));
         String tsStr = String.valueOf(timestampMs);
 
-        if (sid != null && !sid.trim().isEmpty()) {
-            String binding = sid.trim();
-            String base = binding + "\n" + tsStr + "\n" + nonce + "\n" + cmdB64;
-            try {
-                byte[] mac = hmacSha256(secret, base);
-                String sigHex = bytesToHex(mac);
-                return "SIG v=2 ts=" + tsStr + " nonce=" + nonce + " sid=" + binding + " sig=" + sigHex + " cmd=" + cmdB64;
-            } catch (Exception e) {
-                return command;
-            }
-        }
-
-        // Backward compatible v1.
-        String base = tsStr + "\n" + nonce + "\n" + cmdB64;
+        String binding = sid.trim();
+        String base = binding + "\n" + tsStr + "\n" + nonce + "\n" + cmdB64;
         try {
             byte[] mac = hmacSha256(secret, base);
             String sigHex = bytesToHex(mac);
-            return "SIG v=1 ts=" + tsStr + " nonce=" + nonce + " sig=" + sigHex + " cmd=" + cmdB64;
+            return "SIG ts=" + tsStr + " nonce=" + nonce + " sid=" + binding + " sig=" + sigHex + " cmd=" + cmdB64;
         } catch (Exception e) {
             return command;
         }
@@ -315,4 +292,3 @@ public class RequestSecurityManager {
         return sb.toString();
     }
 }
-

@@ -47,7 +47,6 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 多 ClassLoader 目标选择器 `LoadedClassResolver`：输出候选与 loaderId，支持 `--loader` 精确选类
 - 插桩失败冷却可重试：`enhancement.failure.*`（避免失败后静默移除 enhancer）
 - jobs 并发硬上限与队列上限：`jobs.max.running` / `jobs.queue.capacity`
-- legacy 文本流式输出 END marker：`protocol.text.end.marker.enabled`
 - classpath ServiceLoader 插件开关：`plugins.serviceloader.enabled`
 - `config save --include-runtime`：可选持久化 runtime overrides
 - `mc --encoding`：源码读取默认 UTF-8 并支持显式编码
@@ -59,13 +58,13 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - Maven 多模块化：根工程改为 parent/aggregator（`packaging=pom`），主产物迁移到 `core/` 模块，示例应用作为 `examples/` 模块独立构建；脚本/Docker/文档同步更新
 - CommandProcessor 改为注册表 + 统一执行管线
 - CommandPipeline 执行链路显式化：引入 Step/Interceptor Chain（precheck/sync/stream），降低巨型类耦合并提升可测性
-- CommandProcessor 拆分出 CommandClientHandler（text/framed/binary 协议处理），CommandProcessor 聚焦监听/生命周期
-- CommandClientHandler 进一步按协议拆分：text/framed/binary handlers + 共享 CommandRequestExecutor，握手协商抽取为 HandshakeNegotiator
+- CommandProcessor 拆分出 CommandClientHandler（framed/binary 协议处理），CommandProcessor 聚焦监听/生命周期
+- CommandClientHandler 进一步按协议拆分：framed/binary handlers + 共享 CommandRequestExecutor，握手协商抽取为 HandshakeNegotiator
 - Launcher 支持 framed/stream 协议与端口配置读取
 - Enhancer 支持链式叠加与按会话移除
 - CommandProcessor 支持 bind address + handshake 协商并可升级 binary 通道
 - Launcher 支持 handshake 协商与 binary 通道；在 security.mode=hmac 时自动封装 SIG 请求
-- 默认协议由 legacy 调整为 framed（保持 handshake 协商，提升长输出/流式命令稳定性）
+- 移除 legacy 文本协议，统一使用 framed/binary（保持 handshake 协商，提升长输出/流式命令稳定性）
 - 授权策略 SSOT：以 CommandMeta 为唯一权限来源，AuthorizationManager 不再维护命令名特判/映射；插件命令必须提供 meta
 - 项目根目录结构整理：文档集中到 docs/，脚本归档到 scripts/
 - docs/ 文档中文化：用户/开发/运维文档说明文字统一为简体中文（保留命令/配置示例可复制）
@@ -124,8 +123,16 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 后台任务线程模型：`--bg` 不再“每 job 新线程”，改为有界线程池并提供背压与明确拒绝提示
 - 插件默认禁用语义一致：默认不加载目标进程 classpath 上的 ServiceLoader provider（需显式开启）
 - 文件/编码治理一致：`mc` 源码读取默认 UTF-8；`redefine` 文件读取统一走 `SecurityValidator.canReadFile` 校验
+- 移除 legacy 文本协议：统一使用 framed/binary，消除逐行回包缺少显式边界导致的多行输出错位风险；输出截断提示不再主动注入换行
 
 ## [1.0.0] - 2026-01-28
 
 ### Added
 - 初始化知识库文档结构与项目概览
+
+## 2026-02-08 强制新协议（无旧兼容）
+
+- Breaking: 握手为强制流程；不再支持未握手直发命令。
+- Breaking: 移除/拒绝旧配置键 `protocol.handshake.enabled`、`protocol.text.end.marker.enabled`。
+- Breaking: `security.mode=hmac` 仅接受单一 `SIG` 格式（禁用 `v` 字段），且必须携带并绑定 `sid`。
+- Breaking: `protocol.mode` 非法值不再自动归一化，启动直接失败。

@@ -39,22 +39,35 @@ public class CommandProcessorTest {
         assertEquals("5", parts[4]);
     }
 
-    @Test
+        @Test
     public void testFrameCodecRoundTrip() throws Exception {
-        StringWriter sw = new StringWriter();
-        PrintWriter pw = new PrintWriter(sw, true);
-        FrameCodec.writeFrame(pw, Frame.data("hello"), 4096);
-        FrameCodec.writeFrame(pw, Frame.end(), 4096);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        FrameCodec.writeFrame(baos, Frame.data("hello\nworld\n中文"), 10);
+        FrameCodec.writeFrame(baos, Frame.end(), 10);
 
-        BufferedReader br = new BufferedReader(new StringReader(sw.toString()));
-        Frame data = FrameCodec.readFrame(br);
-        assertNotNull(data);
-        assertEquals(Frame.Type.DATA, data.getType());
-        assertEquals("hello", data.getPayload());
+        BufferedReader br = new BufferedReader(
+            new java.io.InputStreamReader(new ByteArrayInputStream(baos.toByteArray()), java.nio.charset.StandardCharsets.UTF_8)
+        );
 
-        Frame end = FrameCodec.readFrame(br);
-        assertNotNull(end);
-        assertEquals(Frame.Type.END, end.getType());
+        StringBuilder sb = new StringBuilder();
+        boolean firstLine = true;
+        while (true) {
+            Frame frame = FrameCodec.readFrame(br);
+            assertNotNull(frame);
+            if (frame.getType() == Frame.Type.DATA) {
+                if (!firstLine) {
+                    sb.append("\n");
+                }
+                sb.append(frame.getPayload());
+                firstLine = false;
+                continue;
+            }
+            if (frame.getType() == Frame.Type.END) {
+                break;
+            }
+            fail("Unexpected frame type: " + frame.getType());
+        }
+        assertEquals("hello\nworld\n中文", sb.toString());
     }
 
     @Test
@@ -77,6 +90,7 @@ public class CommandProcessorTest {
     @Test
     public void testUtf8LineCodecMaxBytes() throws Exception {
         StringBuilder sb = new StringBuilder();
+        boolean firstLine = true;
         for (int i = 0; i < 50; i++) {
             sb.append("a");
         }
@@ -120,7 +134,7 @@ public class CommandProcessorTest {
     public void testBinaryFrameCodecRejectsOversizeRequestFrame() throws Exception {
         int max = 16;
         byte[] payload = new byte[max + 1];
-        BinaryFrame request = new BinaryFrame(BinaryFrame.Type.REQUEST, (byte) 0, payload);
+        BinaryFrame request = BinaryFrame.of(BinaryFrame.Type.CMD, 0, payload);
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(baos);
@@ -236,7 +250,7 @@ public class CommandProcessorTest {
             RequestSecurityManager mgr = RequestSecurityManager.getInstance();
             String nonce = "nonce123";
             long ts = System.currentTimeMillis();
-            String signed = mgr.signCommand("help", ts, nonce);
+            String signed = mgr.signCommand("help", ts, nonce, "test-sid");
             assertNotNull(signed);
             assertTrue(signed.startsWith("SIG "));
 

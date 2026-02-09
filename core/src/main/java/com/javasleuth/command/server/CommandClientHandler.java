@@ -7,7 +7,6 @@ import com.javasleuth.command.server.protocol.BinaryClientProtocolHandler;
 import com.javasleuth.command.server.protocol.CommandRequestExecutor;
 import com.javasleuth.command.server.protocol.FramedClientCommandHandler;
 import com.javasleuth.command.server.protocol.HandshakeNegotiator;
-import com.javasleuth.command.server.protocol.TextClientCommandHandler;
 import com.javasleuth.command.session.ClientDisconnectedException;
 import com.javasleuth.command.session.ClientSession;
 import com.javasleuth.command.session.ClientSessionRegistry;
@@ -29,7 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 单个客户端连接的处理逻辑（text/framed/binary）。
+ * 单个客户端连接的处理逻辑（framed/binary）。
  *
  * <p>将 CommandProcessor 中“协议 + 会话 + 调度 + 回写”部分拆出，降低巨型类维护成本。</p>
  */
@@ -116,7 +115,7 @@ public final class CommandClientHandler {
         SleuthLogContext.setConnection(clientId, sessionId, connId);
 
         boolean pendingBinaryUpgrade = false;
-        boolean handshakeCompleted = !config.isHandshakeEnabled();
+        boolean handshakeCompleted = false;
 
         int maxLineBytes = config.getInt(
             "protocol.text.max.line.bytes",
@@ -126,8 +125,8 @@ public final class CommandClientHandler {
         try (BufferedInputStream in = new BufferedInputStream(clientSocket.getInputStream());
              BufferedOutputStream out = new BufferedOutputStream(clientSocket.getOutputStream())) {
 
-            TextClientCommandHandler textHandler = new TextClientCommandHandler(requestExecutor, out);
-            FramedClientCommandHandler framedHandler = new FramedClientCommandHandler(requestExecutor, out, config.getFrameMaxPayload());
+            FramedClientCommandHandler framedHandler =
+                new FramedClientCommandHandler(requestExecutor, out, config.getFrameMaxPayload());
 
             Utf8LineCodec.writeLine(out, "Welcome to Java-Sleuth! Type 'help' for available commands.", true);
             metricsCollector.recordSessionStart(clientId);
@@ -148,7 +147,7 @@ public final class CommandClientHandler {
                     continue;
                 }
 
-                if (config.isHandshakeEnabled() && line.regionMatches(true, 0, "HELLO", 0, "HELLO".length())) {
+                if (line.regionMatches(true, 0, "HELLO", 0, "HELLO".length())) {
                     HandshakeNegotiator.NegotiationResult negotiated = handshakeNegotiator.handleHello(line, out);
                     connId = negotiated.getConnId();
                     String selected = negotiated.getProtocol();
@@ -158,7 +157,7 @@ public final class CommandClientHandler {
                     continue;
                 }
 
-                if (config.isHandshakeEnabled() && !handshakeCompleted) {
+                if (!handshakeCompleted) {
                     Utf8LineCodec.writeLine(out, "Handshake required. Send: HELLO", true);
                     metricsCollector.recordError("handshake_required");
                     continue;
@@ -184,31 +183,27 @@ public final class CommandClientHandler {
                     }
                 }
 
-                final boolean framedRequested;
                 final boolean streamRequested;
                 final String raw;
                 if (line.startsWith("CMD ")) {
-                    framedRequested = true;
                     streamRequested = false;
                     raw = line.substring(4);
                 } else if (line.startsWith("STREAM ")) {
-                    framedRequested = true;
                     streamRequested = true;
                     raw = line.substring(7);
                 } else {
-                    framedRequested = false;
-                    streamRequested = false;
-                    raw = line;
+                    Utf8LineCodec.writeLine(
+                        out,
+                        "Protocol error: expected CMD <signed_command> or STREAM <signed_command>.",
+                        true
+                    );
+                    metricsCollector.recordError("protocol_invalid_prefix");
+                    break;
                 }
 
                 try {
-                    boolean shouldClose;
-                    if (framedRequested) {
-                        shouldClose = framedHandler.handle(raw, streamRequested, clientId, clientInfo, sessionId, connId, clientSession);
-                    } else {
-                        shouldClose = textHandler.handle(raw, streamRequested, clientId, clientInfo, sessionId, connId, clientSession);
-                    }
-
+                    boolean shouldClose =
+                        framedHandler.handle(raw, streamRequested, clientId, clientInfo, sessionId, connId, clientSession);
                     if (shouldClose) {
                         break;
                     }

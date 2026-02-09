@@ -30,6 +30,10 @@ This file records index of all completed changes for traceability and query.
 | 202602051743 | exception_handling_logging | Refactor | ✅Completed | history/2026-02/202602051743_exception_handling_logging/ |
 | 202602061101 | move_demo_apps_to_examples | Refactor | ✅Completed | history/2026-02/202602061101_move_demo_apps_to_examples/ |
 | 202602061645 | maven_multi_module | Refactor | ✅Completed | history/2026-02/202602061645_maven_multi_module/ |
+| 202602081451 | legacy_text_end_marker_sync | Fix | ✅Completed | history/2026-02/202602081451_legacy_text_end_marker_sync/ |
+| 202602081630 | drop_legacy_protocol | Refactor | ✅Completed | history/2026-02/202602081630_drop_legacy_protocol/ |
+| 202602081900 | enforce_new_protocol_only | Refactor | ✅Completed | history/2026-02/202602081900_enforce_new_protocol_only/ |
+| 202602081959 | remove_compat_paths | Refactor | ✅Completed | history/2026-02/202602081959_remove_compat_paths/ |
 
 ---
 
@@ -62,3 +66,7 @@ This file records index of all completed changes for traceability and query.
 - 202602051743_exception_handling_logging (2026-02/202602051743_exception_handling_logging/) - 异常处理与输出/日志策略统一（errorId + 最小披露）
 - 202602061101_move_demo_apps_to_examples (2026-02/202602061101_move_demo_apps_to_examples/) - 示例/测试应用迁移到 examples，发布产物边界收敛
 - 202602061645_maven_multi_module (2026-02/202602061645_maven_multi_module/) - Maven 多模块化（parent + core + examples）
+- 202602081451_legacy_text_end_marker_sync (2026-02/202602081451_legacy_text_end_marker_sync/) - legacy 文本协议 sync 回包 END marker 边界稳定化
+- 202602081630_drop_legacy_protocol (2026-02/202602081630_drop_legacy_protocol/) - 协议收敛：移除 legacy 文本协议，统一使用 framed/binary
+- 202602081900_enforce_new_protocol_only (2026-02/202602081900_enforce_new_protocol_only/) - 强制新协议（无旧实现/旧配置兼容）
+- 202602081959_remove_compat_paths (2026-02/202602081959_remove_compat_paths/) - 协议兼容逻辑彻底移除（仅保留新协议）+ SIG 单一格式收敛

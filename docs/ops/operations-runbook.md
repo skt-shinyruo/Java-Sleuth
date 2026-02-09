@@ -1,6 +1,5 @@
 # Java-Sleuth 运维 Runbook
 
-> 注意：默认启用 `protocol.handshake.enabled=true`（需要先 HELLO 握手协商协议），不再支持用 `nc` 直接发送单行明文命令（但可用于端口连通性探测）。
 > 运维排障建议使用 SleuthLauncher（`./sleuth.sh`）连接后执行 `health/status/metrics/...`。
 
 ## 快速参考

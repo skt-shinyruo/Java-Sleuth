@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 命令解析、校验、执行、输出
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-06
+- **Last Updated:** 2026-02-08
 
 ## Specifications
 
@@ -53,8 +53,7 @@
 服务端与客户端在同一底层 `InputStream/OutputStream` 上完成文本行协议与二进制帧协议的协商与升级，避免混用多层缓冲导致的边界错位。
 
 #### Scenario: HELLO/CONFIG 协商并升级到 binary
-前置：`protocol.handshake.enabled=true`  
-- 客户端发送 `HELLO ... protocols=legacy,framed,binary`  
+- 客户端发送 `HELLO ... protocols=binary,framed`  
 - 服务端返回 `CONFIG v=1 protocol=<selected> ...`  
 - 若选择 binary：客户端发送 `UPGRADE BINARY` 后进入严格二进制帧通道
 - 握手关键字匹配需避免 Locale 相关大小写陷阱（使用 locale-independent 的 ignoreCase 匹配）
@@ -96,7 +95,7 @@
 
 ### Requirement: 插件化命令与分帧协议
 **Module:** command
-支持插件加载与分帧/流式输出，保持兼容模式；并支持严格二进制帧通道。
+支持插件加载与分帧/流式输出，并支持严格二进制帧通道。
 
 #### Scenario: 插件命令加载
 前置：CommandProcessor 启动  
@@ -113,10 +112,9 @@
 - DATA/END/ERR 分帧输出
 - watch/trace/monitor/tt/stack 可流式推送
 - **流式命令同样走 `CommandPipeline`**：统一 executor/timeout/impact permit，并对每个输出 chunk 执行 `InputValidator.sanitizeOutput`（脱控制字符 + 截断）
-- legacy 文本协议的流式输出会追加单行 END marker（`protocol.text.end.marker.enabled=true`），降低客户端“超时猜结束”导致的截断风险
 
 实现要点：
-- 连接协议与回写逻辑：`CommandProcessor` → `CommandClientHandler`（连接生命周期） → `com.javasleuth.command.server.protocol.*`（text/framed/binary handlers + shared `CommandRequestExecutor`）
+- 连接协议与回写逻辑：`CommandProcessor` → `CommandClientHandler`（连接生命周期） → `com.javasleuth.command.server.protocol.*`（framed/binary handlers + shared `CommandRequestExecutor`）
 
 ### Requirement: 高风险命令二次确认（防误触 + 可审计）
 **Module:** command / security
@@ -173,9 +171,17 @@ N/A
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - 插件默认关闭 + allowlist + classloader 释放
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - 缓存隔离、session 脱敏与诊断命令稳定性加固
 - 202602021233_quality_audit_more_issues (history/2026-02/202602021233_quality_audit_more_issues/) - 协议上限/危险命令元信息与关键边界单测补齐
-- 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - 流式命令纳入 Pipeline、legacy END marker、后台 jobs 并发上限与多 ClassLoader 选类回滚一致性
+- 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - 流式命令纳入 Pipeline、（已废弃）legacy END marker、后台 jobs 并发上限与多 ClassLoader 选类回滚一致性
 - 202602042257_vmtool_instance_diagnostics (history/2026-02/202602042257_vmtool_instance_diagnostics/) - vmtool（lite）：实例追踪/检视/受控调用
 - 202602051031_command_pipeline_step_chain (history/2026-02/202602051031_command_pipeline_step_chain/) - CommandPipeline Step/Interceptor 链重构 + CommandProcessor 拆分
 - 202602051334_giant_files_split_handlers_stack_tt (history/2026-02/202602051334_giant_files_split_handlers_stack_tt/) - 继续压小巨型文件：协议 handler 拆分 + Stack/TT 子模块化
 - 202602051436_command_args_validation_logging (history/2026-02/202602051436_command_args_validation_logging/) - 参数解析/异常处理/Locale 归一化加固（避免坏输入中断与吞异常黑洞）
 - 202602051743_exception_handling_logging (history/2026-02/202602051743_exception_handling_logging/) - 异常分层 + 用户错误最小披露（errorId 关联）+ 协议 ERR 不回显堆栈
+- 202602081451_legacy_text_end_marker_sync (history/2026-02/202602081451_legacy_text_end_marker_sync/) - （已废弃）legacy 文本协议 sync 回包 END marker 边界稳定化
+- 202602081630_drop_legacy_protocol (history/2026-02/202602081630_drop_legacy_protocol/) - 移除 legacy 文本协议，统一使用 framed/binary
+- 202602081959_remove_compat_paths (history/2026-02/202602081959_remove_compat_paths/) - 协议兼容语义清理（仅保留新协议）+ binary 帧实现补齐
+
+## 2026-02-08 协议入口收敛
+
+- 服务端仅接受新协议请求：握手后 `CMD` / `STREAM`。
+- legacy 逐行文本协议已移除，且不再提供任何降级路径。

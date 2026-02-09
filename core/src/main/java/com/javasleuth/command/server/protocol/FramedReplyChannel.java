@@ -29,10 +29,4 @@ final class FramedReplyChannel implements CommandReplyChannel {
     public void end() throws IOException {
         FrameCodec.writeFrame(out, Frame.end(), maxPayloadBytes);
     }
-
-    @Override
-    public void sendLegacyEndMarker() {
-        // Not applicable for framed protocol.
-    }
 }
-

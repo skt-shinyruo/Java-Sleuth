@@ -142,9 +142,7 @@ public class ProductionConfig {
         properties.setProperty("protocol.mode", "framed");
         properties.setProperty("protocol.streaming.enabled", "true");
         properties.setProperty("protocol.frame.max.payload", "4096");
-        properties.setProperty("protocol.handshake.enabled", "true");
         properties.setProperty("protocol.text.max.line.bytes", "8192");
-        properties.setProperty("protocol.text.end.marker.enabled", "true");
 
         // Plugin configuration
         properties.setProperty("plugins.enabled", "false");
@@ -379,9 +377,18 @@ public class ProductionConfig {
     }
 
     // Protocol configuration
-    public String getProtocolMode() {
-        return getString("protocol.mode", "framed");
+        public String getProtocolMode() {
+        String mode = getString("protocol.mode", "framed");
+        if (mode == null) {
+            throw new IllegalArgumentException("protocol.mode is required");
+        }
+        String v = mode.trim().toLowerCase();
+        if (!"framed".equals(v) && !"binary".equals(v)) {
+            throw new IllegalArgumentException("Unsupported protocol.mode: " + mode + " (allowed: framed|binary)");
+        }
+        return v;
     }
+
 
     public boolean isFramedProtocolEnabled() {
         return "framed".equalsIgnoreCase(getProtocolMode());
@@ -399,13 +406,6 @@ public class ProductionConfig {
         return getInt("protocol.frame.max.payload", 4096);
     }
 
-    public boolean isHandshakeEnabled() {
-        return getBoolean("protocol.handshake.enabled", true);
-    }
-
-    public boolean isTextEndMarkerEnabled() {
-        return getBoolean("protocol.text.end.marker.enabled", true);
-    }
 
     // Security mode configuration
     public String getSecurityMode() {
@@ -668,4 +668,14 @@ public class ProductionConfig {
         }
         return fileName + "-" + p;
     }
-}
+    private void validateForbiddenKeys() {
+        for (String key : properties.stringPropertyNames()) {
+            if ("protocol.handshake.enabled".equals(key)) {
+                throw new IllegalArgumentException("Unsupported config key: protocol.handshake.enabled (handshake is mandatory)");
+            }
+            if ("protocol.text.end.marker.enabled".equals(key)) {
+                throw new IllegalArgumentException("Unsupported config key: protocol.text.end.marker.enabled (legacy protocol removed)");
+            }
+        }
+    }
+        }

@@ -126,11 +126,9 @@ public class ConfigCommand implements Command {
 
                 show.append("\n-- Protocol Settings --\n");
                 show.append("protocol.mode = ").append(config.getProtocolMode()).append("\n");
-                show.append("protocol.handshake.enabled = ").append(config.isHandshakeEnabled()).append("\n");
                 show.append("protocol.streaming.enabled = ").append(config.isStreamingEnabled()).append("\n");
                 show.append("protocol.frame.max.payload = ").append(config.getFrameMaxPayload()).append("\n");
                 show.append("protocol.text.max.line.bytes = ").append(config.getInt("protocol.text.max.line.bytes", 8192)).append("\n");
-                show.append("protocol.text.end.marker.enabled = ").append(config.isTextEndMarkerEnabled()).append("\n");
 
                 show.append("\n-- Plugin Settings --\n");
                 show.append("plugins.enabled = ").append(config.isPluginsEnabled()).append("\n");

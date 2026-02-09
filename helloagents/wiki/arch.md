@@ -46,7 +46,7 @@ sequenceDiagram
     Agent->>Server: 启动命令服务
     User->>Launcher: 输入命令
     Launcher->>Server: HELLO/CONFIG 握手协商
-    Launcher->>Server: Socket 发送命令（legacy/framed/binary）
+    Launcher->>Server: Socket 发送命令（framed/binary）
     Server->>Agent: 执行命令/触发增强
     Agent-->>Server: 返回结果
     Server-->>Launcher: 输出响应
@@ -58,3 +58,13 @@ sequenceDiagram
 | ADR-001 | Attach + Socket CLI 架构 | 2026-01-28 | ✅Adopted | launcher/agent/command | 待补充 |
 | ADR-002 | 插件化命令与分帧协议并行兼容 | 2026-01-28 | ✅Adopted | command/launcher/security/enhancement/monitor | history/2026-01/202601281207_sleuth_plugin_stream/how.md#adr-002-插件化命令与分帧协议并行兼容 |
 | ADR-003 | HELLO/CONFIG 握手 + 严格二进制帧 + 可选 HMAC | 2026-01-28 | ✅Adopted | launcher/command/security/config | history/2026-01/202601281301_sleuth_handshake_secure_frames/how.md |
+| ADR-004 | legacy 文本协议 sync 响应以 END marker 作为确定边界 | 2026-02-08 | ⚠️Superseded | command/launcher/security | history/2026-02/202602081451_legacy_text_end_marker_sync/how.md |
+| ADR-005 | 移除 legacy 文本协议，统一使用 framed/binary | 2026-02-08 | ✅Adopted | command/launcher/config/docs | history/2026-02/202602081630_drop_legacy_protocol/how.md |
+| ADR-006 | 强制新协议（无旧实现/旧配置兼容） | 2026-02-08 | ✅Adopted | command/launcher/security/config | history/2026-02/202602081900_enforce_new_protocol_only/how.md |
+| ADR-007 | HMAC 签名协议收敛为单一格式（禁用 v 字段） | 2026-02-08 | ✅Adopted | launcher/security/command | history/2026-02/202602081959_remove_compat_paths/how.md |
+
+### ADR-006: 强制新协议（无旧实现/旧配置兼容）
+
+- Date: 2026-02-08
+- Decision: 握手强制、配置严格化（拒绝旧配置键）、HMAC 签名只允许单一 `SIG` 格式（禁用 `v` 字段）+ `sid` 绑定。
+- Rationale: 在无 legacy 客户端前提下，移除兼容/降级路径可降低协议错位风险与维护复杂度。

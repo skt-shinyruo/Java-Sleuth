@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 默认配置、外部配置、系统属性覆盖
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-06
+- **Last Updated:** 2026-02-08
 
 ## Specifications
 
@@ -26,10 +26,8 @@
 - `server.bind.address`：默认 127.0.0.1
 - `server.max.connections`：并发连接上限（默认 10）
 - `server.executor.queue.capacity`：连接处理线程池排队上限（用于背压与内存上限控制）
-- `protocol.handshake.enabled`：默认 true
-- `protocol.mode`：legacy|framed|binary（默认 framed）
+- `protocol.mode`：framed|binary（默认 framed）
 - `protocol.text.max.line.bytes`：文本协议单行最大字节数上限
-- `protocol.text.end.marker.enabled`：legacy 文本协议流式输出是否追加 END marker（降低“超时猜结束”截断风险）
 - `protocol.frame.max.payload`：分帧/二进制协议单帧 payload 最大字节数
 - `security.mode`：off|hmac（默认 off）
 - `security.anonymous.viewer`：默认 true（仅当启用 RBAC 且会话角色为 viewer 时生效；HMAC 模式下可按 session.role 自举）
@@ -92,3 +90,10 @@ N/A
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - logging.performance.enabled 默认关闭与监控队列策略文档补齐
 - 202602021233_quality_audit_more_issues (history/2026-02/202602021233_quality_audit_more_issues/) - 默认配置/生产模板对齐与协议上限文档补齐
 - 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - jobs 并发上限、END marker、插件 ServiceLoader 开关与 config save 持久化语义补齐
+- 202602081630_drop_legacy_protocol (history/2026-02/202602081630_drop_legacy_protocol/) - 协议收敛：移除 legacy 文本协议与相关配置项
+
+## 2026-02-08 协议与握手配置收敛
+
+- `protocol.mode`：仅支持 `framed` / `binary`；非法值会在启动时直接失败（不再自动归一化）。
+- 握手：为**强制流程**，不再提供 `protocol.handshake.enabled` 开关；配置中出现该键会被显式拒绝。
+- legacy END marker：`protocol.text.end.marker.enabled` 已移除；配置中出现该键会被显式拒绝。

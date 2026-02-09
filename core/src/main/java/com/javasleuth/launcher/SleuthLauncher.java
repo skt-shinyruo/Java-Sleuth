@@ -257,7 +257,6 @@ public class SleuthLauncher {
             boolean binary = config.isBinaryProtocolEnabled();
             boolean streamingEnabled = config.isStreamingEnabled();
             int maxPayloadBytes = config.getFrameMaxPayload();
-            boolean handshakeEnabled = config.isHandshakeEnabled();
 
             String connectHost = resolveConnectHost(config.getServerBindAddress());
             int maxLineBytes = config.getInt(
@@ -283,34 +282,45 @@ public class SleuthLauncher {
                 DataInputStream binaryIn = null;
                 DataOutputStream binaryOut = null;
 
-                String connId = null;
-                if (handshakeEnabled) {
-                    // v2 signature binding: client proposes a per-connection connId; server mirrors it.
-                    connId = generateNonce();
-                    Utf8LineCodec.writeLine(out, buildHelloLine(protocol, connId), true);
-                    String configLine = Utf8LineCodec.readLine(in, maxLineBytes);
-                    if (configLine != null && configLine.startsWith("CONFIG")) {
-                        Map<String, String> kv = parseHandshakeKv(configLine);
-                        String negotiated = kv.get("protocol");
-                        if (negotiated != null && !negotiated.trim().isEmpty()) {
-                            protocol = negotiated.trim().toLowerCase();
-                        }
-                        binary = "binary".equals(protocol);
-                        framed = "framed".equals(protocol);
+                // Signature binding: client proposes a per-connection connId; server mirrors it in CONFIG.
+                String connId = generateNonce();
+                Utf8LineCodec.writeLine(out, buildHelloLine(protocol, connId), true);
 
-                        if (kv.containsKey("streaming")) {
-                            streamingEnabled = Boolean.parseBoolean(kv.get("streaming"));
-                        }
-                        if (kv.containsKey("maxpayload")) {
-                            Integer parsed = parseIntSafe(kv.get("maxpayload"));
-                            if (parsed != null && parsed > 0) {
-                                maxPayloadBytes = parsed;
-                            }
-                        }
-                        if (kv.containsKey("connid")) {
-                            connId = kv.get("connid");
-                        }
+                String configLine = Utf8LineCodec.readLine(in, maxLineBytes);
+                if (configLine == null || !configLine.startsWith("CONFIG")) {
+                    System.err.println("Handshake failed: expected CONFIG but got: " + configLine);
+                    return;
+                }
+
+                Map<String, String> kv = parseHandshakeKv(configLine);
+                String negotiated = kv.get("protocol");
+                if (negotiated == null || negotiated.trim().isEmpty()) {
+                    System.err.println("Handshake failed: CONFIG missing protocol");
+                    return;
+                }
+                protocol = negotiated.trim().toLowerCase();
+                binary = "binary".equals(protocol);
+                framed = "framed".equals(protocol);
+                if (!binary && !framed) {
+                    System.err.println("Handshake failed: unsupported negotiated protocol: " + protocol);
+                    return;
+                }
+
+                if (kv.containsKey("streaming")) {
+                    streamingEnabled = Boolean.parseBoolean(kv.get("streaming"));
+                }
+                if (kv.containsKey("maxpayload")) {
+                    Integer parsed = parseIntSafe(kv.get("maxpayload"));
+                    if (parsed != null && parsed > 0) {
+                        maxPayloadBytes = parsed;
                     }
+                }
+                if (kv.containsKey("connid")) {
+                    connId = kv.get("connid");
+                }
+                if (connId == null || connId.trim().isEmpty()) {
+                    System.err.println("Handshake failed: CONFIG missing connId");
+                    return;
                 }
 
                 if (binary) {
@@ -320,10 +330,8 @@ public class SleuthLauncher {
                         binaryIn = new DataInputStream(in);
                         binaryOut = new DataOutputStream(out);
                     } else {
-                        System.err.println("Binary upgrade failed, falling back to framed/legacy mode.");
-                        binary = false;
-                        framed = config.isFramedProtocolEnabled();
-                        protocol = framed ? "framed" : "legacy";
+                        System.err.println("Binary upgrade failed: expected OK but got: " + ok);
+                        return;
                     }
                 }
 
@@ -350,11 +358,11 @@ public class SleuthLauncher {
                                              "tt".equals(commandName) ||
                                              "stack".equals(commandName));
 
-                        if (binary && binaryIn != null && binaryOut != null) {
-                            String signed = securityManager.signCommandV2(command, System.currentTimeMillis(), generateNonce(), connId);
-                            BinaryFrameCodec.writeFrame(binaryOut, BinaryFrame.request(signed, stream), maxPayloadBytes);
-                            while (true) {
-                                BinaryFrame frame = BinaryFrameCodec.readFrame(binaryIn, maxPayloadBytes);
+	                        if (binary && binaryIn != null && binaryOut != null) {
+	                            String signed = securityManager.signCommand(command, System.currentTimeMillis(), generateNonce(), connId);
+	                            BinaryFrameCodec.writeFrame(binaryOut, BinaryFrame.request(signed, stream), maxPayloadBytes);
+	                            while (true) {
+	                                BinaryFrame frame = BinaryFrameCodec.readFrame(binaryIn, maxPayloadBytes);
                                 if (frame == null) {
                                     break;
                                 }
@@ -364,15 +372,15 @@ public class SleuthLauncher {
                                     System.err.print(frame.getPayloadUtf8());
                                 } else if (frame.getType() == BinaryFrame.Type.END) {
                                     break;
-                                }
-                            }
-                        } else if (framed) {
-                            String signed = securityManager.signCommandV2(command, System.currentTimeMillis(), generateNonce(), connId);
-                            String outbound = stream ? "STREAM " + signed : "CMD " + signed;
-                            Utf8LineCodec.writeLine(out, outbound, true);
+	                                }
+	                            }
+	                        } else {
+	                            String signed = securityManager.signCommand(command, System.currentTimeMillis(), generateNonce(), connId);
+	                            String outbound = stream ? "STREAM " + signed : "CMD " + signed;
+	                            Utf8LineCodec.writeLine(out, outbound, true);
 
-                            while (true) {
-                                Frame frame = FrameCodec.readFrame(in, maxLineBytes);
+	                            while (true) {
+	                                Frame frame = FrameCodec.readFrame(in, maxLineBytes);
                                 if (frame == null) {
                                     break;
                                 }
@@ -380,46 +388,11 @@ public class SleuthLauncher {
                                     System.out.println(frame.getPayload());
                                 } else if (frame.getType() == Frame.Type.ERR) {
                                     System.err.println(frame.getPayload());
-                                } else if (frame.getType() == Frame.Type.END) {
-                                    break;
-                                }
-                            }
-                        } else {
-                            String signed = securityManager.signCommandV2(command, System.currentTimeMillis(), generateNonce(), connId);
-                            Utf8LineCodec.writeLine(out, signed, true);
-
-                            // Legacy mode: prefer END marker when server emits it (newer agents);
-                            // otherwise fall back to short read-timeout heuristic for older agents.
-                            StringBuilder response = new StringBuilder();
-                            int originalTimeout = socket.getSoTimeout();
-                            boolean sawEnd = false;
-                            try {
-                                socket.setSoTimeout(200);
-                                while (true) {
-                                    try {
-                                        String line = Utf8LineCodec.readLine(in, maxLineBytes);
-                                        if (line == null) {
-                                            break;
-                                        }
-                                        if ("END".equals(line)) {
-                                            sawEnd = true;
-                                            break;
-                                        }
-                                        response.append(line).append("\n");
-                                    } catch (java.net.SocketTimeoutException timeout) {
-                                        if (sawEnd) {
-                                            break;
-                                        }
-                                        // No END seen yet; assume server is legacy and response finished.
-                                        break;
-                                    }
-                                }
-                            } finally {
-                                socket.setSoTimeout(originalTimeout);
-                            }
-
-                            System.out.print(response.toString());
-                        }
+	                                } else if (frame.getType() == Frame.Type.END) {
+	                                    break;
+	                                }
+	                            }
+	                        }
 
                         if ("quit".equalsIgnoreCase(command)) {
                             break;
@@ -458,14 +431,17 @@ public class SleuthLauncher {
         return v;
     }
 
-    private static String buildHelloLine(String preferredProtocol, String connId) {
-        String requested = preferredProtocol != null ? preferredProtocol.trim().toLowerCase() : "legacy";
-        String base = "HELLO v=1 protocols=binary,framed,legacy protocol=" + requested;
-        if (connId != null && !connId.trim().isEmpty()) {
-            return base + " connId=" + connId.trim();
-        }
-        return base;
-    }
+	    private static String buildHelloLine(String preferredProtocol, String connId) {
+	        String requested = preferredProtocol != null ? preferredProtocol.trim().toLowerCase() : "framed";
+	        if (!"binary".equals(requested) && !"framed".equals(requested)) {
+	            requested = "framed";
+	        }
+	        String base = "HELLO v=1 protocols=binary,framed protocol=" + requested;
+	        if (connId != null && !connId.trim().isEmpty()) {
+	            return base + " connId=" + connId.trim();
+	        }
+	        return base;
+	    }
 
     private static Map<String, String> parseHandshakeKv(String line) {
         Map<String, String> kv = new HashMap<>();

@@ -91,10 +91,9 @@
 
 #### Scenario: SIG 包装命令校验
 前置：`security.mode=hmac`  
-- 客户端以 `SIG v=2 ts=... nonce=... sid=<connId> sig=... cmd=...` 发送命令
+- 客户端以 `SIG ts=... nonce=... sid=<connId> sig=... cmd=...` 发送命令（不允许 `v` 字段）
 - 服务端验证 HMAC-SHA256 签名
 - 对 nonce 做去重与窗口期校验，拒绝重放
-- 当 `protocol.handshake.enabled=true` 时，服务端会要求先完成 `HELLO/CONFIG` 握手，并强制使用 `v=2`（sid 绑定到握手协商的 connId）
 
 ### Requirement: 高风险命令二次确认（防误触 + 可审计）
 **Module:** security / command
@@ -141,3 +140,10 @@ N/A
 - 202602021233_quality_audit_more_issues (history/2026-02/202602021233_quality_audit_more_issues/) - 危险命令标记/限流与关键安全边界单测补齐
 - 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - 流式输出治理统一化、插件 ServiceLoader 默认禁用与文件路径校验一致性
 - 202602051743_exception_handling_logging (history/2026-02/202602051743_exception_handling_logging/) - 审计控制台镜像语义收敛（stderr-only）+ 异常最小披露规范补充
+- 202602081959_remove_compat_paths (history/2026-02/202602081959_remove_compat_paths/) - SIG 单一格式收敛（禁用 v 字段）与兼容路径清理
+
+## 2026-02-08 HMAC 签名强制升级
+
+- 当 `security.mode=hmac` 时：只接受单一 `SIG` 格式（不允许 `v` 字段）。
+- `SIG` 必须包含 `sid`，且必须与握手协商得到的 `connId` 一致（签名绑定）。
+- 携带 `v` 字段或缺失 `sid` 的旧格式会被显式拒绝。
