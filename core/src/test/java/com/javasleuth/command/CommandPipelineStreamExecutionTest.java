@@ -2,6 +2,7 @@ package com.javasleuth.command;
 
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.security.AuthorizationManager;
+import com.javasleuth.security.CommandMeta;
 import com.javasleuth.security.InputValidator;
 import org.junit.Test;
 
@@ -128,4 +129,3 @@ public class CommandPipelineStreamExecutionTest {
         }
     }
 }
-

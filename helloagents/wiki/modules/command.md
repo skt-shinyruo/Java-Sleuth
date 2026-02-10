@@ -6,7 +6,8 @@
 ## Module Overview
 - **Responsibility:** 命令解析、校验、执行、输出
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-08
+- **Last Updated:** 2026-02-10
+- **Build Module:** core（runtime，上层模块，依赖 foundation）
 
 ## Specifications
 
@@ -105,6 +106,7 @@
 - 支持 `plugins.allowlist.sha256`（可选）：不在 allowlist 或 sha256 不匹配的 jar 会被拒绝并记录审计
 - 冲突策略可配置（prefer-builtin / prefer-plugin / fail）
 - 插件命令注册必须提供 CommandMeta（否则拒绝注册），避免插件绕过权限策略或产生“行为漂移”
+  - `CommandMeta` 模型位于 `foundation` 的 `com.javasleuth.security` 包，由 `security` 作为 SSOT 下沉（避免 `security -> command` 依赖）
 - shutdown 时关闭插件 URLClassLoader，降低 Windows JAR 锁定与句柄泄露风险
 
 #### Scenario: 分帧与流式输出
@@ -142,7 +144,8 @@
 - stack：新增 `stack <class-pattern> <method-pattern>` 方法触发调用栈追踪（支持 `-n/-t/--depth/--bg`）；保留原 `stack monitor/dump/analyze/...` 线程栈采样分析
 - jobs：list/tail/stop 管理后台任务
 - reset：一键清理增强与会话并回滚 retransform
-- stop/session/perm/version/logger/dump/getstatic/vmoption：诊断与管理补齐
+- stop：通过注入的 shutdown hook 触发 Agent shutdown（避免 `command -> agent` 反向依赖）
+- session/perm/version/logger/dump/getstatic/vmoption：诊断与管理补齐
 - vmtool（lite）：实例追踪（track/instances/inspect）+ 受控方法调用（invoke/invoke-static，需二次确认）+ histogram（HotSpot best-effort）
 - `StackCommand`/`TtCommand` 子模块化：解析/会话/执行/格式化下沉到 `com.javasleuth.command.impl.stack.*` 与 `com.javasleuth.command.impl.tt.*`，主命令仅保留 subcommand 分发与 jobs 提交
 
@@ -180,6 +183,7 @@ N/A
 - 202602081451_legacy_text_end_marker_sync (history/2026-02/202602081451_legacy_text_end_marker_sync/) - （已废弃）legacy 文本协议 sync 回包 END marker 边界稳定化
 - 202602081630_drop_legacy_protocol (history/2026-02/202602081630_drop_legacy_protocol/) - 移除 legacy 文本协议，统一使用 framed/binary
 - 202602081959_remove_compat_paths (history/2026-02/202602081959_remove_compat_paths/) - 协议兼容语义清理（仅保留新协议）+ binary 帧实现补齐
+- 202602101815_layering_modularization (history/2026-02/202602101815_layering_modularization/) - 分层边界恢复：CommandMeta 下沉 + stop 解耦（分层主要依赖 Maven 模块边界）
 
 ## 2026-02-08 协议入口收敛
 

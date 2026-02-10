@@ -8,6 +8,7 @@ import com.javasleuth.command.protocol.Utf8LineCodec;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.security.AuthenticationManager;
 import com.javasleuth.security.AuthorizationManager;
+import com.javasleuth.security.CommandMeta;
 import com.javasleuth.security.InputValidator;
 import com.javasleuth.security.RequestSecurityManager;
 import org.junit.Test;

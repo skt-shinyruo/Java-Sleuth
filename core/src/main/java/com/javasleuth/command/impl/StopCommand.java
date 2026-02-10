@@ -1,7 +1,7 @@
 package com.javasleuth.command.impl;
 
-import com.javasleuth.agent.SleuthAgent;
 import com.javasleuth.command.Command;
+import com.javasleuth.util.SleuthLogger;
 
 /**
  * Stop the agent inside the target JVM.
@@ -9,15 +9,28 @@ import com.javasleuth.command.Command;
  * <p>Note: this will shutdown the command processor and remove the transformer.
  */
 public class StopCommand implements Command {
+    private final Runnable shutdownHook;
+
+    public StopCommand(Runnable shutdownHook) {
+        this.shutdownHook = shutdownHook;
+    }
+
     @Override
     public String execute(String[] args) {
+        if (shutdownHook == null) {
+            return "Stop is not supported in this runtime.";
+        }
         Thread t = new Thread(() -> {
             try {
                 Thread.sleep(100);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
-            SleuthAgent.shutdown();
+            try {
+                shutdownHook.run();
+            } catch (Throwable e) {
+                SleuthLogger.warn("Stop command shutdown hook failed: " + e.getMessage(), e);
+            }
         }, "sleuth-stop");
         t.setDaemon(true);
         t.start();
@@ -29,4 +42,3 @@ public class StopCommand implements Command {
         return "Stop Java-Sleuth agent inside target JVM (shutdown command server and transformer)";
     }
 }
-

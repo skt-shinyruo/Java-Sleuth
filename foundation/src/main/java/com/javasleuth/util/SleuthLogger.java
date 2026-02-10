@@ -1,8 +1,5 @@
 package com.javasleuth.util;
 
-import com.javasleuth.command.CommandContext;
-import com.javasleuth.command.CommandContextHolder;
-import com.javasleuth.config.ProductionConfig;
 import java.io.PrintStream;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -21,6 +18,14 @@ public final class SleuthLogger {
     private static final String SYS_PROP_LOG_LEVEL = SYS_PROP_PREFIX + "logging.level";
     private static final String SYS_PROP_CONSOLE_ENABLED = SYS_PROP_PREFIX + "logging.console.enabled";
 
+    public interface ConfigProvider {
+        String getString(String key, String defaultValue);
+
+        boolean getBoolean(String key, boolean defaultValue);
+
+        boolean isLoading();
+    }
+
     public enum Level {
         TRACE,
         DEBUG,
@@ -32,9 +37,13 @@ public final class SleuthLogger {
     private static final DateTimeFormatter TIMESTAMP_FORMATTER =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
 
-    private static volatile ProductionConfig config;
+    private static volatile ConfigProvider configProvider;
 
     private SleuthLogger() {}
+
+    public static void setConfigProvider(ConfigProvider provider) {
+        configProvider = provider;
+    }
 
     public static boolean isEnabled(Level level) {
         return level.ordinal() >= currentLevel().ordinal();
@@ -203,14 +212,15 @@ public final class SleuthLogger {
         if (sysLevel != null) {
             return sysLevel;
         }
-        if (isProductionConfigLoading()) {
-            return Level.INFO;
-        }
+
         String configured = null;
-        try {
-            configured = getConfig().getLoggingLevel();
-        } catch (Exception ignore) {
-            // ignore
+        ConfigProvider provider = configProvider;
+        if (provider != null && !isProviderLoading(provider)) {
+            try {
+                configured = provider.getString("logging.level", null);
+            } catch (Exception ignore) {
+                // ignore
+            }
         }
         return parseLevel(configured, Level.INFO);
     }
@@ -235,50 +245,34 @@ public final class SleuthLogger {
         if (sys != null) {
             return Boolean.parseBoolean(sys);
         }
-        if (isProductionConfigLoading()) {
-            return true;
-        }
-        try {
-            return getConfig().getBoolean("logging.console.enabled", true);
-        } catch (Exception ignore) {
-            return true;
-        }
-    }
 
-    private static boolean isProductionConfigLoading() {
-        try {
-            return ProductionConfig.isLoading();
-        } catch (Exception ignore) {
-            return false;
+        ConfigProvider provider = configProvider;
+        if (provider != null) {
+            if (isProviderLoading(provider)) {
+                return true;
+            }
+            try {
+                return provider.getBoolean("logging.console.enabled", true);
+            } catch (Exception ignore) {
+                return true;
+            }
         }
+
+        return true;
     }
 
     private static String formatContext() {
-        CommandContext ctx = null;
-        try {
-            ctx = CommandContextHolder.get();
-        } catch (Exception ignore) {
-            // ignore
-        }
-
         String clientId = null;
         String sessionId = null;
         String connId = null;
         String command = null;
 
-        if (ctx != null) {
-            clientId = ctx.getClientId();
-            sessionId = ctx.getSessionId();
-            connId = ctx.getConnId();
-            command = ctx.getCommandName();
-        } else {
-            SleuthLogContext tl = SleuthLogContext.get();
-            if (tl != null) {
-                clientId = tl.getClientId();
-                sessionId = tl.getSessionId();
-                connId = tl.getConnId();
-                command = tl.getCommand();
-            }
+        SleuthLogContext tl = SleuthLogContext.get();
+        if (tl != null) {
+            clientId = tl.getClientId();
+            sessionId = tl.getSessionId();
+            connId = tl.getConnId();
+            command = tl.getCommand();
         }
 
         StringBuilder sb = new StringBuilder(64);
@@ -337,12 +331,14 @@ public final class SleuthLogger {
         return sb.toString();
     }
 
-    private static ProductionConfig getConfig() {
-        ProductionConfig c = config;
-        if (c == null) {
-            c = ProductionConfig.getInstance();
-            config = c;
+    private static boolean isProviderLoading(ConfigProvider provider) {
+        if (provider == null) {
+            return false;
         }
-        return c;
+        try {
+            return provider.isLoading();
+        } catch (Exception ignore) {
+            return false;
+        }
     }
 }

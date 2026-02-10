@@ -2,7 +2,7 @@ package com.javasleuth.command.pipeline;
 
 import com.javasleuth.command.CommandArgs;
 import com.javasleuth.command.CommandContext;
-import com.javasleuth.command.CommandMeta;
+import com.javasleuth.security.CommandMeta;
 import com.javasleuth.command.CommandRegistry;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.security.AuthorizationManager;
@@ -164,4 +164,3 @@ public final class PrecheckPipeline {
         }
     }
 }
-

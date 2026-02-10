@@ -1,6 +1,5 @@
 package com.javasleuth.security;
 
-import com.javasleuth.command.CommandMeta;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.security.AuthenticationManager.UserRole;
 import java.util.ArrayList;

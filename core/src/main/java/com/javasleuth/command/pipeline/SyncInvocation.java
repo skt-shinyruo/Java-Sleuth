@@ -2,8 +2,8 @@ package com.javasleuth.command.pipeline;
 
 import com.javasleuth.command.Command;
 import com.javasleuth.command.CommandContext;
-import com.javasleuth.command.CommandMeta;
 import com.javasleuth.command.CommandRegistry;
+import com.javasleuth.security.CommandMeta;
 
 public final class SyncInvocation {
     private final CommandRegistry.Entry entry;
@@ -60,4 +60,3 @@ public final class SyncInvocation {
         return timeoutMs;
     }
 }
-

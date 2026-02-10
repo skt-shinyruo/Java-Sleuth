@@ -121,7 +121,7 @@ public class CommandPipeline {
         this.executionEngine = new CommandExecutionEngine(config);
 
         this.syncChain = PipelineChain.of(
-            inv -> executionEngine.executeSync(inv.getCommand(), inv.getArgs(), inv.getMeta(), inv.getTimeoutMs()),
+            inv -> executionEngine.executeSync(inv.getCommand(), inv.getArgs(), inv.getMeta(), inv.getTimeoutMs(), inv.getContext()),
             Arrays.asList(
                 new OutputSanitizeInterceptor(inputValidator),
                 new CacheInterceptor()
@@ -130,7 +130,7 @@ public class CommandPipeline {
 
         this.streamChain = PipelineChain.of(
             inv -> {
-                executionEngine.executeStream(inv.getCommand(), inv.getArgs(), inv.getMeta(), inv.getTimeoutMs(), inv.getSink());
+                executionEngine.executeStream(inv.getCommand(), inv.getArgs(), inv.getMeta(), inv.getTimeoutMs(), inv.getSink(), inv.getContext());
                 return StreamResult.ok();
             },
             Arrays.asList(new GuardedStreamInterceptor(inputValidator))

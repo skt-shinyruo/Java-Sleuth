@@ -4,8 +4,8 @@ import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.security.AuditLogger;
+import com.javasleuth.security.CommandMeta;
 import com.javasleuth.util.SleuthLogger;
-import com.javasleuth.security.AuthorizationManager;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -55,16 +55,19 @@ public class CommandRegistry {
     private final ProductionConfig config;
     private final MetricsCollector metricsCollector;
     private final AuditLogger auditLogger;
+    private final Runnable shutdownHook;
     private volatile URLClassLoader pluginClassLoader;
 
     public CommandRegistry(Instrumentation instrumentation,
                            SleuthClassFileTransformer transformer,
                            MetricsCollector metricsCollector,
                            ProductionConfig config,
-                           AuditLogger auditLogger) {
+                           AuditLogger auditLogger,
+                           Runnable shutdownHook) {
         this.config = config;
         this.metricsCollector = metricsCollector;
         this.auditLogger = auditLogger;
+        this.shutdownHook = shutdownHook;
         loadProviders(instrumentation, transformer, metricsCollector, auditLogger);
         registerHelpCommand();
     }
@@ -103,7 +106,7 @@ public class CommandRegistry {
                                MetricsCollector metricsCollector,
                                AuditLogger auditLogger) {
         List<CommandProvider> providers = new ArrayList<>();
-        providers.add(new BuiltinCommandProvider(instrumentation, transformer, metricsCollector, config, auditLogger));
+        providers.add(new BuiltinCommandProvider(instrumentation, transformer, metricsCollector, config, auditLogger, shutdownHook));
 
         if (config.isPluginsServiceLoaderEnabled()) {
             ServiceLoader<CommandProvider> loader = ServiceLoader.load(CommandProvider.class);

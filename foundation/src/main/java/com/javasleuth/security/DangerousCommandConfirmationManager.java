@@ -1,6 +1,5 @@
 package com.javasleuth.security;
 
-import com.javasleuth.command.CommandMeta;
 import com.javasleuth.config.ProductionConfig;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;

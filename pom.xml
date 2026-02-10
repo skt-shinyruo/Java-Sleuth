@@ -14,6 +14,7 @@
     <description>Parent/aggregator for Java-Sleuth modules</description>
 
     <modules>
+        <module>foundation</module>
         <module>core</module>
         <module>examples</module>
     </modules>

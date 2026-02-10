@@ -7,6 +7,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 ## [Unreleased]
 
 ### Added
+- 分层边界守护：新增 `foundation` Maven 模块（承载 util/config/security/data），以编译期模块边界阻断低层反向依赖高层
 - 插件化命令注册与分帧协议基础设施
 - Docker 演示镜像：内置 `EnhancedTestApplication`，支持 `docker exec -it` 纯交互 attach 与命令演示
 - auth 命令与会话角色绑定
@@ -54,6 +55,8 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 教学文档补充：命令触发插桩与回滚链路（watch/trace/reset/stop）
 
 ### Changed
+- 关键依赖环拆除：`CommandMeta` 下沉到 `com.javasleuth.security`（SSOT），`security` 不再依赖 `command`；`SleuthLogger` 通过 `SleuthLogContext` 注入上下文，避免 `util -> command`；`stop` 通过注入的 shutdown hook 触发 Agent shutdown，避免 `command -> agent`
+- 移除 ArchUnit 架构守护测试与依赖（按团队偏好，避免测试代码承载分层守护逻辑）
 - 示例/测试应用从 main 源集迁移到 `examples/`，发布 jar/fat-jar 不再包含 `com.javasleuth.test.*`（Docker demo 与脚本改为运行 examples 编译产物）
 - Maven 多模块化：根工程改为 parent/aggregator（`packaging=pom`），主产物迁移到 `core/` 模块，示例应用作为 `examples/` 模块独立构建；脚本/Docker/文档同步更新
 - CommandProcessor 改为注册表 + 统一执行管线

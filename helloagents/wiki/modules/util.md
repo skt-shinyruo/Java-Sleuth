@@ -6,7 +6,8 @@
 ## Module Overview
 - **Responsibility:** PerformanceOptimizer/MemoryOptimizer/JvmUtils + 诊断辅助工具
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-05
+- **Last Updated:** 2026-02-10
+- **Build Module:** foundation（低层基础模块）
 
 ## Specifications
 
@@ -49,8 +50,8 @@
 
 #### Scenario: 统一上下文字段（clientId/sessionId/connId/command）
 前置：命令执行链路已建立 `CommandContext`  
-- 处于命令处理线程时，`SleuthLogger` 自动追加上下文字段（脱敏 sessionId/connId），便于线上聚合与检索
-- 非命令执行阶段可通过 `SleuthLogContext` 写入连接级上下文（并在连接结束时 clear，避免线程池复用导致泄露）
+- `SleuthLogger` 仅从 `SleuthLogContext`（ThreadLocal）读取上下文字段（脱敏 sessionId/connId），便于线上聚合与检索
+- `command` 层在执行入口/链路中负责写入 `SleuthLogContext` 并在请求结束时 clear（避免线程池复用导致泄露）
 
 #### Scenario: 单测默认降噪
 前置：`mvn test`  
@@ -72,7 +73,7 @@ N/A
 - RingBuffer：jobs/tt 等能力复用的环形缓冲
 - SleuthValueFormatter：安全可读化（限深/限长/脱敏）
 - SleuthValueSnapshotter / SleuthSnapshotValue：采集阶段“值快照”（避免 watch/tt 强引用复杂对象图导致内存压力）
-- SleuthConditionEvaluator：受控条件过滤（lhs:op:rhs，支持 cost 单位）
+- SleuthLogContext：ThreadLocal 日志上下文（由上层写入，util 侧只读）
 - SleuthObjectInspector：对象字段检视（best-effort，仅字段读取，限深/限长/脱敏）
 - StringUtils：Java 8 兼容字符串工具（替代 `String.repeat`），并补充 `isBlank`
 - ReflectionUtils：Java 8 兼容反射访问判断（替代 `Field.canAccess`）
@@ -85,3 +86,4 @@ N/A
 - 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - LoadedClassResolver（多 ClassLoader 选类/回滚稳定性）
 - 202602042257_vmtool_instance_diagnostics (history/2026-02/202602042257_vmtool_instance_diagnostics/) - SleuthObjectInspector（对象字段检视）
 - 202602051743_exception_handling_logging (history/2026-02/202602051743_exception_handling_logging/) - SleuthLogger throwable 可控格式化与审计控制台镜像语义收敛
+- 202602101815_layering_modularization (history/2026-02/202602101815_layering_modularization/) - 分层边界恢复：util 下沉到 foundation + 通过 SleuthLogContext 解耦 command 依赖

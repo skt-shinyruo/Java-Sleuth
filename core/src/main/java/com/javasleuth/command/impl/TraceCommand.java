@@ -15,7 +15,7 @@ import com.javasleuth.monitor.TraceInterceptor;
 import com.javasleuth.data.TraceResult;
 import com.javasleuth.command.session.ClientSession;
 import com.javasleuth.util.LoadedClassResolver;
-import com.javasleuth.util.SleuthConditionEvaluator;
+import com.javasleuth.command.util.SleuthConditionEvaluator;
 import com.javasleuth.util.SleuthLogger;
 import com.javasleuth.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;

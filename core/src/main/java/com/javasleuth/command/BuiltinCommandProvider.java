@@ -5,6 +5,7 @@ import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.security.AuditLogger;
+import com.javasleuth.security.CommandMeta;
 import com.javasleuth.security.AuthenticationManager.UserRole;
 import java.lang.instrument.Instrumentation;
 import java.util.HashMap;
@@ -16,17 +17,20 @@ public class BuiltinCommandProvider implements CommandProvider {
     private final MetricsCollector metricsCollector;
     private final ProductionConfig config;
     private final AuditLogger auditLogger;
+    private final Runnable shutdownHook;
 
     public BuiltinCommandProvider(Instrumentation instrumentation,
                                   SleuthClassFileTransformer transformer,
                                   MetricsCollector metricsCollector,
                                   ProductionConfig config,
-                                  AuditLogger auditLogger) {
+                                  AuditLogger auditLogger,
+                                  Runnable shutdownHook) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.metricsCollector = metricsCollector;
         this.config = config;
         this.auditLogger = auditLogger;
+        this.shutdownHook = shutdownHook;
     }
 
     @Override
@@ -81,7 +85,7 @@ public class BuiltinCommandProvider implements CommandProvider {
 
         commands.put("quit", new QuitCommand());
         commands.put("auth", new AuthCommand());
-        commands.put("stop", new StopCommand());
+        commands.put("stop", new StopCommand(shutdownHook));
 
         return commands;
     }

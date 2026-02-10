@@ -1,4 +1,4 @@
-package com.javasleuth.command;
+package com.javasleuth.security;
 
 import com.javasleuth.security.AuthenticationManager.UserRole;
 import java.util.Collections;

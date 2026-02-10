@@ -33,6 +33,7 @@ public class CommandProcessor {
     private static final SecureRandom SECRET_RANDOM = new SecureRandom();
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
+    private final Runnable shutdownHook;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicLong commandCounter = new AtomicLong(0);
     private final ThreadPoolExecutor clientExecutor;
@@ -51,9 +52,35 @@ public class CommandProcessor {
     private ServerSocket serverSocket;
 
     public CommandProcessor(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
+        this(instrumentation, transformer, null);
+    }
+
+    public CommandProcessor(Instrumentation instrumentation, SleuthClassFileTransformer transformer, Runnable shutdownHook) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
+        this.shutdownHook = shutdownHook;
         this.config = ProductionConfig.getInstance();
+        try {
+            final ProductionConfig cfg = this.config;
+            SleuthLogger.setConfigProvider(new SleuthLogger.ConfigProvider() {
+                @Override
+                public String getString(String key, String defaultValue) {
+                    return cfg.getString(key, defaultValue);
+                }
+
+                @Override
+                public boolean getBoolean(String key, boolean defaultValue) {
+                    return cfg.getBoolean(key, defaultValue);
+                }
+
+                @Override
+                public boolean isLoading() {
+                    return ProductionConfig.isLoading();
+                }
+            });
+        } catch (Exception ignore) {
+            // 忽略
+        }
 
         // Configure JobManager retention from config (best-effort).
         try {
@@ -94,7 +121,7 @@ public class CommandProcessor {
         } catch (Exception e) {
             SleuthLogger.debug("Failed to record initial audit dropped count: " + e.getMessage(), e);
         }
-        this.registry = new CommandRegistry(instrumentation, transformer, metricsCollector, config, auditLogger);
+        this.registry = new CommandRegistry(instrumentation, transformer, metricsCollector, config, auditLogger, shutdownHook);
         this.pipeline = new CommandPipeline(inputValidator, authorizationManager, config);
         this.clientHandler = new CommandClientHandler(
             running,

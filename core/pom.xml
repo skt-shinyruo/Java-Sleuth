@@ -19,6 +19,12 @@
     <description>A lightweight Java diagnostic and monitoring tool inspired by Arthas</description>
 
     <dependencies>
+        <dependency>
+            <groupId>com.javasleuth</groupId>
+            <artifactId>java-sleuth-foundation</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- ASM for bytecode manipulation -->
         <dependency>
             <groupId>org.ow2.asm</groupId>
@@ -163,4 +169,3 @@
     </build>
 
 </project>
-

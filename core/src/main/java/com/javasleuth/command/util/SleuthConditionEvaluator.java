@@ -1,4 +1,4 @@
-package com.javasleuth.util;
+package com.javasleuth.command.util;
 
 import com.javasleuth.data.WatchResult;
 import com.javasleuth.monitor.TraceAggregator;

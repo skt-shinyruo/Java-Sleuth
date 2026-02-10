@@ -14,7 +14,7 @@ import com.javasleuth.data.WatchResult;
 import com.javasleuth.command.JobManager;
 import com.javasleuth.command.session.ClientSession;
 import com.javasleuth.util.LoadedClassResolver;
-import com.javasleuth.util.SleuthConditionEvaluator;
+import com.javasleuth.command.util.SleuthConditionEvaluator;
 import com.javasleuth.util.SleuthLogger;
 import com.javasleuth.util.SleuthValueFormatter;
 import com.javasleuth.util.WildcardMatcher;

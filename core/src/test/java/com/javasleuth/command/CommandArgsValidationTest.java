@@ -1,6 +1,7 @@
 package com.javasleuth.command;
 
 import com.javasleuth.security.AuthenticationManager.UserRole;
+import com.javasleuth.security.CommandMeta;
 import java.util.Locale;
 import org.junit.Assert;
 import org.junit.Test;
@@ -105,4 +106,3 @@ public class CommandArgsValidationTest {
         }
     }
 }
-

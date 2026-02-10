@@ -1,11 +1,14 @@
 package com.javasleuth.command.pipeline;
 
 import com.javasleuth.command.Command;
-import com.javasleuth.command.CommandMeta;
+import com.javasleuth.command.CommandContext;
+import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
 import com.javasleuth.command.session.ClientDisconnectedException;
 import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.util.SleuthLogContext;
+import com.javasleuth.security.CommandMeta;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
@@ -56,14 +59,14 @@ public final class CommandExecutionEngine {
         this.commandExecutor = tpe;
     }
 
-    public String executeSync(Command command, String[] args, CommandMeta meta, long timeoutMs) throws Exception {
+    public String executeSync(Command command, String[] args, CommandMeta meta, long timeoutMs, CommandContext context) throws Exception {
         ImpactPermit permit = acquireImpactPermit(meta);
-        return executeWithTimeout(command, args, timeoutMs, permit);
+        return executeWithTimeout(command, args, timeoutMs, permit, context);
     }
 
-    public void executeStream(StreamCommand command, String[] args, CommandMeta meta, long timeoutMs, StreamSink sink) throws Exception {
+    public void executeStream(StreamCommand command, String[] args, CommandMeta meta, long timeoutMs, StreamSink sink, CommandContext context) throws Exception {
         ImpactPermit permit = acquireImpactPermit(meta);
-        executeStreamWithTimeout(command, args, timeoutMs, permit, sink);
+        executeStreamWithTimeout(command, args, timeoutMs, permit, sink, context);
     }
 
     private static final class ImpactPermit {
@@ -167,18 +170,27 @@ public final class CommandExecutionEngine {
         }
     }
 
-    private String executeWithTimeout(Command command, String[] args, long timeoutMs, ImpactPermit permit) throws Exception {
+    private String executeWithTimeout(Command command, String[] args, long timeoutMs, ImpactPermit permit, CommandContext context) throws Exception {
         if (timeoutMs <= 0) {
             try {
+                applyContext(context);
                 return command.execute(args);
             } finally {
+                clearContext();
                 if (permit != null) {
                     permit.release();
                 }
             }
         }
 
-        PermitFutureTask task = new PermitFutureTask(permit, () -> command.execute(args));
+        PermitFutureTask task = new PermitFutureTask(permit, () -> {
+            applyContext(context);
+            try {
+                return command.execute(args);
+            } finally {
+                clearContext();
+            }
+        });
         try {
             commandExecutor.execute(task);
         } catch (RejectedExecutionException rejected) {
@@ -196,7 +208,7 @@ public final class CommandExecutionEngine {
             try {
                 removed = commandExecutor.remove(task);
             } catch (Exception ignore) {
-                // ignore
+                // 忽略
             }
             if (removed && permit != null) {
                 // Task won't run: PermitFutureTask.run() won't execute, release here.
@@ -219,7 +231,7 @@ public final class CommandExecutionEngine {
             try {
                 removed = commandExecutor.remove(task);
             } catch (Exception ignore) {
-                // ignore
+                // 忽略
             }
             if (removed && permit != null) {
                 permit.release();
@@ -228,11 +240,13 @@ public final class CommandExecutionEngine {
         }
     }
 
-    private void executeStreamWithTimeout(StreamCommand command, String[] args, long timeoutMs, ImpactPermit permit, StreamSink sink) throws Exception {
+    private void executeStreamWithTimeout(StreamCommand command, String[] args, long timeoutMs, ImpactPermit permit, StreamSink sink, CommandContext context) throws Exception {
         if (timeoutMs <= 0) {
             try {
+                applyContext(context);
                 command.executeStream(args, sink);
             } finally {
+                clearContext();
                 if (permit != null) {
                     permit.release();
                 }
@@ -241,7 +255,12 @@ public final class CommandExecutionEngine {
         }
 
         PermitFutureTaskVoid task = new PermitFutureTaskVoid(permit, () -> {
-            command.executeStream(args, sink);
+            applyContext(context);
+            try {
+                command.executeStream(args, sink);
+            } finally {
+                clearContext();
+            }
             return null;
         });
         try {
@@ -261,7 +280,7 @@ public final class CommandExecutionEngine {
             try {
                 removed = commandExecutor.remove(task);
             } catch (Exception ignore) {
-                // ignore
+                // 忽略
             }
             if (removed && permit != null) {
                 // Task won't run: PermitFutureTaskVoid.run() won't execute, release here.
@@ -287,7 +306,7 @@ public final class CommandExecutionEngine {
             try {
                 removed = commandExecutor.remove(task);
             } catch (Exception ignore) {
-                // ignore
+                // 忽略
             }
             if (removed && permit != null) {
                 permit.release();
@@ -295,5 +314,34 @@ public final class CommandExecutionEngine {
             throw new Exception("Command interrupted");
         }
     }
-}
 
+    private static void applyContext(CommandContext context) {
+        if (context == null) {
+            return;
+        }
+        try {
+            CommandContextHolder.set(context);
+        } catch (Exception ignore) {
+            // 忽略
+        }
+        try {
+            SleuthLogContext.setConnection(context.getClientId(), context.getSessionId(), context.getConnId());
+            SleuthLogContext.setCommand(context.getCommandName());
+        } catch (Exception ignore) {
+            // 忽略
+        }
+    }
+
+    private static void clearContext() {
+        try {
+            CommandContextHolder.clear();
+        } catch (Exception ignore) {
+            // 忽略
+        }
+        try {
+            SleuthLogContext.clear();
+        } catch (Exception ignore) {
+            // 忽略
+        }
+    }
+}

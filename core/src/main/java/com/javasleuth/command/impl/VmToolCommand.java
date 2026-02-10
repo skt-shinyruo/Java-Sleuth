@@ -3,7 +3,7 @@ package com.javasleuth.command.impl;
 import com.javasleuth.command.Command;
 import com.javasleuth.command.CommandContext;
 import com.javasleuth.command.CommandContextHolder;
-import com.javasleuth.command.CommandMeta;
+import com.javasleuth.security.CommandMeta;
 import com.javasleuth.command.session.ClientSession;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;

@@ -1,10 +1,10 @@
 package com.javasleuth.command.pipeline;
 
 import com.javasleuth.command.CommandContext;
-import com.javasleuth.command.CommandMeta;
 import com.javasleuth.command.CommandRegistry;
 import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
+import com.javasleuth.security.CommandMeta;
 
 public final class StreamInvocation {
     private final CommandRegistry.Entry entry;
@@ -72,4 +72,3 @@ public final class StreamInvocation {
         return new StreamInvocation(entry, command, meta, commandName, args, context, timeoutMs, newSink);
     }
 }
-

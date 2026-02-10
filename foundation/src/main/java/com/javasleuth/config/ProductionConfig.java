@@ -1,6 +1,5 @@
 package com.javasleuth.config;
 
-import com.javasleuth.util.SleuthLogger;
 import java.io.*;
 import java.lang.management.ManagementFactory;
 import java.util.Map;
@@ -52,7 +51,7 @@ public class ProductionConfig {
                 if (configFile.exists()) {
                     try (FileInputStream fileStream = new FileInputStream(configFile)) {
                         properties.load(fileStream);
-                        SleuthLogger.info("Loaded configuration from: " + configFile.getAbsolutePath());
+                        System.err.println("SLEUTH: Loaded configuration from: " + configFile.getAbsolutePath());
                     }
                 }
 
@@ -66,7 +65,7 @@ public class ProductionConfig {
 
                 configLoaded = true;
             } catch (IOException e) {
-                SleuthLogger.warn("Warning: Failed to load configuration: " + e.getMessage(), e);
+                System.err.println("SLEUTH: Warning: Failed to load configuration: " + e.getMessage());
                 // Use defaults
                 setDefaults();
             }

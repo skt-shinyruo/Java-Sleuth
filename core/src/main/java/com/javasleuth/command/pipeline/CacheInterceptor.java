@@ -1,7 +1,7 @@
 package com.javasleuth.command.pipeline;
 
 import com.javasleuth.command.CommandContext;
-import com.javasleuth.command.CommandMeta;
+import com.javasleuth.security.CommandMeta;
 import com.javasleuth.util.PerformanceOptimizer;
 
 public final class CacheInterceptor implements PipelineInterceptor<SyncInvocation, String> {
@@ -38,4 +38,3 @@ public final class CacheInterceptor implements PipelineInterceptor<SyncInvocatio
         }
     }
 }
-

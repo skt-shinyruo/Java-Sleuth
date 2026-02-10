@@ -185,6 +185,26 @@ public class SleuthLauncher {
 
             String agentPath = agentJar.getAbsolutePath();
             ProductionConfig config = ProductionConfig.getInstance();
+            try {
+                SleuthLogger.setConfigProvider(new SleuthLogger.ConfigProvider() {
+                    @Override
+                    public String getString(String key, String defaultValue) {
+                        return config.getString(key, defaultValue);
+                    }
+
+                    @Override
+                    public boolean getBoolean(String key, boolean defaultValue) {
+                        return config.getBoolean(key, defaultValue);
+                    }
+
+                    @Override
+                    public boolean isLoading() {
+                        return ProductionConfig.isLoading();
+                    }
+                });
+            } catch (Exception ignore) {
+                // 忽略
+            }
             String configFile = System.getProperty("sleuth.config.file");
             if (configFile == null || configFile.trim().isEmpty()) {
                 File local = new File("sleuth.properties");

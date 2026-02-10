@@ -28,7 +28,7 @@ public class SleuthAgent {
             transformer = new SleuthClassFileTransformer();
             inst.addTransformer(transformer, true);
 
-            commandProcessor = new CommandProcessor(inst, transformer);
+            commandProcessor = new CommandProcessor(inst, transformer, SleuthAgent::shutdown);
 
             Thread commandThread = new Thread(() -> {
                 commandProcessor.start();

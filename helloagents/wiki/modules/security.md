@@ -6,7 +6,8 @@
 ## Module Overview
 - **Responsibility:** InputValidator/AuditLogger/Auth/AuthZ/SecurityValidator
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-06
+- **Last Updated:** 2026-02-10
+- **Build Module:** foundation（低层基础模块）
 
 ## Specifications
 
@@ -118,6 +119,16 @@
 - `security.impact.high.confirm.enabled`（默认 false）
 - `security.impact.high.concurrent.limit`（默认 1）
 
+### Requirement: 授权与危险命令元信息的 SSOT（CommandMeta）
+**Module:** security（SSOT） / command（提供方）
+权限校验、危险命令治理与审计标签依赖统一的“命令元信息”，避免出现“安全层维护一份映射、命令层维护另一份映射”导致漂移。
+
+#### Scenario: security 不依赖 command 包也能完成治理
+前置：命令被注册到 CommandRegistry  
+- `command` 层在注册命令时必须提供对应 `CommandMeta`（内置命令内置 meta；插件命令不提供 meta 则拒绝注册）
+- `AuthorizationManager` / `DangerousCommandConfirmationManager` 仅依赖 `CommandMeta` 入参完成校验与挑战/确认流程
+- `CommandMeta` 位于低层（`com.javasleuth.security.CommandMeta`），以编译期边界避免 `security -> command` 反向依赖
+
 ### Requirement: 安全默认边界
 **Module:** security
 默认绑定 `server.bind.address=127.0.0.1`，降低默认口令与明文传输的暴露面。
@@ -130,6 +141,7 @@ N/A
 
 ## Dependencies
 - config
+- util
 
 ## Change History
 - 202601281100_init_kb (planned)
@@ -141,6 +153,7 @@ N/A
 - 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - 流式输出治理统一化、插件 ServiceLoader 默认禁用与文件路径校验一致性
 - 202602051743_exception_handling_logging (history/2026-02/202602051743_exception_handling_logging/) - 审计控制台镜像语义收敛（stderr-only）+ 异常最小披露规范补充
 - 202602081959_remove_compat_paths (history/2026-02/202602081959_remove_compat_paths/) - SIG 单一格式收敛（禁用 v 字段）与兼容路径清理
+- 202602101815_layering_modularization (history/2026-02/202602101815_layering_modularization/) - CommandMeta 下沉到 security（SSOT）并消除 security->command 依赖环
 
 ## 2026-02-08 HMAC 签名强制升级
 

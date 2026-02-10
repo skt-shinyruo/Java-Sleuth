@@ -34,6 +34,8 @@ This file records index of all completed changes for traceability and query.
 | 202602081630 | drop_legacy_protocol | Refactor | ✅Completed | history/2026-02/202602081630_drop_legacy_protocol/ |
 | 202602081900 | enforce_new_protocol_only | Refactor | ✅Completed | history/2026-02/202602081900_enforce_new_protocol_only/ |
 | 202602081959 | remove_compat_paths | Refactor | ✅Completed | history/2026-02/202602081959_remove_compat_paths/ |
+| 202602101815 | layering_modularization | Refactor | ✅Completed | history/2026-02/202602101815_layering_modularization/ |
+| 202602102236 | remove_archunit_tests | Refactor | ✅Completed | history/2026-02/202602102236_remove_archunit_tests/ |
 
 ---
 
@@ -70,3 +72,5 @@ This file records index of all completed changes for traceability and query.
 - 202602081630_drop_legacy_protocol (2026-02/202602081630_drop_legacy_protocol/) - 协议收敛：移除 legacy 文本协议，统一使用 framed/binary
 - 202602081900_enforce_new_protocol_only (2026-02/202602081900_enforce_new_protocol_only/) - 强制新协议（无旧实现/旧配置兼容）
 - 202602081959_remove_compat_paths (2026-02/202602081959_remove_compat_paths/) - 协议兼容逻辑彻底移除（仅保留新协议）+ SIG 单一格式收敛
+- 202602101815_layering_modularization (2026-02/202602101815_layering_modularization/) - 分层边界恢复：foundation 下沉 + CommandMeta SSOT + stop 解耦
+- 202602102236_remove_archunit_tests (2026-02/202602102236_remove_archunit_tests/) - 移除 ArchUnit 架构守护测试与依赖（按团队偏好）

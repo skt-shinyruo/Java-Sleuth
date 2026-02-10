@@ -1,5 +1,6 @@
 package com.javasleuth.command;
 
+import com.javasleuth.security.CommandMeta;
 import java.util.Collections;
 import java.util.Map;
 
@@ -12,4 +13,3 @@ public interface CommandProvider {
         return Collections.emptyMap();
     }
 }
-

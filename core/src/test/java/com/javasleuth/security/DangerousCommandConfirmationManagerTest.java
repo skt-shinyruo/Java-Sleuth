@@ -1,6 +1,6 @@
 package com.javasleuth.security;
 
-import com.javasleuth.command.CommandMeta;
+import com.javasleuth.security.CommandMeta;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
