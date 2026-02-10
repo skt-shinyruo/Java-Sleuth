@@ -9,7 +9,7 @@ import com.javasleuth.monitor.TtInterceptor;
 import com.javasleuth.monitor.WatchInterceptor;
 import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.util.PerformanceOptimizer;
-import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.config.ConfigView;
 
 import java.lang.instrument.Instrumentation;
 import java.lang.management.*;
@@ -20,11 +20,13 @@ public class StatusCommand implements Command {
     private final Instrumentation instrumentation;
     private final MetricsCollector metricsCollector;
     private final SleuthClassFileTransformer transformer;
+    private final ConfigView config;
 
-    public StatusCommand(Instrumentation instrumentation, MetricsCollector metricsCollector, SleuthClassFileTransformer transformer) {
+    public StatusCommand(Instrumentation instrumentation, MetricsCollector metricsCollector, SleuthClassFileTransformer transformer, ConfigView config) {
         this.instrumentation = instrumentation;
         this.metricsCollector = metricsCollector;
         this.transformer = transformer;
+        this.config = config;
     }
 
     @Override
@@ -118,20 +120,19 @@ public class StatusCommand implements Command {
         status.append("Active TT Sessions: ").append(TtInterceptor.getActiveTtCount()).append("\n");
 
         // Configuration status
-        ProductionConfig config = ProductionConfig.getInstance();
         status.append("\n-- Configuration Status --\n");
-        status.append("Bind Address: ").append(config.getServerBindAddress()).append("\n");
-        status.append("Server Port: ").append(config.getServerPort()).append("\n");
-        status.append("Max Connections: ").append(config.getMaxConnections()).append("\n");
-        status.append("Cache TTL: ").append(config.getCacheTTL()).append("ms\n");
-        status.append("Protocol Mode: ").append(config.getProtocolMode()).append("\n");
+        status.append("Bind Address: ").append(config.getString("server.bind.address", "127.0.0.1")).append("\n");
+        status.append("Server Port: ").append(config.getInt("server.port", 3658)).append("\n");
+        status.append("Max Connections: ").append(config.getInt("server.max.connections", 10)).append("\n");
+        status.append("Cache TTL: ").append(config.getLong("performance.cache.ttl", 5000)).append("ms\n");
+        status.append("Protocol Mode: ").append(config.getString("protocol.mode", "framed")).append("\n");
         status.append("Handshake Enabled: ").append(true).append("\n");
-        status.append("Security Mode: ").append(config.getSecurityMode()).append("\n");
-        status.append("Input Validation: ").append(config.isInputValidationEnabled() ? "ENABLED" : "DISABLED").append("\n");
-        status.append("Audit Logging: ").append(config.isAuditLoggingEnabled() ? "ENABLED" : "DISABLED").append("\n");
-        status.append("Authorization: ").append(config.isAuthorizationEnabled() ? "ENABLED" : "DISABLED").append("\n");
-        status.append("Metrics Collection: ").append(config.isMetricsEnabled() ? "ENABLED" : "DISABLED").append("\n");
-        status.append("JMX Monitoring: ").append(config.isJmxEnabled() ? "ENABLED" : "DISABLED").append("\n");
+        status.append("Security Mode: ").append(config.getString("security.mode", "off")).append("\n");
+        status.append("Input Validation: ").append(config.getBoolean("security.input.validation", true) ? "ENABLED" : "DISABLED").append("\n");
+        status.append("Audit Logging: ").append(config.getBoolean("security.audit.logging", true) ? "ENABLED" : "DISABLED").append("\n");
+        status.append("Authorization: ").append(config.getBoolean("security.authorization.enabled", false) ? "ENABLED" : "DISABLED").append("\n");
+        status.append("Metrics Collection: ").append(config.getBoolean("monitoring.metrics.enabled", true) ? "ENABLED" : "DISABLED").append("\n");
+        status.append("JMX Monitoring: ").append(config.getBoolean("monitoring.jmx.enabled", true) ? "ENABLED" : "DISABLED").append("\n");
 
         // Garbage Collection status
         List<GarbageCollectorMXBean> gcBeans = ManagementFactory.getGarbageCollectorMXBeans();

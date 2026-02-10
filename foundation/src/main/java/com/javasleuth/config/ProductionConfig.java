@@ -1,28 +1,42 @@
 package com.javasleuth.config;
 
-import java.io.*;
-import java.lang.management.ManagementFactory;
+import java.io.File;
+import java.io.IOException;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.ConcurrentHashMap;
 
-public class ProductionConfig {
-    private static final String CONFIG_FILE = "sleuth.properties";
-    private static final String DEFAULT_CONFIG = "/sleuth-default.properties";
-    private static final String CONFIG_FILE_PROPERTY = "sleuth.config.file";
+public class ProductionConfig implements ConfigView, MutableConfig {
+    private static final String SYS_PROP_PREFIX = "sleuth.";
 
     private final Properties properties;
-    private final ConcurrentHashMap<String, String> runtimeConfig;
+    private final Properties defaultProperties;
+    private final Properties fileProperties;
+    private final File configFile;
+
+    private final SensitiveKeyMasker masker;
+    private final RuntimeConfigStore runtimeStore;
+    private final LogPathResolver logPathResolver;
+    private final ConfigLoader loader;
+    private final ConfigPersister persister;
+
     private volatile boolean configLoaded = false;
 
     private static ProductionConfig instance;
     private static final AtomicBoolean LOADING = new AtomicBoolean(false);
 
     private ProductionConfig() {
-        this.properties = new Properties();
-        this.runtimeConfig = new ConcurrentHashMap<>();
-        loadConfiguration();
+        this.masker = new SensitiveKeyMasker();
+        this.runtimeStore = new RuntimeConfigStore(masker);
+        this.logPathResolver = new LogPathResolver();
+        this.loader = new ConfigLoader();
+        this.persister = new ConfigPersister();
+
+        ConfigLoadResult loaded = loadConfiguration();
+        this.defaultProperties = loaded.getDefaultProperties();
+        this.fileProperties = loaded.getFileProperties();
+        this.properties = loaded.getEffectiveProperties();
+        this.configFile = loaded.getConfigFile();
     }
 
     public static synchronized ProductionConfig getInstance() {
@@ -32,155 +46,15 @@ public class ProductionConfig {
         return instance;
     }
 
-    private void loadConfiguration() {
+    private ConfigLoadResult loadConfiguration() {
         LOADING.set(true);
         try {
-            try {
-                // First load default configuration from resources
-                InputStream defaultStream = getClass().getResourceAsStream(DEFAULT_CONFIG);
-                if (defaultStream != null) {
-                    properties.load(defaultStream);
-                    defaultStream.close();
-                }
-
-                // Then load external configuration file (explicit path > default filename)
-                String explicitConfigPath = System.getProperty(CONFIG_FILE_PROPERTY);
-                File configFile = explicitConfigPath != null && !explicitConfigPath.trim().isEmpty()
-                    ? new File(explicitConfigPath)
-                    : new File(CONFIG_FILE);
-                if (configFile.exists()) {
-                    try (FileInputStream fileStream = new FileInputStream(configFile)) {
-                        properties.load(fileStream);
-                        System.err.println("SLEUTH: Loaded configuration from: " + configFile.getAbsolutePath());
-                    }
-                }
-
-                // Load system properties overrides
-                for (String key : properties.stringPropertyNames()) {
-                    String sysProp = System.getProperty("sleuth." + key);
-                    if (sysProp != null) {
-                        properties.setProperty(key, sysProp);
-                    }
-                }
-
-                configLoaded = true;
-            } catch (IOException e) {
-                System.err.println("SLEUTH: Warning: Failed to load configuration: " + e.getMessage());
-                // Use defaults
-                setDefaults();
-            }
+            ConfigLoadResult loaded = loader.load();
+            configLoaded = true;
+            return loaded;
         } finally {
             LOADING.set(false);
         }
-    }
-
-    private void setDefaults() {
-        // Server configuration
-        properties.setProperty("server.bind.address", "127.0.0.1");
-        properties.setProperty("server.port", "3658");
-        properties.setProperty("server.max.connections", "10");
-        // Client accept/handling executor queue (backpressure + memory bound)
-        properties.setProperty("server.executor.queue.capacity", "50");
-        properties.setProperty("server.connection.timeout", "30000");
-        properties.setProperty("server.socket.timeout", "1000");
-
-        // Performance configuration
-        properties.setProperty("performance.cache.ttl", "5000");
-        properties.setProperty("performance.thread.pool.core", "4");
-        properties.setProperty("performance.thread.pool.max", "16");
-        // Dedicated command execution executor (avoid unbounded newCachedThreadPool)
-        properties.setProperty("performance.command.executor.core", properties.getProperty("performance.thread.pool.core", "4"));
-        properties.setProperty("performance.command.executor.max", properties.getProperty("performance.thread.pool.max", "16"));
-        properties.setProperty("performance.command.executor.queue.capacity", "200");
-        properties.setProperty("performance.command.timeout", "60000");
-        properties.setProperty("performance.command.timeout.max", "300000");
-        properties.setProperty("performance.maintenance.force_gc", "false");
-
-        // Enhancement failure strategy (cooldown + retry, avoid silent disable)
-        properties.setProperty("enhancement.failure.cooldown.ms", "30000");
-        properties.setProperty("enhancement.failure.log.interval.ms", "60000");
-
-        // Job retention configuration
-        properties.setProperty("jobs.max", "200");
-        properties.setProperty("jobs.ttl.ms", "3600000");
-        properties.setProperty("jobs.output.max.bytes", "262144");
-        // Background job execution limits (backpressure + stability)
-        properties.setProperty("jobs.max.running", "4");
-        properties.setProperty("jobs.queue.capacity", "20");
-
-        // Security configuration
-        properties.setProperty("security.input.validation", "true");
-        properties.setProperty("security.audit.logging", "true");
-        properties.setProperty("security.max.command.length", "1000");
-        properties.setProperty("security.allowed.commands", "*");
-        properties.setProperty("security.authorization.enabled", "false");
-        properties.setProperty("security.anonymous.viewer", "true");
-        properties.setProperty("security.mode", "off");
-        properties.setProperty("security.hmac.secret", "");
-        // Loopback self-contained startup: auto-generate temporary secret if empty.
-        properties.setProperty("security.hmac.secret.autogen.on.loopback", "true");
-        properties.setProperty("security.hmac.secret.autogen.print", "true");
-        properties.setProperty("security.hmac.timestamp.window.ms", "30000");
-        properties.setProperty("security.hmac.nonce.cache.size", "10000");
-        properties.setProperty("security.dangerous.confirm.enabled", "false");
-        properties.setProperty("security.dangerous.confirm.ttl.ms", "60000");
-        properties.setProperty("security.dangerous.confirm.token.bytes", "12");
-        properties.setProperty("security.dangerous.confirm.cache.size", "2000");
-        // High impact commands governance (non-privileged but performance-risky operations)
-        properties.setProperty("security.impact.high.confirm.enabled", "false");
-        properties.setProperty("security.impact.high.concurrent.limit", "1");
-        properties.setProperty("security.bootstrap.hmac.on.attach", "false");
-        properties.setProperty("security.bootstrap.hmac.secret.bytes", "32");
-        properties.setProperty("security.hmac.session.role", "operator");
-        properties.setProperty("security.auth.password.enabled", "false");
-        properties.setProperty("security.auth.admin.password", "");
-        properties.setProperty("security.auth.operator.password", "");
-        properties.setProperty("security.auth.viewer.password", "");
-
-        // Protocol configuration
-        properties.setProperty("protocol.mode", "framed");
-        properties.setProperty("protocol.streaming.enabled", "true");
-        properties.setProperty("protocol.frame.max.payload", "4096");
-        properties.setProperty("protocol.text.max.line.bytes", "8192");
-
-        // Plugin configuration
-        properties.setProperty("plugins.enabled", "false");
-        // When disabled, do not load CommandProvider from the target application's classpath by default.
-        properties.setProperty("plugins.serviceloader.enabled", "false");
-        properties.setProperty("plugins.allowlist.sha256", "");
-        properties.setProperty("plugins.directory", "plugins");
-        properties.setProperty("plugins.conflict.strategy", "prefer-builtin");
-
-        // Monitoring queue configuration
-        properties.setProperty("monitoring.watch.queue.capacity", "1000");
-        properties.setProperty("monitoring.watch.drop.on.full", "true");
-        properties.setProperty("monitoring.trace.queue.capacity", "2000");
-        properties.setProperty("monitoring.trace.drop.on.full", "true");
-        properties.setProperty("monitoring.trace.sample.rate", "0.1");
-        properties.setProperty("monitoring.monitor.sample.rate", "1.0");
-
-        // VmTool (instance tracking) configuration
-        properties.setProperty("vmtool.track.max.entries", "500");
-        properties.setProperty("vmtool.track.class.limit", "50");
-
-        // Monitoring configuration
-        properties.setProperty("monitoring.metrics.enabled", "true");
-        properties.setProperty("monitoring.health.checks", "true");
-        properties.setProperty("monitoring.cache.cleanup.interval", "300000");
-        properties.setProperty("monitoring.jmx.enabled", "true");
-
-        // Logging configuration
-        properties.setProperty("logging.level", "INFO");
-        // Console logging (stderr) is useful for local troubleshooting; tests may override via -Dsleuth.logging.level=ERROR.
-        properties.setProperty("logging.console.enabled", "true");
-        properties.setProperty("logging.audit.enabled", "true");
-        properties.setProperty("logging.audit.console.enabled", "false");
-        properties.setProperty("logging.audit.file.path", "");
-        properties.setProperty("logging.security.file.path", "");
-        // Performance/health logging to stdout/stderr is noisy in production; keep it opt-in.
-        properties.setProperty("logging.performance.enabled", "false");
-
-        configLoaded = true;
     }
 
     // Server configuration
@@ -492,7 +366,7 @@ public class ProductionConfig {
         if (configured != null && !configured.trim().isEmpty()) {
             return configured.trim();
         }
-        return defaultLogPath("sleuth-audit.log");
+        return logPathResolver.defaultLogPath("sleuth-audit.log");
     }
 
     public String getSecurityLogFilePath() {
@@ -500,7 +374,7 @@ public class ProductionConfig {
         if (configured != null && !configured.trim().isEmpty()) {
             return configured.trim();
         }
-        return defaultLogPath("sleuth-security.log");
+        return logPathResolver.defaultLogPath("sleuth-security.log");
     }
 
     public boolean isPerformanceLogEnabled() {
@@ -508,18 +382,20 @@ public class ProductionConfig {
     }
 
     // Generic getters with runtime override support
+    @Override
     public String getString(String key, String defaultValue) {
-        String runtimeValue = runtimeConfig.get(key);
+        String runtimeValue = runtimeStore.get(key);
         if (runtimeValue != null) {
             return runtimeValue;
         }
-        String sysProp = System.getProperty("sleuth." + key);
+        String sysProp = System.getProperty(SYS_PROP_PREFIX + key);
         if (sysProp != null) {
             return sysProp;
         }
         return properties.getProperty(key, defaultValue);
     }
 
+    @Override
     public int getInt(String key, int defaultValue) {
         try {
             return Integer.parseInt(getString(key, String.valueOf(defaultValue)));
@@ -528,6 +404,7 @@ public class ProductionConfig {
         }
     }
 
+    @Override
     public long getLong(String key, long defaultValue) {
         try {
             return Long.parseLong(getString(key, String.valueOf(defaultValue)));
@@ -536,6 +413,7 @@ public class ProductionConfig {
         }
     }
 
+    @Override
     public double getDouble(String key, double defaultValue) {
         try {
             return Double.parseDouble(getString(key, String.valueOf(defaultValue)));
@@ -544,6 +422,7 @@ public class ProductionConfig {
         }
     }
 
+    @Override
     public boolean getBoolean(String key, boolean defaultValue) {
         String value = getString(key, String.valueOf(defaultValue));
         return Boolean.parseBoolean(value);
@@ -551,15 +430,52 @@ public class ProductionConfig {
 
     // Runtime configuration updates
     public void setRuntimeConfig(String key, String value) {
-        runtimeConfig.put(key, value);
+        setRuntimeConfig(key, value, ConfigUpdateSource.UNKNOWN);
     }
 
     public void removeRuntimeConfig(String key) {
-        runtimeConfig.remove(key);
+        removeRuntimeConfig(key, ConfigUpdateSource.UNKNOWN);
     }
 
     public void clearRuntimeConfig() {
-        runtimeConfig.clear();
+        clearRuntimeConfig(ConfigUpdateSource.UNKNOWN);
+    }
+
+    @Override
+    public void setRuntimeConfig(String key, String value, ConfigUpdateSource source) {
+        validateRuntimeOverrideKey(key);
+        runtimeStore.set(key, value, source);
+    }
+
+    @Override
+    public void removeRuntimeConfig(String key, ConfigUpdateSource source) {
+        validateRuntimeOverrideKey(key);
+        runtimeStore.remove(key, source);
+    }
+
+    @Override
+    public void clearRuntimeConfig(ConfigUpdateSource source) {
+        runtimeStore.clear(source);
+    }
+
+    @Override
+    public ConfigOrigin getOrigin(String key) {
+        if (key == null) {
+            return ConfigOrigin.UNKNOWN;
+        }
+        if (runtimeStore.get(key) != null) {
+            return ConfigOrigin.RUNTIME_OVERRIDE;
+        }
+        if (System.getProperty(SYS_PROP_PREFIX + key) != null) {
+            return ConfigOrigin.SYSTEM_PROPERTY;
+        }
+        if (fileProperties.getProperty(key) != null) {
+            return ConfigOrigin.FILE;
+        }
+        if (defaultProperties.getProperty(key) != null) {
+            return ConfigOrigin.DEFAULT;
+        }
+        return ConfigOrigin.UNKNOWN;
     }
 
     // Configuration status
@@ -576,7 +492,8 @@ public class ProductionConfig {
         status.append("=== CONFIGURATION STATUS ===\n");
         status.append("Config Loaded: ").append(configLoaded ? "YES" : "NO").append("\n");
         status.append("Properties Count: ").append(properties.size()).append("\n");
-        status.append("Runtime Overrides: ").append(runtimeConfig.size()).append("\n");
+        status.append("Config File: ").append(configFile != null ? configFile.getAbsolutePath() : "sleuth.properties").append("\n");
+        status.append("Runtime Overrides: ").append(runtimeStore.size()).append("\n");
 
         status.append("\n-- Key Settings --\n");
         status.append("Server Port: ").append(getServerPort()).append("\n");
@@ -585,6 +502,24 @@ public class ProductionConfig {
         status.append("Input Validation: ").append(isInputValidationEnabled() ? "ENABLED" : "DISABLED").append("\n");
         status.append("Audit Logging: ").append(isAuditLoggingEnabled() ? "ENABLED" : "DISABLED").append("\n");
         status.append("Metrics: ").append(isMetricsEnabled() ? "ENABLED" : "DISABLED").append("\n");
+
+        // Recent runtime changes (masked summary only).
+        int recentLimit = 5;
+        if (runtimeStore.size() > 0) {
+            status.append("\n-- Recent Runtime Changes (masked) --\n");
+            for (ConfigChange c : runtimeStore.getRecentChanges(recentLimit)) {
+                if (c == null) {
+                    continue;
+                }
+                status.append("#").append(c.getSequence())
+                    .append(" key=").append(c.getKey())
+                    .append(" old=").append(c.getOldValueSummary())
+                    .append(" new=").append(c.getNewValueSummary())
+                    .append(" source=").append(c.getSource())
+                    .append(" ts=").append(c.getTimestampMs())
+                    .append("\n");
+            }
+        }
 
         return status.toString();
     }
@@ -595,86 +530,24 @@ public class ProductionConfig {
     }
 
     public void saveConfiguration(boolean includeRuntimeOverrides) throws IOException {
-        File configFile = new File(CONFIG_FILE);
-        Properties toSave = new Properties();
-        toSave.putAll(properties);
-        if (includeRuntimeOverrides && !runtimeConfig.isEmpty()) {
-            for (Map.Entry<String, String> e : runtimeConfig.entrySet()) {
-                if (e == null || e.getKey() == null || e.getValue() == null) {
-                    continue;
-                }
-                toSave.setProperty(e.getKey(), e.getValue());
-            }
-        }
-        try (FileOutputStream output = new FileOutputStream(configFile)) {
-            String comment = includeRuntimeOverrides
-                ? "Java-Sleuth Production Configuration (including runtime overrides)"
-                : "Java-Sleuth Production Configuration";
-            toSave.store(output, comment);
-        }
+        File out = configFile != null ? configFile : new File(ConfigLoader.DEFAULT_CONFIG_FILE_NAME);
+        Map<String, String> runtime = includeRuntimeOverrides ? runtimeStore.snapshot() : null;
+        persister.save(out, properties, runtime, includeRuntimeOverrides);
     }
 
-    private String maskIfSensitive(String key, String value) {
+    public ConfigSnapshot snapshot() {
+        return new ConfigSnapshot(properties, defaultProperties, fileProperties, runtimeStore.snapshot(), null);
+    }
+
+    private static void validateRuntimeOverrideKey(String key) {
         if (key == null) {
-            return value;
+            return;
         }
-        String k = key.toLowerCase();
-        if (k.contains("password") || k.contains("secret") || k.contains("token") || k.contains("credential") ||
-            k.contains("session") || k.contains("apikey") || k.contains("api_key")) {
-            if (value == null) {
-                return "null";
-            }
-            if (value.length() <= 4) {
-                return "***";
-            }
-            return value.substring(0, 2) + "***" + value.substring(value.length() - 2);
+        if ("protocol.handshake.enabled".equals(key)) {
+            throw new IllegalArgumentException("Unsupported config key: protocol.handshake.enabled (handshake is mandatory)");
         }
-        return value;
-    }
-
-    private static String defaultLogPath(String baseName) {
-        String tmp = System.getProperty("java.io.tmpdir");
-        if (tmp == null || tmp.trim().isEmpty()) {
-            tmp = ".";
-        }
-        String name = (baseName == null || baseName.trim().isEmpty()) ? "sleuth.log" : baseName.trim();
-        String pid = currentPid();
-        String fileName = appendPidSuffix(name, pid);
-        return new File(tmp, fileName).getAbsolutePath();
-    }
-
-    private static String currentPid() {
-        try {
-            String name = ManagementFactory.getRuntimeMXBean().getName();
-            if (name == null) {
-                return "unknown";
-            }
-            int idx = name.indexOf('@');
-            if (idx > 0) {
-                return name.substring(0, idx);
-            }
-            return name;
-        } catch (Exception ignore) {
-            return "unknown";
+        if ("protocol.text.end.marker.enabled".equals(key)) {
+            throw new IllegalArgumentException("Unsupported config key: protocol.text.end.marker.enabled (legacy protocol removed)");
         }
     }
-
-    private static String appendPidSuffix(String fileName, String pid) {
-        String p = (pid == null || pid.trim().isEmpty()) ? "unknown" : pid.trim();
-        int dot = fileName.lastIndexOf('.');
-        if (dot > 0 && dot < fileName.length() - 1) {
-            return fileName.substring(0, dot) + "-" + p + fileName.substring(dot);
-        }
-        return fileName + "-" + p;
-    }
-    private void validateForbiddenKeys() {
-        for (String key : properties.stringPropertyNames()) {
-            if ("protocol.handshake.enabled".equals(key)) {
-                throw new IllegalArgumentException("Unsupported config key: protocol.handshake.enabled (handshake is mandatory)");
-            }
-            if ("protocol.text.end.marker.enabled".equals(key)) {
-                throw new IllegalArgumentException("Unsupported config key: protocol.text.end.marker.enabled (legacy protocol removed)");
-            }
-        }
-    }
-        }
+}

@@ -80,6 +80,7 @@ sequenceDiagram
 | ADR-006 | 强制新协议（无旧实现/旧配置兼容） | 2026-02-08 | ✅Adopted | command/launcher/security/config | history/2026-02/202602081900_enforce_new_protocol_only/how.md |
 | ADR-007 | HMAC 签名协议收敛为单一格式（禁用 v 字段） | 2026-02-08 | ✅Adopted | launcher/security/command | history/2026-02/202602081959_remove_compat_paths/how.md |
 | ADR-008 | 分层边界守护：foundation 模块边界 | 2026-02-10 | ✅Adopted | foundation/core | history/2026-02/202602101815_layering_modularization/how.md |
+| ADR-009 | ConfigView + RuntimeConfigStore：降低 ProductionConfig 单例吸力 | 2026-02-10 | ✅Adopted | foundation/config/core/command | history/2026-02/202602102336_production_config_refactor/how.md#adr-009-引入-configview--runtimeconfigstore渐进降低-productionconfig-全局单例吸力 |
 
 ### ADR-006: 强制新协议（无旧实现/旧配置兼容）
 

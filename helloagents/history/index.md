@@ -36,6 +36,7 @@ This file records index of all completed changes for traceability and query.
 | 202602081959 | remove_compat_paths | Refactor | ✅Completed | history/2026-02/202602081959_remove_compat_paths/ |
 | 202602101815 | layering_modularization | Refactor | ✅Completed | history/2026-02/202602101815_layering_modularization/ |
 | 202602102236 | remove_archunit_tests | Refactor | ✅Completed | history/2026-02/202602102236_remove_archunit_tests/ |
+| 202602102336 | production_config_refactor | Refactor | ✅Completed | history/2026-02/202602102336_production_config_refactor/ |
 
 ---
 
@@ -74,3 +75,4 @@ This file records index of all completed changes for traceability and query.
 - 202602081959_remove_compat_paths (2026-02/202602081959_remove_compat_paths/) - 协议兼容逻辑彻底移除（仅保留新协议）+ SIG 单一格式收敛
 - 202602101815_layering_modularization (2026-02/202602101815_layering_modularization/) - 分层边界恢复：foundation 下沉 + CommandMeta SSOT + stop 解耦
 - 202602102236_remove_archunit_tests (2026-02/202602102236_remove_archunit_tests/) - 移除 ArchUnit 架构守护测试与依赖（按团队偏好）
+- 202602102336_production_config_refactor (2026-02/202602102336_production_config_refactor/) - ProductionConfig 去中心化：ConfigView/RuntimeConfigStore/审计与来源可观测

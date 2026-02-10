@@ -6,7 +6,6 @@ import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
 import com.javasleuth.command.session.ClientSession;
-import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.enhancement.ClassEnhancer;
 import com.javasleuth.enhancement.MonitorEnhancer;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
@@ -31,13 +30,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MonitorCommand implements StreamCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
-    private final ProductionConfig config;
     private final ConcurrentHashMap<String, MonitorSession> activeSessions = new ConcurrentHashMap<>();
 
     public MonitorCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
-        this.config = ProductionConfig.getInstance();
     }
 
     @Override

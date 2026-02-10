@@ -5,6 +5,7 @@ import com.javasleuth.command.impl.TtCommand;
 import com.javasleuth.command.impl.WatchCommand;
 import com.javasleuth.command.session.ClientSessionRegistry;
 import com.javasleuth.command.session.ClientSession;
+import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.monitor.TraceInterceptor;
 import com.javasleuth.monitor.TtInterceptor;
@@ -50,19 +51,19 @@ public class SessionCleanupOnDisconnectTest {
 
             watchThread = startInThreadWithContext(context, () -> {
                 try {
-                    new WatchCommand(inst, transformer).execute(new String[]{"watch", DummyTarget.class.getName(), "doWork", "-t", "30"});
+                    new WatchCommand(inst, transformer, ProductionConfig.getInstance()).execute(new String[]{"watch", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
             });
             traceThread = startInThreadWithContext(context, () -> {
                 try {
-                    new TraceCommand(inst, transformer).execute(new String[]{"trace", DummyTarget.class.getName(), "doWork", "-t", "30"});
+                    new TraceCommand(inst, transformer, ProductionConfig.getInstance()).execute(new String[]{"trace", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
             });
             ttThread = startInThreadWithContext(context, () -> {
                 try {
-                    new TtCommand(inst, transformer).execute(new String[]{"tt", DummyTarget.class.getName(), "doWork", "-t", "30"});
+                    new TtCommand(inst, transformer, ProductionConfig.getInstance()).execute(new String[]{"tt", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
             });

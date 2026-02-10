@@ -2,6 +2,7 @@ package com.javasleuth.launcher;
 
 import com.sun.tools.attach.VirtualMachine;
 import com.sun.tools.attach.VirtualMachineDescriptor;
+import com.javasleuth.config.ConfigUpdateSource;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.command.protocol.BinaryFrame;
 import com.javasleuth.command.protocol.BinaryFrameCodec;
@@ -219,16 +220,16 @@ public class SleuthLauncher {
 
             if (insecureMode) {
                 securityMode = "off";
-                config.setRuntimeConfig("security.mode", "off");
+                config.setRuntimeConfig("security.mode", "off", ConfigUpdateSource.BOOTSTRAP);
             } else if ("hmac".equalsIgnoreCase(securityMode)) {
                 // HMAC bootstrap is an optional helper: it should not silently force-enable HMAC.
                 if (config.isHmacBootstrapOnAttachEnabled()) {
                     if (hmacSecret == null || hmacSecret.trim().isEmpty()) {
                         int bytes = config.getHmacBootstrapSecretBytes();
                         hmacSecret = generateHmacSecret(bytes);
-                        config.setRuntimeConfig("security.hmac.secret", hmacSecret);
+                        config.setRuntimeConfig("security.hmac.secret", hmacSecret, ConfigUpdateSource.BOOTSTRAP);
                     }
-                    config.setRuntimeConfig("security.hmac.session.role", hmacSessionRole);
+                    config.setRuntimeConfig("security.hmac.session.role", hmacSessionRole, ConfigUpdateSource.BOOTSTRAP);
                 }
 
                 if (hmacSecret == null || hmacSecret.trim().isEmpty()) {

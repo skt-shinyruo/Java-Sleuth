@@ -5,7 +5,7 @@ import com.javasleuth.command.CommandContext;
 import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
-import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.config.ConfigView;
 import com.javasleuth.enhancement.ClassEnhancer;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.enhancement.WatchEnhancer;
@@ -34,13 +34,13 @@ import java.util.UUID;
 public class WatchCommand implements StreamCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
-    private final ProductionConfig config;
+    private final ConfigView config;
     private final ConcurrentHashMap<String, WatchSession> activeSessions = new ConcurrentHashMap<>();
 
-    public WatchCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
+    public WatchCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer, ConfigView config) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
-        this.config = ProductionConfig.getInstance();
+        this.config = config;
     }
 
     @Override
@@ -195,7 +195,7 @@ public class WatchCommand implements StreamCommand {
         Class<?> targetClass = resolved.getClazz();
 
         String watchId = UUID.randomUUID().toString();
-        BlockingQueue<WatchResult> resultQueue = new LinkedBlockingQueue<>(config.getWatchQueueCapacity());
+        BlockingQueue<WatchResult> resultQueue = new LinkedBlockingQueue<>(config.getInt("monitoring.watch.queue.capacity", 1000));
         if (targetClass == null) {
             String msg = "Target class not found in loaded classes: " + targetClassName;
             if (sink != null) {

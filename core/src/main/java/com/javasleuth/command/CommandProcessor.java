@@ -3,6 +3,7 @@ package com.javasleuth.command;
 import com.javasleuth.command.protocol.Utf8LineCodec;
 import com.javasleuth.command.server.CommandClientHandler;
 import com.javasleuth.command.session.ClientSessionRegistry;
+import com.javasleuth.config.ConfigUpdateSource;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.monitoring.MetricsCollector;
@@ -166,7 +167,7 @@ public class CommandProcessor {
                     if (isLoopbackBind(bindAddress) && config.isHmacSecretAutogenOnLoopbackEnabled()) {
                         int bytes = config.getHmacBootstrapSecretBytes();
                         String generated = generateHmacSecret(bytes);
-                        config.setRuntimeConfig("security.hmac.secret", generated);
+                        config.setRuntimeConfig("security.hmac.secret", generated, ConfigUpdateSource.INTERNAL);
                         auditLogger.logSystemEvent("HMAC_SECRET_AUTOGEN",
                             "Generated temporary HMAC secret for loopback bind=" + bindAddress);
                         if (config.isHmacSecretAutogenPrintEnabled()) {

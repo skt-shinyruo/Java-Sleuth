@@ -1,11 +1,14 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
+import com.javasleuth.config.ConfigUpdateSource;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.security.SecurityValidator;
+import com.javasleuth.config.SensitiveKeyMasker;
 
 public class ConfigCommand implements Command {
     private final ProductionConfig config;
+    private final SensitiveKeyMasker masker = new SensitiveKeyMasker();
 
     public ConfigCommand(ProductionConfig config) {
         this.config = config;
@@ -28,7 +31,8 @@ public class ConfigCommand implements Command {
                 }
                 String key = args[2];
                 String value = config.getString(key, "NOT_FOUND");
-                return key + " = " + SecurityValidator.maskSensitiveValue(key, value);
+                String masked = masker.mask(key, value);
+                return key + " = " + masked + " (origin=" + config.getOrigin(key) + ")";
 
             case "set":
                 if (args.length < 4) {
@@ -36,16 +40,16 @@ public class ConfigCommand implements Command {
                 }
                 String setKey = args[2];
                 String setValue = args[3];
-                config.setRuntimeConfig(setKey, setValue);
-                return "Runtime configuration updated: " + setKey + " = " +
-                    SecurityValidator.maskSensitiveValue(setKey, setValue);
+                config.setRuntimeConfig(setKey, setValue, ConfigUpdateSource.COMMAND);
+                return "Runtime configuration updated: " + setKey + " = " + masker.mask(setKey, setValue) +
+                    " (origin=" + config.getOrigin(setKey) + ")";
 
             case "remove":
                 if (args.length < 3) {
                     return "Usage: config remove <key>";
                 }
                 String removeKey = args[2];
-                config.removeRuntimeConfig(removeKey);
+                config.removeRuntimeConfig(removeKey, ConfigUpdateSource.COMMAND);
                 return "Runtime configuration removed: " + removeKey;
 
             case "save":
@@ -75,7 +79,7 @@ public class ConfigCommand implements Command {
                 }
 
             case "clear":
-                config.clearRuntimeConfig();
+                config.clearRuntimeConfig(ConfigUpdateSource.COMMAND);
                 return "Runtime configuration cleared";
 
             case "reload":

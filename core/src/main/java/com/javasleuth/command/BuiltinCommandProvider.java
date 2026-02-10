@@ -46,9 +46,9 @@ public class BuiltinCommandProvider implements CommandProvider {
         commands.put("thread", new ThreadCommand(instrumentation));
         commands.put("sc", new SearchClassCommand(instrumentation));
         commands.put("sm", new SearchMethodCommand(instrumentation));
-        commands.put("watch", new WatchCommand(instrumentation, transformer));
-        commands.put("trace", new TraceCommand(instrumentation, transformer));
-        commands.put("tt", new TtCommand(instrumentation, transformer));
+        commands.put("watch", new WatchCommand(instrumentation, transformer, config));
+        commands.put("trace", new TraceCommand(instrumentation, transformer, config));
+        commands.put("tt", new TtCommand(instrumentation, transformer, config));
         commands.put("jobs", new JobsCommand());
         commands.put("redefine", new RedefineCommand(instrumentation));
         commands.put("mc", new MemoryCompilerCommand());
@@ -56,7 +56,7 @@ public class BuiltinCommandProvider implements CommandProvider {
 
         commands.put("profiler", new ProfilerCommand(instrumentation));
         commands.put("monitor", new MonitorCommand(instrumentation, transformer));
-        commands.put("stack", new StackCommand(instrumentation, transformer));
+        commands.put("stack", new StackCommand(instrumentation, transformer, config));
         commands.put("reset", new ResetCommand(instrumentation, transformer));
 
         commands.put("jvm", new JvmCommand(instrumentation));
@@ -72,11 +72,11 @@ public class BuiltinCommandProvider implements CommandProvider {
         commands.put("classloader", new ClassLoaderCommand(instrumentation));
         commands.put("mbean", new MBeanCommand(instrumentation));
         commands.put("logger", new LoggerCommand());
-        commands.put("vmtool", new VmToolCommand(instrumentation, transformer));
+        commands.put("vmtool", new VmToolCommand(instrumentation, transformer, config));
 
         commands.put("health", new HealthCommand(metricsCollector));
         commands.put("metrics", new MetricsCommand(metricsCollector));
-        commands.put("status", new StatusCommand(instrumentation, metricsCollector, transformer));
+        commands.put("status", new StatusCommand(instrumentation, metricsCollector, transformer, config));
         commands.put("config", new ConfigCommand(config));
         commands.put("audit", new AuditCommand(auditLogger));
         commands.put("session", new SessionCommand());

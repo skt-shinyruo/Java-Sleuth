@@ -7,7 +7,7 @@ import com.javasleuth.command.impl.tt.TtFormatter;
 import com.javasleuth.command.impl.tt.TtRecordEngine;
 import com.javasleuth.command.impl.tt.TtRecordParser;
 import com.javasleuth.command.impl.tt.TtReplayTemplateGenerator;
-import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.config.ConfigView;
 import com.javasleuth.data.TtRecord;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.monitor.TtInterceptor;
@@ -21,8 +21,7 @@ public class TtCommand implements StreamCommand {
     private final TtRecordEngine recordEngine;
     private final TtReplayTemplateGenerator replayGenerator;
 
-    public TtCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
-        ProductionConfig config = ProductionConfig.getInstance();
+    public TtCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer, ConfigView config) {
         this.recordParser = new TtRecordParser();
         this.recordEngine = new TtRecordEngine(instrumentation, transformer, config);
         this.replayGenerator = new TtReplayTemplateGenerator();
@@ -233,4 +232,3 @@ public class TtCommand implements StreamCommand {
         return "TT-lite: record/list/detail/replay-template (no execution)";
     }
 }
-

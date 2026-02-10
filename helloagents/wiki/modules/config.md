@@ -6,9 +6,16 @@
 ## Module Overview
 - **Responsibility:** 默认配置、外部配置、系统属性覆盖
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-08
+- **Last Updated:** 2026-02-10
 
 ## Specifications
+
+### Requirement: ConfigView（只读视图）与来源可观测
+**Module:** config
+为减少 `ProductionConfig.getInstance()` 的隐式依赖，并让“为什么读到这个值”可解释，引入：
+- `ConfigView`：只读配置访问（string/int/long/double/boolean）
+- `ConfigOrigin`：读路径来源（RUNTIME_OVERRIDE / SYSTEM_PROPERTY / FILE / DEFAULT）
+- `ConfigSnapshot`（可选）：请求级一致性快照，避免同一请求内读到混合状态
 
 ### Requirement: 配置加载优先级
 **Module:** config
@@ -19,6 +26,11 @@
 - 读取 /sleuth-default.properties
 - 读取 sleuth.properties（若存在，或通过 `-Dsleuth.config.file=/path/to/sleuth.properties` 指定）
 - 读取 -Dsleuth.* 覆盖
+
+#### Scenario: 优先级可解释（含运行时覆盖）
+前置：同一 key 同时存在多来源  
+- 读取优先级：`runtime overrides > system properties > file > default`
+- `config get <key>` 会返回 masked value + origin（便于定位“为什么变了”）
 
 ### Requirement: 安全/协议新增配置项
 **Module:** config
@@ -67,6 +79,7 @@
 - `config set <key> <value>` 写入运行时覆盖  
 - 读取配置时优先使用运行时覆盖（其次系统属性，再其次文件配置）  
 - 对敏感 key 的 value 输出会自动脱敏
+- 运行时覆盖写入会记录变更（old/new/source/ts），其中敏感值仅记录脱敏摘要
 
 #### Scenario: config save 持久化（可选）运行时覆盖
 前置：需要把临时调试配置固化到配置文件  
@@ -74,7 +87,13 @@
 - `config save --include-runtime`：合并保存 runtime overrides（覆盖同名 key），便于“调试 -> 固化 -> 重启验证”
 
 ## API Interfaces
-N/A
+- `com.javasleuth.config.ConfigView`：只读配置访问（建议核心链路依赖该窄接口）
+- `com.javasleuth.config.MutableConfig`：运行时覆写写入入口（带 source）
+- `com.javasleuth.config.RuntimeConfigStore` / `ConfigChange`：运行时覆写存储与审计记录
+
+## Notes
+- 禁用配置键校验（legacy 协议遗留键）默认严格拒绝：`protocol.handshake.enabled`、`protocol.text.end.marker.enabled`
+  - 可通过 `-Dsleuth.config.forbidden.keys.policy=off|warn|strict` 控制（默认 strict）
 
 ## Data Models
 N/A
@@ -91,6 +110,7 @@ N/A
 - 202602021233_quality_audit_more_issues (history/2026-02/202602021233_quality_audit_more_issues/) - 默认配置/生产模板对齐与协议上限文档补齐
 - 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - jobs 并发上限、END marker、插件 ServiceLoader 开关与 config save 持久化语义补齐
 - 202602081630_drop_legacy_protocol (history/2026-02/202602081630_drop_legacy_protocol/) - 协议收敛：移除 legacy 文本协议与相关配置项
+- 202602102336_production_config_refactor (history/2026-02/202602102336_production_config_refactor/) - ConfigView/RuntimeConfigStore 引入与 ProductionConfig 去中心化（Facade 化）
 
 ## 2026-02-08 协议与握手配置收敛
 

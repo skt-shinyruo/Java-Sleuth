@@ -1,7 +1,7 @@
 package com.javasleuth.command.server.protocol;
 
 import com.javasleuth.command.protocol.Utf8LineCodec;
-import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.config.ConfigView;
 import com.javasleuth.monitoring.MetricsCollector;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -11,10 +11,10 @@ import java.util.Map;
 import java.util.Set;
 
 public final class HandshakeNegotiator {
-    private final ProductionConfig config;
+    private final ConfigView config;
     private final MetricsCollector metricsCollector;
 
-    public HandshakeNegotiator(ProductionConfig config, MetricsCollector metricsCollector) {
+    public HandshakeNegotiator(ConfigView config, MetricsCollector metricsCollector) {
         this.config = config;
         this.metricsCollector = metricsCollector;
     }
@@ -56,8 +56,7 @@ public final class HandshakeNegotiator {
             clientProtocols.add("framed");
         }
 
-        String preferred = config.getProtocolMode();
-        preferred = preferred.toLowerCase();
+        String preferred = config.getString("protocol.mode", "framed").toLowerCase();
 
         String selected;
         if ("binary".equals(preferred) && clientProtocols.contains("binary")) {
@@ -81,12 +80,12 @@ public final class HandshakeNegotiator {
     private String buildConfigLine(String protocol, String connId) {
         return "CONFIG v=1" +
             " protocol=" + protocol +
-            " streaming=" + config.isStreamingEnabled() +
-            " maxPayload=" + config.getFrameMaxPayload() +
-            " port=" + config.getServerPort() +
-            " bind=" + config.getServerBindAddress() +
-            " securityMode=" + config.getSecurityMode() +
-            " authorization=" + config.isAuthorizationEnabled() +
+            " streaming=" + config.getBoolean("protocol.streaming.enabled", true) +
+            " maxPayload=" + config.getInt("protocol.frame.max.payload", 4096) +
+            " port=" + config.getInt("server.port", 3658) +
+            " bind=" + config.getString("server.bind.address", "127.0.0.1") +
+            " securityMode=" + config.getString("security.mode", "off") +
+            " authorization=" + config.getBoolean("security.authorization.enabled", false) +
             (connId != null ? " connId=" + connId : "");
     }
 

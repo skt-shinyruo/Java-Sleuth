@@ -6,7 +6,7 @@ import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.command.JobManager;
 import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
-import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.config.ConfigView;
 import com.javasleuth.enhancement.ClassEnhancer;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.enhancement.TraceEnhancer;
@@ -34,13 +34,13 @@ import java.util.UUID;
 public class TraceCommand implements StreamCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
-    private final ProductionConfig config;
+    private final ConfigView config;
     private final ConcurrentHashMap<String, TraceSession> activeSessions = new ConcurrentHashMap<>();
 
-    public TraceCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
+    public TraceCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer, ConfigView config) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
-        this.config = ProductionConfig.getInstance();
+        this.config = config;
     }
 
     @Override
@@ -195,7 +195,7 @@ public class TraceCommand implements StreamCommand {
         Class<?> targetClass = resolved.getClazz();
 
         String traceId = UUID.randomUUID().toString();
-        BlockingQueue<TraceResult> resultQueue = new LinkedBlockingQueue<>(config.getTraceQueueCapacity());
+        BlockingQueue<TraceResult> resultQueue = new LinkedBlockingQueue<>(config.getInt("monitoring.trace.queue.capacity", 2000));
         if (targetClass == null) {
             String msg = "Target class not found in loaded classes: " + targetClassName;
             if (sink != null) {

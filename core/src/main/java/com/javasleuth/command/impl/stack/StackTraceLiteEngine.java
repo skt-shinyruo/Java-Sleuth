@@ -4,7 +4,7 @@ import com.javasleuth.command.CommandContext;
 import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.command.StreamSink;
 import com.javasleuth.command.session.ClientSession;
-import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.config.ConfigView;
 import com.javasleuth.data.StackTraceResult;
 import com.javasleuth.enhancement.ClassEnhancer;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
@@ -21,10 +21,10 @@ import java.util.concurrent.TimeUnit;
 public final class StackTraceLiteEngine {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
-    private final ProductionConfig config;
+    private final ConfigView config;
     private final ConcurrentHashMap<String, StackSession> activeSessions = new ConcurrentHashMap<>();
 
-    public StackTraceLiteEngine(Instrumentation instrumentation, SleuthClassFileTransformer transformer, ProductionConfig config) {
+    public StackTraceLiteEngine(Instrumentation instrumentation, SleuthClassFileTransformer transformer, ConfigView config) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.config = config;
@@ -56,7 +56,7 @@ public final class StackTraceLiteEngine {
         }
 
         String stackId = UUID.randomUUID().toString();
-        BlockingQueue<StackTraceResult> q = new LinkedBlockingQueue<>(config.getWatchQueueCapacity());
+        BlockingQueue<StackTraceResult> q = new LinkedBlockingQueue<>(config.getInt("monitoring.watch.queue.capacity", 1000));
 
         ClassEnhancer enhancer = new StackEnhancer(target.getName(), methodPattern, null, stackId, depth);
         boolean interceptorRegistered = false;
@@ -198,4 +198,3 @@ public final class StackTraceLiteEngine {
         }
     }
 }
-

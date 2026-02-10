@@ -57,6 +57,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 ### Changed
 - 关键依赖环拆除：`CommandMeta` 下沉到 `com.javasleuth.security`（SSOT），`security` 不再依赖 `command`；`SleuthLogger` 通过 `SleuthLogContext` 注入上下文，避免 `util -> command`；`stop` 通过注入的 shutdown hook 触发 Agent shutdown，避免 `command -> agent`
 - 移除 ArchUnit 架构守护测试与依赖（按团队偏好，避免测试代码承载分层守护逻辑）
+- 配置层去中心化：引入 `ConfigView`/`MutableConfig`/`ConfigOrigin` 与 `RuntimeConfigStore`（运行时覆写审计），`ProductionConfig` 拆职责并退化为 Facade；部分命令构造改为注入 `ConfigView`，减少散落的 `ProductionConfig.getInstance()` 调用点
 - 示例/测试应用从 main 源集迁移到 `examples/`，发布 jar/fat-jar 不再包含 `com.javasleuth.test.*`（Docker demo 与脚本改为运行 examples 编译产物）
 - Maven 多模块化：根工程改为 parent/aggregator（`packaging=pom`），主产物迁移到 `core/` 模块，示例应用作为 `examples/` 模块独立构建；脚本/Docker/文档同步更新
 - CommandProcessor 改为注册表 + 统一执行管线
@@ -117,6 +118,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - watch/tt 资源风险：采集阶段引入“值快照”（限深/限长），避免把参数/返回值/异常对象强引用驻留到队列/环形缓冲导致内存压力
 - trace 语义：同一类内“可被 trace 的方法调用”不再产生重复 SUB_METHOD_CALL；采样以根调用为单位并向子调用继承，降低碎片化树
 - stdout/stderr 污染：`logging.performance.enabled` 默认关闭（可配置开启）
+- 配置严格性修复：禁用 legacy 配置键校验（`protocol.handshake.enabled`、`protocol.text.end.marker.enabled`）在加载阶段可控且默认严格拒绝（可通过 `-Dsleuth.config.forbidden.keys.policy=off|warn|strict` 调整）
 - 日志/输出收敛：业务逻辑中零散的 `System.out/err` 统一改用 `SleuthLogger`，并补齐上下文字段（clientId/sessionId/connId/command）与 `logging.console.enabled` 开关，降低线上聚合成本与单测噪声
 - 异常兜底与最小披露：新增 `CommandErrorMapper` + `errorId` 关联字段；命令失败不再把堆栈/内部细节写入用户输出或协议 ERR，仅在 `SleuthLogger` 诊断日志中保留堆栈
 - `tt replay` 模板输出移除 TODO 占位，改为明确限制说明与更可复制的 Java 模板

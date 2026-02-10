@@ -5,7 +5,7 @@ import com.javasleuth.command.CommandContext;
 import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.security.CommandMeta;
 import com.javasleuth.command.session.ClientSession;
-import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.config.ConfigView;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.monitor.VmToolInterceptor;
 import com.javasleuth.security.DangerousCommandConfirmationManager;
@@ -36,13 +36,13 @@ import javax.management.ObjectName;
 public class VmToolCommand implements Command {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
-    private final ProductionConfig config;
+    private final ConfigView config;
     private final VmToolSessionRegistry registry = VmToolSessionRegistry.getInstance();
 
-    public VmToolCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
+    public VmToolCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer, ConfigView config) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
-        this.config = ProductionConfig.getInstance();
+        this.config = config;
     }
 
     @Override

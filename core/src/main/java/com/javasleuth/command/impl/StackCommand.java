@@ -5,7 +5,7 @@ import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
 import com.javasleuth.command.impl.stack.StackTraceLiteEngine;
 import com.javasleuth.command.impl.stack.StackTraceLiteParser;
-import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.config.ConfigView;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.ManagementFactory;
@@ -21,8 +21,7 @@ public class StackCommand implements StreamCommand {
 private final StackTraceLiteParser traceParser;
     private final StackTraceLiteEngine traceEngine;
 
-    public StackCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
-        ProductionConfig config = ProductionConfig.getInstance();
+    public StackCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer, ConfigView config) {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
         this.traceParser = new StackTraceLiteParser();
         this.traceEngine = new StackTraceLiteEngine(instrumentation, transformer, config);

@@ -1,6 +1,7 @@
 package com.javasleuth.command.impl;
 
 import com.javasleuth.data.TtRecord;
+import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.monitor.TtInterceptor;
 import java.lang.instrument.Instrumentation;
@@ -67,7 +68,7 @@ public class TtCommandReplayTemplateTest {
             Assert.assertFalse(records.isEmpty());
 
             long id = records.get(0).getRecordId();
-            TtCommand cmd = new TtCommand(dummyInstrumentation(), new SleuthClassFileTransformer());
+            TtCommand cmd = new TtCommand(dummyInstrumentation(), new SleuthClassFileTransformer(), ProductionConfig.getInstance());
             String out = cmd.execute(new String[] { "tt", "replay", String.valueOf(id) });
 
             Assert.assertNotNull(out);
@@ -79,4 +80,3 @@ public class TtCommandReplayTemplateTest {
         }
     }
 }
-
