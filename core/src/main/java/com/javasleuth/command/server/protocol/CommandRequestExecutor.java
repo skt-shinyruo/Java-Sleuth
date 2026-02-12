@@ -1,5 +1,6 @@
 package com.javasleuth.command.server.protocol;
 
+import com.javasleuth.command.protocol.KvLineCodec;
 import com.javasleuth.command.CommandContext;
 import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.command.CommandParser;
@@ -77,7 +78,7 @@ public final class CommandRequestExecutor {
         }
 
         if ("hmac".equalsIgnoreCase(config.getSecurityMode())) {
-            Map<String, String> sigKv = HandshakeNegotiator.parseHandshakeKv(raw);
+            Map<String, String> sigKv = KvLineCodec.parseAfterVerb(raw);
             String sid = sigKv.get("sid");
             if (sigKv.containsKey("v")) {
                 reply.sendError("HMAC security: unsupported SIG field: v");

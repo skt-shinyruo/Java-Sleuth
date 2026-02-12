@@ -1,10 +1,10 @@
 package com.javasleuth.security;
 
+import com.javasleuth.command.protocol.KvLineCodec;
 import com.javasleuth.config.ProductionConfig;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.crypto.Mac;
@@ -94,7 +94,7 @@ public class RequestSecurityManager {
             return VerificationResult.denied("Security mode hmac enabled: command must be signed (SIG ...)");
         }
 
-        Map<String, String> kv = parseKv(raw);
+        Map<String, String> kv = KvLineCodec.parseAfterVerb(raw);
         if (kv.containsKey("v")) {
             return VerificationResult.denied("Unsupported SIG field: v");
         }
@@ -198,26 +198,6 @@ public class RequestSecurityManager {
         seenNonces.entrySet().removeIf(e -> e.getValue() == null || e.getValue() < cutoff);
     }
 
-    private static Map<String, String> parseKv(String line) {
-        Map<String, String> kv = new HashMap<>();
-        if (line == null) {
-            return kv;
-        }
-        String[] tokens = line.trim().split("\\s+");
-        for (int i = 1; i < tokens.length; i++) {
-            String token = tokens[i];
-            int idx = token.indexOf('=');
-            if (idx <= 0 || idx >= token.length() - 1) {
-                continue;
-            }
-            String k = token.substring(0, idx).trim().toLowerCase();
-            String v = token.substring(idx + 1).trim();
-            if (!k.isEmpty() && !v.isEmpty()) {
-                kv.put(k, v);
-            }
-        }
-        return kv;
-    }
 
     private static Long parseLongSafe(String s) {
         if (s == null) {

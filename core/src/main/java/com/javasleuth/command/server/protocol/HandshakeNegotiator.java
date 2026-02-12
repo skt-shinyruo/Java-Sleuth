@@ -1,11 +1,11 @@
 package com.javasleuth.command.server.protocol;
 
+import com.javasleuth.command.protocol.KvLineCodec;
 import com.javasleuth.command.protocol.Utf8LineCodec;
 import com.javasleuth.config.ConfigView;
 import com.javasleuth.monitoring.MetricsCollector;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -21,7 +21,7 @@ public final class HandshakeNegotiator {
 
     public NegotiationResult handleHello(String line, OutputStream out) throws IOException {
         metricsCollector.recordHandshake();
-        Map<String, String> kv = parseHandshakeKv(line);
+        Map<String, String> kv = KvLineCodec.parseAfterVerb(line);
         String helloV = kv.get("v");
         if (helloV == null || !"1".equals(helloV.trim())) {
             throw new IOException("Unsupported HELLO version: " + helloV);
@@ -89,26 +89,6 @@ public final class HandshakeNegotiator {
             (connId != null ? " connId=" + connId : "");
     }
 
-    static Map<String, String> parseHandshakeKv(String line) {
-        Map<String, String> kv = new HashMap<>();
-        if (line == null) {
-            return kv;
-        }
-        String[] tokens = line.trim().split("\\s+");
-        for (int i = 1; i < tokens.length; i++) {
-            String token = tokens[i];
-            int idx = token.indexOf('=');
-            if (idx <= 0 || idx >= token.length() - 1) {
-                continue;
-            }
-            String k = token.substring(0, idx).trim().toLowerCase();
-            String v = token.substring(idx + 1).trim();
-            if (!k.isEmpty() && !v.isEmpty()) {
-                kv.put(k, v);
-            }
-        }
-        return kv;
-    }
 
     static Set<String> parseProtocols(String csv) {
         Set<String> out = new HashSet<>();
