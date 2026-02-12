@@ -60,6 +60,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 配置层去中心化：引入 `ConfigView`/`MutableConfig`/`ConfigOrigin` 与 `RuntimeConfigStore`（运行时覆写审计），`ProductionConfig` 拆职责并退化为 Facade；部分命令构造改为注入 `ConfigView`，减少散落的 `ProductionConfig.getInstance()` 调用点
 - 示例/测试应用从 main 源集迁移到 `examples/`，发布 jar/fat-jar 不再包含 `com.javasleuth.test.*`（Docker demo 与脚本改为运行 examples 编译产物）
 - Maven 多模块化：根工程改为 parent/aggregator（`packaging=pom`），主产物迁移到 `core/` 模块，示例应用作为 `examples/` 模块独立构建；脚本/Docker/文档同步更新
+- Launcher/Agent 产物与依赖隔离升级：拆分为 `launcher/`（CLI）+ `agent/`（bootstrap agent，appendToBootstrap，保持 JDK-only）+ `core/`（`java-sleuth-agent-core`，隔离 ClassLoader 加载，包含 ASM/Jackson/CFR/RE2J...）；`JarLocator` 按 Manifest 标记 `Sleuth-Agent-Bootstrap` / `Sleuth-Agent-Core` 自动定位产物；`com.javasleuth.monitor` 与 `com.javasleuth.command.protocol` 下沉到 `foundation` 并保持无第三方依赖；脚本/Docker/文档同步更新
 - CommandProcessor 改为注册表 + 统一执行管线
 - CommandPipeline 执行链路显式化：引入 Step/Interceptor Chain（precheck/sync/stream），降低巨型类耦合并提升可测性
 - CommandProcessor 拆分出 CommandClientHandler（framed/binary 协议处理），CommandProcessor 聚焦监听/生命周期
@@ -141,3 +142,12 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - Breaking: 移除/拒绝旧配置键 `protocol.handshake.enabled`、`protocol.text.end.marker.enabled`。
 - Breaking: `security.mode=hmac` 仅接受单一 `SIG` 格式（禁用 `v` 字段），且必须携带并绑定 `sid`。
 - Breaking: `protocol.mode` 非法值不再自动归一化，启动直接失败。
+## 2026-02-12
+
+- launcher：将 `SleuthLauncher` 收敛为组合根（composition root），引入可插拔运行模式（interactive/headless），解耦 JVM 选择/Attach/协议客户端/交互 UI。
+- command：将 `CommandProcessor` 的生命周期职责拆分为 `ServerBootstrapper`、`ConnectionAcceptor`、`ShutdownCoordinator`，降低 God class 风险并增强可测试性。
+- protocol/security：握手与 `SIG` 的 KV 行解析统一下沉到 `foundation` 的 `KvLineCodec`，消除重复实现与服务端对握手解析器的非必要复用，降低漂移风险。
+- protocol/security：移除握手与 `SIG` 的 `parseHandshakeKv/parseKv` 薄封装，调用点直接使用 `KvLineCodec`，进一步减少潜在漂移点。
+- protocol/security：`KvLineCodec` 的 key 归一化改为 `toLowerCase(Locale.ROOT)` 并补充 `KvLineCodecTest`，避免非英语 Locale 下的解析命中异常。
+- agent：通过 bootstrap → core 的隔离加载策略，降低 ASM/Jackson/CFR/JLine 等第三方依赖与业务依赖碰撞概率。
+- 验证：`mvn test`、`mvn -DskipTests package` 通过。

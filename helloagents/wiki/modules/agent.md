@@ -1,55 +1,64 @@
-# agent
+# 模块：agent（Java Agent Bootstrap & Core 隔离加载）
 
-## Purpose
-提供 Java Agent 入口与生命周期管理。
+## 1. 模块目的
 
-## Module Overview
-- **Responsibility:** agentmain/premain 入口、Transformer 注册、命令服务启动
-- **Status:** ✅Stable
-- **Last Updated:** 2026-02-10
+Java Agent 的最大工程风险之一是 **依赖碰撞**：诊断工具往往需要 ASM/Jackson/CFR/JLine 等第三方库，而被诊断应用也可能携带同名依赖但版本不同。
 
-## Specifications
+如果 agent 依赖与业务依赖落在同一类加载器可见范围内（或 parent-first 解析路径上），会导致：
 
-### Requirement: Agent Attach 启动
-**Module:** agent
-在目标 JVM 内启动诊断服务并注册字节码增强。
+- `LinkageError` / `NoSuchMethodError` 等运行时崩溃
+- 诊断行为随目标应用依赖变化而不稳定
+- 难以复现的“环境相关问题”（CI/本地/线上差异）
 
-#### Scenario: Attach 成功后进入交互
-前置：Launcher 通过 Attach API 注入 Agent  
-- 解析 agentArgs 并注入 `sleuth.*` 系统属性（包含 `sleuth.config.file`）
-- 启动 CommandProcessor
-- 注册 SleuthClassFileTransformer
+因此本项目采用 **bootstrap → core 的隔离加载**：
 
-### Requirement: 生命周期不阻塞 JVM 退出
-**Module:** agent
-Agent 的命令处理线程应避免阻塞目标 JVM 正常退出（尤其是当应用仅剩 daemon 线程时）。
+- `agent`：bootstrap 入口（最小化依赖）
+- `core`：agent-core（功能主体 + 三方依赖），通过隔离类加载器加载
 
-#### Scenario: 应用退出时不被命令线程阻塞
-前置：Agent 已 attach 并启动 CommandProcessor  
-- 命令处理线程使用 daemon 线程运行  
-- shutdown 路径具备空指针保护，避免异常导致残留线程/资源
+## 2. 入口类
 
-### Requirement: stop 命令触发 shutdown 的分层解耦
-**Module:** agent / command
-避免 `command` 反向依赖 `agent` 造成包级循环依赖：`stop` 命令通过注入的生命周期回调触发 shutdown。
+- Bootstrap（模块 `agent`）
+  - `com.javasleuth.agent.SleuthAgent`
+  - 负责 `premain/agentmain`，并把执行转发到 core
+- Core（模块 `core`，包名 `com.javasleuth.agent.core`）
+  - `com.javasleuth.agent.core.SleuthAgentCore`
+  - 负责启动命令服务端与诊断能力
 
-#### Scenario: stop 不 import SleuthAgent
-前置：命令注册阶段  
-- `SleuthAgent` 在创建 `CommandProcessor` 时注入 shutdown 回调（例如 `SleuthAgent::shutdown`）
-- `StopCommand` 仅依赖 `Runnable shutdownHook`，在独立线程中 best-effort 触发回调
+隔离落地约束（当前构建产物验证）：
 
-## API Interfaces
-N/A
+- `agent` bootstrap jar **不包含** ASM/Jackson/CFR 等核心三方库（避免被 agent 入口类加载器意外触发加载）
+- 上述三方库集中在 `agent-core` 的 jar-with-dependencies 中，由隔离类加载器加载运行
 
-## Data Models
-N/A
+## 3. 隔离加载策略
 
-## Dependencies
-- command
-- enhancement
+### 3.1 核心原则
 
-## Change History
-- 202601281100_init_kb (planned)
-- 202601281301_sleuth_handshake_secure_frames (history/2026-01/202601281301_sleuth_handshake_secure_frames/) - agentArgs 注入与配置一致性
-- 202601291031_fix-5-issues (history/2026-01/202601291031_fix-5-issues/) - 命令线程 daemon 化与 shutdown 健壮性
-- 202602101815_layering_modularization (history/2026-02/202602101815_layering_modularization/) - stop 命令解耦：CommandProcessor 注入 shutdown hook，禁止 command->agent 依赖
+bootstrap 入口必须做到：
+
+- 不直接依赖（也不触发加载）ASM/Jackson/CFR/JLine 等第三方库
+- 只使用 JDK 能力定位自身 jar、创建隔离类加载器、反射调用 core 入口
+
+### 3.2 具体做法（当前代码）
+
+- 在 `SleuthAgent` 中创建 `URLClassLoader`，并将 parent 设为 `null`
+  - 使 core 的依赖解析不受业务 `AppClassLoader` 影响（避免 parent-first 碰撞）
+- 使用反射方式加载/调用 `SleuthAgentCore` 的入口方法
+
+### 3.3 预期效果
+
+- **业务不可见**：业务代码/业务类加载器不会“看到”agent-core 的第三方依赖
+- **版本稳定**：agent-core 使用自身携带的依赖版本，避免被业务依赖“劫持”
+- **故障域收缩**：依赖冲突从“影响整个目标 JVM”降低为“隔离域内可控”
+
+## 4. 代价与缺点（必须知晓）
+
+隔离加载并非零成本：
+
+- **实现复杂度上升**：需要维护跨类加载器调用边界（反射/桥接接口/序列化）
+- **调试成本上升**：排查 classloader 相关问题更困难（尤其是资源加载与 SPI）
+- **内存占用增加**：同名类在不同 classloader 下可能出现多份副本
+- **与业务交互需更谨慎**：
+  - 不能直接强依赖业务三方库类型（避免把业务依赖“拉进来”）
+  - 需要显式选择目标 `ClassLoader`（如基于线程上下文或目标类自身的 loader）
+
+结论：该策略以 **“稳定性/兼容性优先”** 为价值取舍，适合诊断类工具的长期演进。

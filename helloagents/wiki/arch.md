@@ -1,89 +1,75 @@
-# Architecture Design
+# 架构总览（SSOT）
 
-## Overall Architecture
-```mermaid
-flowchart TD
-    A[CLI Launcher] --> B[Attach API]
-    B --> C[Target JVM: SleuthAgent]
-    C --> D[CommandProcessor Server]
-    A --> X[HELLO/CONFIG Handshake]
-    X --> Y[Binary/Framed Channel]
-    D --> E[Command Implementations]
-    E --> F[Transformer/Enhancers]
-    F --> G[Interceptors]
-    G --> H[Result Queue/Response]
-```
+## 1. 端到端工作流
 
-## Tech Stack
-- **Backend:** Java 8, Maven
-- **Diagnostic:** Attach API, Instrumentation
-- **Bytecode:** ASM
-- **CLI:** JLine
-- **Monitoring:** JMX（可选）
+Java-Sleuth 的主链路可以抽象为：
 
-## Build Modules / Layering Guardrails
+1. `launcher` 发现/选择目标 JVM（进程选择）
+2. `launcher` 使用 Attach API 将 `agent` 注入目标 JVM
+3. 目标 JVM 内 `agent` 作为 bootstrap 入口启动（`premain/agentmain`）
+4. `agent` 引导隔离加载 `agent-core`（见下文“依赖隔离”）
+5. `agent-core` 在目标 JVM 内启动命令服务端（Command Server）
+6. `launcher` 作为客户端执行握手/升级协议并进入交互（JLine）或 headless 执行（脚本化）
 
-### Maven 模块边界（编译期硬约束）
-```mermaid
-flowchart LR
-    foundation["foundation (util/config/security/data)"] --> core["core(runtime) (command/agent/launcher/...)"]
-    core --> examples["examples (demo apps)"]
-```
+## 2. 模块与边界
 
-约束要点（SSOT）：
-- `foundation` 必须保持低层纯净：不得依赖 `core`（否则直接编译失败）
-- `core` 作为 runtime 层：依赖 `foundation`，并通过打包插件继续产出 `*-jar-with-dependencies.jar`
+多模块划分的目的：把 **“注入/生命周期/协议/UI/命令执行”** 拆成可替换、可测试的组件边界，降低演进成本。
 
-### 分层守护策略（不引入架构测试）
-- 当前不启用 ArchUnit 等“架构约束测试”，避免在 `src/test/java` 中引入分层守护逻辑
-- 分层边界以 Maven 模块边界为主（`foundation -> core(runtime)`），通过编译期约束阻断低层反向依赖高层
+- `foundation`
+  - 协议 framing/codec、通用 util、monitor、security 等基础能力
+- `agent`（Bootstrap）
+  - Java Agent 入口：`com.javasleuth.agent.SleuthAgent`
+  - 目标：**尽量少依赖，仅负责把 core 隔离加载并转发执行**
+- `core`（Agent Core）
+  - Java Agent Core 入口：`com.javasleuth.agent.core.SleuthAgentCore`
+  - 目标：在目标 JVM 内提供诊断能力与命令服务端
+- `launcher`
+  - 本机启动器入口：`com.javasleuth.launcher.SleuthLauncher`
+  - 目标：进程选择、Attach、协议客户端、交互 UI（可插拔运行模式）
 
-## Resource Governance / Backpressure
-- **连接侧背压**：`CommandProcessor` 使用有界队列处理新连接，队列满会拒绝新连接（避免无限排队导致内存上涨）
-  - `server.max.connections`：并发连接上限
-  - `server.executor.queue.capacity`：连接处理线程池排队上限
-- **命令执行侧背压**：`CommandPipeline` 使用有界命令执行线程池替代 `Executors.newCachedThreadPool`
-  - `performance.command.executor.core/max/queue.capacity`：命令执行线程池与队列上限
-  - 队列满时返回明确错误（避免线程膨胀与排队失控）
-- **重型命令治理**：对 `impact=HIGH` 的命令统一二次确认与并发限制
-  - `security.impact.high.confirm.enabled`
-  - `security.impact.high.concurrent.limit`
+## 3. 依赖隔离（目标 JVM 视角）
 
-## Core Flow
-```mermaid
-sequenceDiagram
-    participant User
-    participant Launcher
-    participant JVM as Target JVM
-    participant Agent
-    participant Server as CommandProcessor
-    User->>Launcher: 启动并选择 JVM
-    Launcher->>JVM: Attach + loadAgent
-    JVM->>Agent: agentmain()
-    Agent->>Server: 启动命令服务
-    User->>Launcher: 输入命令
-    Launcher->>Server: HELLO/CONFIG 握手协商
-    Launcher->>Server: Socket 发送命令（framed/binary）
-    Server->>Agent: 执行命令/触发增强
-    Agent-->>Server: 返回结果
-    Server-->>Launcher: 输出响应
-```
+### 3.1 风险背景
 
-## Major Architecture Decisions
-| adr_id | title | date | status | affected_modules | details |
-|--------|-------|------|--------|------------------|---------|
-| ADR-001 | Attach + Socket CLI 架构 | 2026-01-28 | ✅Adopted | launcher/agent/command | 待补充 |
-| ADR-002 | 插件化命令与分帧协议并行兼容 | 2026-01-28 | ✅Adopted | command/launcher/security/enhancement/monitor | history/2026-01/202601281207_sleuth_plugin_stream/how.md#adr-002-插件化命令与分帧协议并行兼容 |
-| ADR-003 | HELLO/CONFIG 握手 + 严格二进制帧 + 可选 HMAC | 2026-01-28 | ✅Adopted | launcher/command/security/config | history/2026-01/202601281301_sleuth_handshake_secure_frames/how.md |
-| ADR-004 | legacy 文本协议 sync 响应以 END marker 作为确定边界 | 2026-02-08 | ⚠️Superseded | command/launcher/security | history/2026-02/202602081451_legacy_text_end_marker_sync/how.md |
-| ADR-005 | 移除 legacy 文本协议，统一使用 framed/binary | 2026-02-08 | ✅Adopted | command/launcher/config/docs | history/2026-02/202602081630_drop_legacy_protocol/how.md |
-| ADR-006 | 强制新协议（无旧实现/旧配置兼容） | 2026-02-08 | ✅Adopted | command/launcher/security/config | history/2026-02/202602081900_enforce_new_protocol_only/how.md |
-| ADR-007 | HMAC 签名协议收敛为单一格式（禁用 v 字段） | 2026-02-08 | ✅Adopted | launcher/security/command | history/2026-02/202602081959_remove_compat_paths/how.md |
-| ADR-008 | 分层边界守护：foundation 模块边界 | 2026-02-10 | ✅Adopted | foundation/core | history/2026-02/202602101815_layering_modularization/how.md |
-| ADR-009 | ConfigView + RuntimeConfigStore：降低 ProductionConfig 单例吸力 | 2026-02-10 | ✅Adopted | foundation/config/core/command | history/2026-02/202602102336_production_config_refactor/how.md#adr-009-引入-configview--runtimeconfigstore渐进降低-productionconfig-全局单例吸力 |
+Java Agent 的第三方库（ASM/Jackson/JLine/CFR 等）如果与业务依赖在同一命名空间/可见范围内，会导致：
 
-### ADR-006: 强制新协议（无旧实现/旧配置兼容）
+- 业务依赖版本与 agent 依赖版本碰撞（类签名/方法签名不兼容）
+- agent 运行时行为受业务 classpath/parent-first 加载顺序影响
+- 调试与定位成本上升（问题呈现与目标应用依赖强相关）
 
-- Date: 2026-02-08
-- Decision: 握手强制、配置严格化（拒绝旧配置键）、HMAC 签名只允许单一 `SIG` 格式（禁用 `v` 字段）+ `sid` 绑定。
-- Rationale: 在无 legacy 客户端前提下，移除兼容/降级路径可降低协议错位风险与维护复杂度。
+### 3.2 当前策略
+
+采用 **“bootstrap 入口最小化 + core 隔离加载”**：
+
+- `agent`（bootstrap）负责创建隔离的 `URLClassLoader`（parent = `null`）加载 `agent-core`
+- `agent-core` 及其第三方依赖在隔离类加载器内运行
+- 与业务 `AppClassLoader` 的类命名空间分离，从而降低依赖碰撞概率
+
+> 注：隔离不是“零耦合”。Agent 仍需要与 JDK/Instrumentation 交互；对业务类的交互一般通过 `Instrumentation`、反射与显式选择目标 `ClassLoader` 的方式完成（避免直接强依赖业务依赖）。
+
+## 4. Launcher 去 God class：组合根（composition root）
+
+`SleuthLauncher` 被约束为 **组合根**：只负责参数解析与组件装配，避免把“发现/Attach/安全确认/握手/IO 循环/UI”全部塞进一个类里。
+
+关键拆分方向：
+
+- `cli`：参数与运行模式（interactive/headless）
+- `jvm`：进程发现与选择策略
+- `attach`：Attach API 抽象与 Agent 参数构造
+- `client`：协议客户端与握手协商
+- `shell`：交互 UI 与 headless 编排
+
+## 5. CommandProcessor 去 God class：生命周期组件化
+
+服务端侧（目标 JVM 内）的命令处理从单一巨型编排类拆分为：
+
+- `ServerBootstrapper`：自举边界（配置/安全/绑定）
+- `ConnectionAcceptor`：accept 循环与连接限流/拒绝策略
+- `ShutdownCoordinator`：优雅/紧急关闭与幂等保护
+- `CommandProcessor`：facade（装配并委托上述组件，保留对外 API 的稳定性）
+
+这样做的收益：
+
+- 更容易做单测（连接上限、shutdown 幂等等）
+- 更容易替换实现（不同网络模型、不同协议 handler）
+- 修改局部能力时不牵一发动全身

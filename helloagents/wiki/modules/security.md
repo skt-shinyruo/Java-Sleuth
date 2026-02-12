@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** InputValidator/AuditLogger/Auth/AuthZ/SecurityValidator
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-10
+- **Last Updated:** 2026-02-12
 - **Build Module:** foundation（低层基础模块）
 
 ## Specifications
@@ -95,6 +95,7 @@
 - 客户端以 `SIG ts=... nonce=... sid=<connId> sig=... cmd=...` 发送命令（不允许 `v` 字段）
 - 服务端验证 HMAC-SHA256 签名
 - 对 nonce 做去重与窗口期校验，拒绝重放
+- `SIG` 行的 `k=v` 解析与握手 `HELLO/CONFIG` 解析统一走 `foundation` 的 `KvLineCodec`（SSOT），避免 client/server/security 三套解析逐渐分叉。
 
 ### Requirement: 高风险命令二次确认（防误触 + 可审计）
 **Module:** security / command
