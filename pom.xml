@@ -15,7 +15,9 @@
 
     <modules>
         <module>foundation</module>
+        <module>agent</module>
         <module>core</module>
+        <module>launcher</module>
         <module>examples</module>
     </modules>
 

@@ -55,7 +55,7 @@ mvn clean package
 sleuth.bat
 
 # Or run the fat-jar directly (Launcher entrypoint)
-java -jar core/target/java-sleuth-*-jar-with-dependencies.jar
+java -jar launcher/target/java-sleuth-launcher-*-jar-with-dependencies.jar
 ```
 
 ### 3. Select Target JVM
@@ -262,13 +262,19 @@ sleuth> retransform MyClass -v                    # Verbose output
 
 ## Architecture
 
-Java-Sleuth consists of several key components:
+Java-Sleuth 采用类似 Arthas 的“两段式 Agent”，目标是避免在目标 JVM 内发生依赖碰撞：
 
-### Core Components
-- **SleuthAgent**: Java agent with agentmain/premain entry points
-- **SleuthLauncher**: JVM discovery and dynamic attachment via Attach API
-- **CommandProcessor**: Socket-based command handling with multi-client support
-- **SleuthClassFileTransformer**: Bytecode transformation framework
+### 控制端（目标 JVM 外）
+- **java-sleuth-launcher**：CLI 启动器，负责 JVM 发现与 Attach 注入
+
+### 目标 JVM 内
+- **java-sleuth-agent（bootstrap）**：薄 Agent（agentmain/premain 入口），追加到 BootstrapClassLoader 搜索路径。
+- **java-sleuth-agent-core**：实现 fat-jar（ASM/Jackson/CFR/RE2J...），由 bootstrap 使用隔离 ClassLoader 加载，从而不把三方依赖暴露给业务 ClassLoader。
+- **Spy/Bridge（`com.javasleuth.monitor.*`）**：被插桩字节码直接引用的回调，保证“注入字节码只依赖 JDK + sleuth 自己的稳定 API”，避免把 ASM/Jackson 等泄漏进业务依赖面。
+
+### 运行时核心（位于 agent-core 内）
+- **CommandProcessor**：基于 Socket 的命令处理，多客户端支持
+- **SleuthClassFileTransformer**：字节码转换框架
 
 ### Enhancement Framework
 - **WatchEnhancer**: Method monitoring with parameter/return capture
@@ -282,16 +288,25 @@ Java-Sleuth consists of several key components:
 
 ## Project Structure
 ```
+foundation/src/main/java/com/javasleuth/
+├── command/protocol/   # 协议编解码（bootstrap 可见）
+├── monitor/            # 插桩回调 Spy/Bridge（bootstrap 可见）
+├── security/           # 安全/审计
+├── data/               # 核心数据结构
+└── util/               # 工具类（JarLocator 等）
+
+agent/src/main/java/com/javasleuth/agent/
+└── SleuthAgent.java    # Bootstrap agent 入口（薄、仅依赖 JDK）
+
 core/src/main/java/com/javasleuth/
-├── agent/          # Java agent implementation
-├── launcher/       # JVM discovery and attachment
-├── command/        # Command system
-│   └── impl/       # Individual commands (dashboard, thread, watch, trace, etc.)
-├── enhancement/    # Bytecode enhancement framework
-├── monitor/        # Method interception and monitoring
-├── data/           # Data structures for monitoring results
-├── compiler/       # Memory compilation system
-└── util/           # Utility classes
+├── agent/core/         # SleuthAgentCore 入口（由隔离 ClassLoader 加载）
+├── command/            # 命令系统与实现
+├── enhancement/        # 字节码增强框架
+├── compiler/           # 内存编译（mc）
+└── util/               # 工具类（jad/decompiler 等）
+
+launcher/src/main/java/com/javasleuth/launcher/
+└── SleuthLauncher.java # CLI Launcher（Attach API + 交互会话）
 
 examples/src/main/java/com/javasleuth/test/
 ├── TestApplication.java
@@ -300,22 +315,24 @@ examples/src/main/java/com/javasleuth/test/
 
 ## Build Configuration
 
-Maven configuration with key features:
-- **Java 8 compatibility**: Works with JDK 8+ environments
-- **Agent manifest**: Proper Java agent configuration
-- **Fat JAR assembly**: Single executable with all dependencies
-- **Cross-platform scripts**: Linux/macOS/Windows support
+Maven 配置关键点：
+- **Java 8 兼容**：支持 JDK 8+ 环境
+- **Agent Manifest**：仅 bootstrap agent jar 声明 Java Agent 入口
+- **Fat JAR 打包**：分别构建 launcher / agent-bootstrap / agent-core 三个 fat-jar
+- **跨平台脚本**：Linux/macOS/Windows 支持
 
 ## Troubleshooting
 
 ### Agent JAR Not Found
 ```
-Agent JAR not found: core/target/java-sleuth-*-jar-with-dependencies.jar
+Agent JAR not found: agent/target/java-sleuth-agent-*-jar-with-dependencies.jar
+Agent CORE JAR not found: core/target/java-sleuth-agent-core-*-jar-with-dependencies.jar
 Please build the project first with: mvn clean package
 ```
 **Solution**:
 - Run `mvn clean package` to build the project.
-- Or set `-Dsleuth.agent.jar=<path>` (or env `SLEUTH_AGENT_JAR`) to point to the agent jar directly.
+- Or set `-Dsleuth.agent.jar=<path>` (or env `SLEUTH_AGENT_JAR`) to point to the bootstrap agent jar directly.
+- For the two-stage agent, also set `-Dsleuth.agent.core.jar=<path>` (or env `SLEUTH_AGENT_CORE_JAR`) to point to the agent core jar.
 
 ### tools.jar Not Found (Java < 9)
 ```

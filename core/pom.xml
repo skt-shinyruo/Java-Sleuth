@@ -12,11 +12,11 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>java-sleuth</artifactId>
+    <artifactId>java-sleuth-agent-core</artifactId>
     <packaging>jar</packaging>
 
-    <name>Java-Sleuth</name>
-    <description>A lightweight Java diagnostic and monitoring tool inspired by Arthas</description>
+    <name>Java-Sleuth Agent Core</name>
+    <description>Java-Sleuth agent core implementation loaded via isolated ClassLoader (ASM/Jackson/CFR/RE2J...)</description>
 
     <dependencies>
         <dependency>
@@ -35,18 +35,6 @@
             <groupId>org.ow2.asm</groupId>
             <artifactId>asm-commons</artifactId>
             <version>9.5</version>
-        </dependency>
-
-        <!-- JLine for command line interface -->
-        <dependency>
-            <groupId>org.jline</groupId>
-            <artifactId>jline-terminal</artifactId>
-            <version>3.21.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.jline</groupId>
-            <artifactId>jline-reader</artifactId>
-            <version>3.21.0</version>
         </dependency>
 
         <!-- JSON processing -->
@@ -136,7 +124,7 @@
                 </executions>
             </plugin>
 
-            <!-- Build agent jar -->
+            <!-- Build agent core fat-jar (implementation only; not directly injectable) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
@@ -147,11 +135,7 @@
                     </descriptorRefs>
                     <archive>
                         <manifestEntries>
-                            <Main-Class>com.javasleuth.launcher.SleuthLauncher</Main-Class>
-                            <Agent-Class>com.javasleuth.agent.SleuthAgent</Agent-Class>
-                            <Can-Redefine-Classes>true</Can-Redefine-Classes>
-                            <Can-Retransform-Classes>true</Can-Retransform-Classes>
-                            <Premain-Class>com.javasleuth.agent.SleuthAgent</Premain-Class>
+                            <Sleuth-Agent-Core>true</Sleuth-Agent-Core>
                         </manifestEntries>
                     </archive>
                 </configuration>

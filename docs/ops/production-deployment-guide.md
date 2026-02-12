@@ -102,9 +102,9 @@ Java-Sleuth 是一个面向生产环境的 Java 诊断与监控 Agent，可为 J
 # 脚本将完成：
 # - 构建项目
 # - 创建目录结构
-# - 部署文件与配置
-# - 配置 systemd 服务
-# - 配置监控
+# - 部署 launcher/agent 产物与配置
+# - 生成生产环境 wrapper 脚本（`/opt/java-sleuth/bin/sleuth-production.sh`）
+# - 可选生成监控脚本（`/opt/java-sleuth/bin/monitor.sh`）
 ```
 
 ### 方式 2：手工安装
@@ -120,7 +120,9 @@ cd java-sleuth
 mvn clean package -DskipTests
 
 # 校验构建产物
-ls -la core/target/java-sleuth-*-jar-with-dependencies.jar
+ls -la agent/target/java-sleuth-agent-*-jar-with-dependencies.jar
+ls -la core/target/java-sleuth-agent-core-*-jar-with-dependencies.jar
+ls -la launcher/target/java-sleuth-launcher-*-jar-with-dependencies.jar
 ```
 
 #### 步骤 2：创建目录结构
@@ -138,7 +140,9 @@ sudo chmod 755 /opt/java-sleuth
 
 ```bash
 # 复制 JAR 文件
-cp core/target/java-sleuth-*-jar-with-dependencies.jar /opt/java-sleuth/lib/
+cp agent/target/java-sleuth-agent-*-jar-with-dependencies.jar /opt/java-sleuth/lib/
+cp core/target/java-sleuth-agent-core-*-jar-with-dependencies.jar /opt/java-sleuth/lib/
+cp launcher/target/java-sleuth-launcher-*-jar-with-dependencies.jar /opt/java-sleuth/lib/
 
 # 复制配置文件
 cp config-templates/production-sleuth.properties /opt/java-sleuth/config/sleuth.properties
@@ -156,12 +160,13 @@ chmod +x /opt/java-sleuth/bin/sleuth.sh
 ```dockerfile
 FROM openjdk:8-jre-alpine
 
-COPY core/target/java-sleuth-*-jar-with-dependencies.jar /app/java-sleuth.jar
+COPY agent/target/java-sleuth-agent-*-jar-with-dependencies.jar /app/java-sleuth-agent-bootstrap.jar
+COPY core/target/java-sleuth-agent-core-*-jar-with-dependencies.jar /app/java-sleuth-agent-core.jar
 COPY config-templates/production-sleuth.properties /app/config/sleuth.properties
 
 EXPOSE 3658 9999
 
-ENTRYPOINT ["java", "-javaagent:/app/java-sleuth.jar", "-jar", "/app/java-sleuth.jar"]
+ENTRYPOINT ["java", "-Dsleuth.agent.core.jar=/app/java-sleuth-agent-core.jar", "-javaagent:/app/java-sleuth-agent-bootstrap.jar", "-jar", "/app/your-app.jar"]
 ```
 
 #### Kubernetes
@@ -762,16 +767,22 @@ find /opt/java-sleuth/logs -name "*.log" -mtime +7 -ls
 
 ```bash
 # 1. 下载新版本
-wget https://releases.java-sleuth.com/vX.Y.Z/java-sleuth-X.Y.Z-jar-with-dependencies.jar
+wget https://releases.java-sleuth.com/vX.Y.Z/java-sleuth-agent-X.Y.Z-jar-with-dependencies.jar
+wget https://releases.java-sleuth.com/vX.Y.Z/java-sleuth-agent-core-X.Y.Z-jar-with-dependencies.jar
+wget https://releases.java-sleuth.com/vX.Y.Z/java-sleuth-launcher-X.Y.Z-jar-with-dependencies.jar
 
 # 2. 备份当前版本
-cp /opt/java-sleuth/lib/java-sleuth-*-jar-with-dependencies.jar /opt/java-sleuth/backup/
+cp /opt/java-sleuth/lib/java-sleuth-agent-*-jar-with-dependencies.jar /opt/java-sleuth/backup/
+cp /opt/java-sleuth/lib/java-sleuth-agent-core-*-jar-with-dependencies.jar /opt/java-sleuth/backup/
+cp /opt/java-sleuth/lib/java-sleuth-launcher-*-jar-with-dependencies.jar /opt/java-sleuth/backup/
 
 # 3. 停止服务
 systemctl stop java-sleuth
 
 # 4. 替换 JAR
-cp java-sleuth-*-jar-with-dependencies.jar /opt/java-sleuth/lib/
+cp java-sleuth-agent-*-jar-with-dependencies.jar /opt/java-sleuth/lib/
+cp java-sleuth-agent-core-*-jar-with-dependencies.jar /opt/java-sleuth/lib/
+cp java-sleuth-launcher-*-jar-with-dependencies.jar /opt/java-sleuth/lib/
 
 # 5. 如有需要更新配置
 # 请先阅读 release notes 中的配置变更说明

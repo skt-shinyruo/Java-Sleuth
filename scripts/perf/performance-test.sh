@@ -9,9 +9,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_DIR"
 
-AGENT_JAR="$(ls -1t "$PROJECT_DIR"/core/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+AGENT_JAR="$(ls -1t "$PROJECT_DIR"/agent/target/java-sleuth-agent-[0-9]*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
 if [[ -z "${AGENT_JAR}" ]]; then
-    AGENT_JAR="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+    AGENT_JAR="$(ls -1t "$PROJECT_DIR"/target/java-sleuth-agent-[0-9]*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+fi
+if [[ -z "${AGENT_JAR}" ]]; then
+    # Backward compatibility: legacy single fat-jar (artifactId=java-sleuth)
+    AGENT_JAR="$(ls -1t "$PROJECT_DIR"/core/target/java-sleuth-[0-9]*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+fi
+if [[ -z "${AGENT_JAR}" ]]; then
+    AGENT_JAR="$(ls -1t "$PROJECT_DIR"/target/java-sleuth-[0-9]*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+fi
+
+CORE_JAR="$(ls -1t "$PROJECT_DIR"/core/target/java-sleuth-agent-core*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+if [[ -z "${CORE_JAR}" ]]; then
+    CORE_JAR="$(ls -1t "$PROJECT_DIR"/target/java-sleuth-agent-core*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
 fi
 
 BASE_JAR="$(ls -1t "$PROJECT_DIR"/core/target/*.jar 2>/dev/null | grep -v 'jar-with-dependencies' | head -n 1 || true)"
@@ -28,6 +40,20 @@ if [[ -z "${BASE_JAR}" ]] || [[ ! -f "${BASE_JAR}" ]]; then
     exit 1
 fi
 
+base="$(basename "$AGENT_JAR")"
+if [[ "$base" != java-sleuth-[0-9]*-jar-with-dependencies.jar ]]; then
+    if [[ -z "${CORE_JAR}" ]] || [[ ! -f "${CORE_JAR}" ]]; then
+        echo "Agent CORE JAR not found under: $PROJECT_DIR/core/target/ (or legacy $PROJECT_DIR/target/)"
+        echo "Tip: set -Dsleuth.agent.core.jar=<path> (or env SLEUTH_AGENT_CORE_JAR)"
+        exit 1
+    fi
+fi
+
+CORE_OPT=()
+if [[ -n "${CORE_JAR}" ]] && [[ -f "${CORE_JAR}" ]]; then
+    CORE_OPT=(-Dsleuth.agent.core.jar="${CORE_JAR}")
+fi
+
 bash ./scripts/examples/compile-examples.sh > /dev/null
 EXAMPLES_CLASSES="$PROJECT_DIR/target/examples-classes"
 
@@ -39,7 +65,7 @@ for i in {1..3}; do
     sleep 1
 
     start_time=$(date +%s%N)
-    java -javaagent:"$AGENT_JAR" -cp "$BASE_JAR:$EXAMPLES_CLASSES" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
+    java "${CORE_OPT[@]}" -javaagent:"$AGENT_JAR" -cp "$BASE_JAR:$EXAMPLES_CLASSES" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
     APP_PID=$!
 
     # Wait for agent to be ready
@@ -56,7 +82,7 @@ for i in {1..3}; do
 done
 
 # Start application for command performance tests
-java -javaagent:"$AGENT_JAR" -cp "$BASE_JAR:$EXAMPLES_CLASSES" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
+java "${CORE_OPT[@]}" -javaagent:"$AGENT_JAR" -cp "$BASE_JAR:$EXAMPLES_CLASSES" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
 APP_PID=$!
 
 # Wait for agent to be ready

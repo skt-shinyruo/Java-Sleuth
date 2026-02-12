@@ -1,4 +1,4 @@
-package com.javasleuth.agent;
+package com.javasleuth.agent.core;
 
 import com.javasleuth.command.CommandProcessor;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
@@ -6,7 +6,7 @@ import com.javasleuth.util.SleuthLogger;
 import java.lang.instrument.Instrumentation;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class SleuthAgent {
+public class SleuthAgentCore {
     private static final AtomicBoolean ATTACHED = new AtomicBoolean(false);
     private static Instrumentation instrumentation;
     private static CommandProcessor commandProcessor;
@@ -28,7 +28,7 @@ public class SleuthAgent {
             transformer = new SleuthClassFileTransformer();
             inst.addTransformer(transformer, true);
 
-            commandProcessor = new CommandProcessor(inst, transformer, SleuthAgent::shutdown);
+            commandProcessor = new CommandProcessor(inst, transformer, SleuthAgentCore::shutdown);
 
             Thread commandThread = new Thread(() -> {
                 commandProcessor.start();

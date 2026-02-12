@@ -7,10 +7,16 @@ set -euo pipefail
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_NAME="java-sleuth"
+PROJECT_NAME_AGENT_BOOTSTRAP="java-sleuth-agent"
+PROJECT_NAME_AGENT_CORE="java-sleuth-agent-core"
+PROJECT_NAME_LAUNCHER="java-sleuth-launcher"
 VERSION="1.0.0"
-JAR_NAME="${PROJECT_NAME}-${VERSION}-jar-with-dependencies.jar"
-AGENT_JAR="target/${JAR_NAME}"
+AGENT_BOOTSTRAP_JAR_NAME="${PROJECT_NAME_AGENT_BOOTSTRAP}-${VERSION}-jar-with-dependencies.jar"
+AGENT_CORE_JAR_NAME="${PROJECT_NAME_AGENT_CORE}-${VERSION}-jar-with-dependencies.jar"
+LAUNCHER_JAR_NAME="${PROJECT_NAME_LAUNCHER}-${VERSION}-jar-with-dependencies.jar"
+AGENT_BOOTSTRAP_JAR="agent/target/${AGENT_BOOTSTRAP_JAR_NAME}"
+AGENT_CORE_JAR="core/target/${AGENT_CORE_JAR_NAME}"
+LAUNCHER_JAR="launcher/target/${LAUNCHER_JAR_NAME}"
 DEPLOY_DIR="/opt/java-sleuth"
 CONFIG_DIR="${DEPLOY_DIR}/config"
 LOGS_DIR="${DEPLOY_DIR}/logs"
@@ -102,8 +108,14 @@ build_project() {
     # Clean and build
     mvn clean package -DskipTests
 
-    if [[ ! -f "$AGENT_JAR" ]]; then
-        error "Build failed - JAR file not found: $AGENT_JAR"
+    if [[ ! -f "$AGENT_BOOTSTRAP_JAR" ]]; then
+        error "Build failed - bootstrap agent JAR not found: $AGENT_BOOTSTRAP_JAR"
+    fi
+    if [[ ! -f "$AGENT_CORE_JAR" ]]; then
+        error "Build failed - agent core JAR not found: $AGENT_CORE_JAR"
+    fi
+    if [[ ! -f "$LAUNCHER_JAR" ]]; then
+        error "Build failed - JAR file not found: $LAUNCHER_JAR"
     fi
 
     log "Project built successfully"
@@ -114,15 +126,25 @@ deploy_files() {
     log "Deploying files..."
 
     # Backup existing installation
-    if [[ -f "${DEPLOY_DIR}/lib/${JAR_NAME}" ]]; then
+    if [[ -f "${DEPLOY_DIR}/lib/${AGENT_BOOTSTRAP_JAR_NAME}" ]] || [[ -f "${DEPLOY_DIR}/lib/${AGENT_CORE_JAR_NAME}" ]] || [[ -f "${DEPLOY_DIR}/lib/${LAUNCHER_JAR_NAME}" ]]; then
         local backup_name="backup-$(date +%Y%m%d_%H%M%S)"
         mkdir -p "${BACKUP_DIR}/${backup_name}"
-        cp "${DEPLOY_DIR}/lib/${JAR_NAME}" "${BACKUP_DIR}/${backup_name}/"
+        if [[ -f "${DEPLOY_DIR}/lib/${AGENT_BOOTSTRAP_JAR_NAME}" ]]; then
+            cp "${DEPLOY_DIR}/lib/${AGENT_BOOTSTRAP_JAR_NAME}" "${BACKUP_DIR}/${backup_name}/"
+        fi
+        if [[ -f "${DEPLOY_DIR}/lib/${AGENT_CORE_JAR_NAME}" ]]; then
+            cp "${DEPLOY_DIR}/lib/${AGENT_CORE_JAR_NAME}" "${BACKUP_DIR}/${backup_name}/"
+        fi
+        if [[ -f "${DEPLOY_DIR}/lib/${LAUNCHER_JAR_NAME}" ]]; then
+            cp "${DEPLOY_DIR}/lib/${LAUNCHER_JAR_NAME}" "${BACKUP_DIR}/${backup_name}/"
+        fi
         log "Previous installation backed up to ${BACKUP_DIR}/${backup_name}"
     fi
 
-    # Copy JAR file
-    cp "$AGENT_JAR" "${DEPLOY_DIR}/lib/"
+    # Copy JAR files
+    cp "$AGENT_BOOTSTRAP_JAR" "${DEPLOY_DIR}/lib/"
+    cp "$AGENT_CORE_JAR" "${DEPLOY_DIR}/lib/"
+    cp "$LAUNCHER_JAR" "${DEPLOY_DIR}/lib/"
 
     # Copy startup scripts
     cp sleuth.sh "${DEPLOY_DIR}/bin/"
@@ -398,151 +420,24 @@ EOF
 create_startup_script() {
     log "Creating production startup script..."
 
-    cat > "${DEPLOY_DIR}/bin/sleuth-production.sh" << EOF
+    cat > "${DEPLOY_DIR}/bin/sleuth-production.sh" << 'EOF'
 #!/bin/bash
-# Java-Sleuth Production Startup Script
+
+# Java-Sleuth Production Wrapper (interactive attach)
+#
+# Java-Sleuth is designed as an interactive attach tool:
+# - java-sleuth-launcher: runs on operator machine/server
+# - java-sleuth-agent (bootstrap): injected into target JVM (Attach API / -javaagent)
+# - java-sleuth-agent-core: isolated implementation loaded by the bootstrap agent
 
 set -euo pipefail
 
-# Configuration
-SLEUTH_HOME="${DEPLOY_DIR}"
-CONFIG_DIR="${CONFIG_DIR}"
-LOGS_DIR="${LOGS_DIR}"
-JAR_FILE="\${SLEUTH_HOME}/lib/${JAR_NAME}"
-PID_FILE="\${SLEUTH_HOME}/sleuth.pid"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SLEUTH_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Load JVM configuration
-JVM_OPTS=""
-if [[ -f "\${CONFIG_DIR}/jvm.conf" ]]; then
-    while IFS= read -r line; do
-        # Skip comments and empty lines
-        [[ \$line =~ ^[[:space:]]*# ]] && continue
-        [[ -z "\${line// }" ]] && continue
-        JVM_OPTS="\$JVM_OPTS \$line"
-    done < "\${CONFIG_DIR}/jvm.conf"
-fi
+export SLEUTH_CONFIG_FILE="${SLEUTH_HOME}/config/sleuth.properties"
 
-# Replace placeholders in JVM options
-JVM_OPTS="\${JVM_OPTS//\\\${CONFIG_DIR}/\$CONFIG_DIR}"
-JVM_OPTS="\${JVM_OPTS//\\\${LOGS_DIR}/\$LOGS_DIR}"
-
-# Function to start Java-Sleuth
-start_sleuth() {
-    echo "🚀 Starting Java-Sleuth in production mode..."
-
-    # Check if already running
-    if [[ -f "\$PID_FILE" ]] && kill -0 "\$(cat "\$PID_FILE")" 2>/dev/null; then
-        echo "❌ Java-Sleuth is already running (PID: \$(cat "\$PID_FILE"))"
-        exit 1
-    fi
-
-    # Create logs directory
-    mkdir -p "\$LOGS_DIR"
-
-    # Start the application
-    nohup java \$JVM_OPTS \\
-        -javaagent:"\$JAR_FILE" \\
-        -Dsleuth.config.file="\${CONFIG_DIR}/sleuth.properties" \\
-        -cp "\$JAR_FILE" \\
-        com.javasleuth.agent.SleuthAgent \\
-        > "\${LOGS_DIR}/sleuth.out" 2>&1 &
-
-    local pid=\$!
-    echo \$pid > "\$PID_FILE"
-
-    # Wait a moment and check if process is still running
-    sleep 3
-    if kill -0 \$pid 2>/dev/null; then
-        echo "✅ Java-Sleuth started successfully (PID: \$pid)"
-        echo "📊 Monitor logs: tail -f \${LOGS_DIR}/sleuth.out"
-        echo "🌐 Server will be available on port 3658"
-    else
-        echo "❌ Failed to start Java-Sleuth"
-        rm -f "\$PID_FILE"
-        exit 1
-    fi
-}
-
-# Function to stop Java-Sleuth
-stop_sleuth() {
-    echo "🛑 Stopping Java-Sleuth..."
-
-    if [[ ! -f "\$PID_FILE" ]]; then
-        echo "❌ PID file not found. Java-Sleuth may not be running."
-        exit 1
-    fi
-
-    local pid=\$(cat "\$PID_FILE")
-    if ! kill -0 "\$pid" 2>/dev/null; then
-        echo "❌ Process \$pid is not running"
-        rm -f "\$PID_FILE"
-        exit 1
-    fi
-
-    # Graceful shutdown
-    kill -TERM "\$pid"
-
-    # Wait for graceful shutdown
-    local count=0
-    while kill -0 "\$pid" 2>/dev/null && [[ \$count -lt 30 ]]; do
-        sleep 1
-        ((count++))
-    done
-
-    if kill -0 "\$pid" 2>/dev/null; then
-        echo "⚠️ Graceful shutdown failed, forcing termination..."
-        kill -KILL "\$pid"
-        sleep 2
-    fi
-
-    rm -f "\$PID_FILE"
-    echo "✅ Java-Sleuth stopped successfully"
-}
-
-# Function to check status
-status_sleuth() {
-    if [[ -f "\$PID_FILE" ]] && kill -0 "\$(cat "\$PID_FILE")" 2>/dev/null; then
-        local pid=\$(cat "\$PID_FILE")
-        echo "✅ Java-Sleuth is running (PID: \$pid)"
-
-        # Show some basic stats
-        local mem_usage=\$(ps -p "\$pid" -o %mem --no-headers | tr -d ' ')
-        local cpu_usage=\$(ps -p "\$pid" -o %cpu --no-headers | tr -d ' ')
-        echo "📊 Memory: \${mem_usage}%, CPU: \${cpu_usage}%"
-    else
-        echo "❌ Java-Sleuth is not running"
-        [[ -f "\$PID_FILE" ]] && rm -f "\$PID_FILE"
-        exit 1
-    fi
-}
-
-# Main script logic
-case "\${1:-}" in
-    start)
-        start_sleuth
-        ;;
-    stop)
-        stop_sleuth
-        ;;
-    restart)
-        stop_sleuth
-        sleep 2
-        start_sleuth
-        ;;
-    status)
-        status_sleuth
-        ;;
-    *)
-        echo "Usage: \$0 {start|stop|restart|status}"
-        echo
-        echo "Commands:"
-        echo "  start   - Start Java-Sleuth"
-        echo "  stop    - Stop Java-Sleuth"
-        echo "  restart - Restart Java-Sleuth"
-        echo "  status  - Check Java-Sleuth status"
-        exit 1
-        ;;
-esac
+exec "${SLEUTH_HOME}/bin/sleuth.sh" "$@"
 EOF
 
     chmod +x "${DEPLOY_DIR}/bin/sleuth-production.sh"
@@ -556,7 +451,9 @@ validate_deployment() {
 
     # Check files exist
     local files=(
-        "${DEPLOY_DIR}/lib/${JAR_NAME}"
+        "${DEPLOY_DIR}/lib/${AGENT_BOOTSTRAP_JAR_NAME}"
+        "${DEPLOY_DIR}/lib/${AGENT_CORE_JAR_NAME}"
+        "${DEPLOY_DIR}/lib/${LAUNCHER_JAR_NAME}"
         "${DEPLOY_DIR}/bin/sleuth.sh"
         "${DEPLOY_DIR}/bin/sleuth-production.sh"
         "${DEPLOY_DIR}/bin/monitor.sh"
@@ -576,11 +473,6 @@ validate_deployment() {
         error "Startup script is not executable"
     fi
 
-    # Check Java can load the JAR
-    if ! java -jar "${DEPLOY_DIR}/lib/${JAR_NAME}" --version 2>/dev/null; then
-        warn "Could not validate JAR file with --version flag"
-    fi
-
     log "Deployment validation complete"
 }
 
@@ -592,22 +484,21 @@ print_summary() {
     echo "Installation Directory: $DEPLOY_DIR"
     echo "Configuration Directory: $CONFIG_DIR"
     echo "Logs Directory: $LOGS_DIR"
-    echo "JAR File: ${DEPLOY_DIR}/lib/${JAR_NAME}"
+    echo "Launcher JAR: ${DEPLOY_DIR}/lib/${LAUNCHER_JAR_NAME}"
+    echo "Agent Bootstrap JAR: ${DEPLOY_DIR}/lib/${AGENT_BOOTSTRAP_JAR_NAME}"
+    echo "Agent Core JAR: ${DEPLOY_DIR}/lib/${AGENT_CORE_JAR_NAME}"
     echo
     echo "=== NEXT STEPS ==="
     echo "1. Review configuration files in $CONFIG_DIR"
-    echo "2. Start the service:"
-    echo "   ${DEPLOY_DIR}/bin/sleuth-production.sh start"
-    echo "   OR (if using systemd):"
-    echo "   sudo systemctl enable $SERVICE_NAME"
-    echo "   sudo systemctl start $SERVICE_NAME"
+    echo "2. Start Java-Sleuth (interactive attach):"
+    echo "   ${DEPLOY_DIR}/bin/sleuth-production.sh"
     echo
-    echo "3. Monitor the service:"
+    echo "3. Monitoring:"
     echo "   ${DEPLOY_DIR}/bin/monitor.sh"
-    echo "   tail -f ${LOGS_DIR}/sleuth.out"
     echo
-    echo "4. Connect to the service:"
-    echo "   telnet localhost 3658"
+    echo "4. Notes:"
+    echo "   - The agent runs inside the target JVM and listens on the configured port (default 3658)."
+    echo "   - Avoid exposing the port to untrusted networks; consider enabling security.mode=hmac."
     echo
     echo "=== SECURITY NOTES ==="
     echo "- Review firewall settings for port 3658"

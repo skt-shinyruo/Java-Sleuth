@@ -25,14 +25,24 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Check if JAR exists
-JAR_FILE="$(ls -1t "$PROJECT_DIR"/core/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
-if [ -z "${JAR_FILE}" ]; then
-    JAR_FILE="$(ls -1t "$PROJECT_DIR"/target/*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
-fi
-if [ -z "${JAR_FILE}" ] || [ ! -f "${JAR_FILE}" ]; then
-    echo -e "${RED}Please build the project first with: mvn clean package${NC}"
-    exit 1
+# Check if launcher/agent JARs exist
+LAUNCHER_JAR="$(ls -1t "$PROJECT_DIR"/launcher/target/java-sleuth-launcher*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+AGENT_JAR="$(ls -1t "$PROJECT_DIR"/agent/target/java-sleuth-agent-[0-9]*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+CORE_JAR="$(ls -1t "$PROJECT_DIR"/core/target/java-sleuth-agent-core*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+if [ -z "${LAUNCHER_JAR}" ] || [ ! -f "${LAUNCHER_JAR}" ] || [ -z "${AGENT_JAR}" ] || [ ! -f "${AGENT_JAR}" ] || [ -z "${CORE_JAR}" ] || [ ! -f "${CORE_JAR}" ]; then
+    # Backward compatibility: legacy single fat-jar (artifactId=java-sleuth)
+    LEGACY_JAR="$(ls -1t "$PROJECT_DIR"/core/target/java-sleuth-[0-9]*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+    if [ -z "${LEGACY_JAR}" ]; then
+        LEGACY_JAR="$(ls -1t "$PROJECT_DIR"/target/java-sleuth-[0-9]*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+    fi
+    if [ -n "${LEGACY_JAR}" ] && [ -f "${LEGACY_JAR}" ]; then
+        LAUNCHER_JAR="${LEGACY_JAR}"
+        AGENT_JAR="${LEGACY_JAR}"
+        CORE_JAR=""
+    else
+        echo -e "${RED}Please build the project first with: mvn clean package${NC}"
+        exit 1
+    fi
 fi
 
 echo -e "${BLUE}1. Starting Enhanced Test Application...${NC}"

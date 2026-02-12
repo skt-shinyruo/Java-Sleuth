@@ -729,7 +729,7 @@ grep "VIOLATION" /opt/java-sleuth/logs/sleuth-audit.log
 2. **清理并重新安装**
    ```bash
    # 移除现有安装
-   systemctl stop java-sleuth
+   # Java-Sleuth 为交互式 attach 工具（非独立常驻服务）；如在运行中，请先结束当前运维会话
    rm -rf /opt/java-sleuth/
 
    # 从头安装
@@ -745,9 +745,8 @@ grep "VIOLATION" /opt/java-sleuth/logs/sleuth-audit.log
 4. **验证恢复**
    ```bash
    # 验证功能
-   systemctl start java-sleuth
-   ./monitor.sh
-   ./sleuth.sh
+   /opt/java-sleuth/bin/monitor.sh
+   /opt/java-sleuth/bin/sleuth-production.sh
    # sleuth> health
    ```
 

@@ -11,7 +11,10 @@
 
 - Linux/macOS：`./sleuth.sh`
 - Windows：`sleuth.bat`
-- 或直接运行 fat-jar：`java -jar core/target/java-sleuth-*-jar-with-dependencies.jar`
+- 或直接运行 Launcher fat-jar：`java -jar launcher/target/java-sleuth-launcher-*-jar-with-dependencies.jar`
+  - 说明：若不在项目根目录运行（无法自动扫描到 `agent/target` / `core/target`），请显式指定：
+    - bootstrap agent jar：`-Dsleuth.agent.jar=agent/target/java-sleuth-agent-*-jar-with-dependencies.jar`（或环境变量 `SLEUTH_AGENT_JAR`）
+    - agent core jar：`-Dsleuth.agent.core.jar=core/target/java-sleuth-agent-core-*-jar-with-dependencies.jar`（或环境变量 `SLEUTH_AGENT_CORE_JAR`）
 
 ## 3. 选择目标 JVM 并开始诊断
 
