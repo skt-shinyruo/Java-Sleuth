@@ -19,19 +19,7 @@
     <description>Low-level foundation module (util/config/security/data) for Java-Sleuth</description>
 
     <dependencies>
-        <!-- JSON processing (AuditLogger) -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-            <version>2.15.2</version>
-        </dependency>
-
-        <!-- CFR Java Decompiler (jad) -->
-        <dependency>
-            <groupId>org.benf</groupId>
-            <artifactId>cfr</artifactId>
-            <version>0.152</version>
-        </dependency>
+        <!-- Keep this module dependency-free (JDK only). -->
     </dependencies>
 
     <build>
@@ -50,4 +38,3 @@
     </build>
 
 </project>
-

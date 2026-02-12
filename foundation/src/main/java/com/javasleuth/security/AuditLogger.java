@@ -1,8 +1,6 @@
 package com.javasleuth.security;
 
 import com.javasleuth.config.ProductionConfig;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.javasleuth.util.SleuthLogger;
 
 import java.io.*;
@@ -20,7 +18,6 @@ public class AuditLogger {
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
 
     private final ProductionConfig config;
-    private final ObjectMapper objectMapper;
     private final BlockingQueue<AuditEvent> auditQueue;
     private final AtomicBoolean running;
     private final AtomicLong eventCounter;
@@ -34,7 +31,6 @@ public class AuditLogger {
 
     private AuditLogger() {
         this.config = ProductionConfig.getInstance();
-        this.objectMapper = new ObjectMapper();
         this.auditQueue = new LinkedBlockingQueue<>(1000);
         this.running = new AtomicBoolean(false);
         this.eventCounter = new AtomicLong(0);
@@ -103,6 +99,7 @@ public class AuditLogger {
     }
 
     private void writeAuditEvent(AuditEvent event) {
+        eventCounter.incrementAndGet();
         String timestamp = TIMESTAMP_FORMATTER.format(event.getTimestamp());
         String logEntry = String.format("[%s] [%s] [%s] %s - %s",
             timestamp, event.getLevel(), event.getCategory(), event.getAction(), event.getDetails());
@@ -129,40 +126,6 @@ public class AuditLogger {
                 auditWriter.println(logEntry);
                 auditWriter.flush();
             }
-        }
-
-        // Also write as JSON for structured logging
-        try {
-            if (!config.isAuditLogEnabled()) {
-                return;
-            }
-            if (auditWriter == null && securityWriter == null) {
-                return;
-            }
-            ObjectNode jsonEvent = objectMapper.createObjectNode();
-            jsonEvent.put("id", eventCounter.incrementAndGet());
-            jsonEvent.put("timestamp", timestamp);
-            jsonEvent.put("level", event.getLevel());
-            jsonEvent.put("category", event.getCategory());
-            jsonEvent.put("action", event.getAction());
-            jsonEvent.put("details", event.getDetails());
-            if (event.getClientInfo() != null) {
-                jsonEvent.put("client", event.getClientInfo());
-            }
-            if (event.getSessionId() != null) {
-                jsonEvent.put("session", maskSessionId(event.getSessionId()));
-            }
-
-            String jsonLog = objectMapper.writeValueAsString(jsonEvent);
-            if ("SECURITY".equals(event.getCategory()) && securityWriter != null) {
-                securityWriter.println("JSON: " + jsonLog);
-                securityWriter.flush();
-            } else if (auditWriter != null) {
-                auditWriter.println("JSON: " + jsonLog);
-                auditWriter.flush();
-            }
-        } catch (Exception e) {
-            SleuthLogger.warn("Failed to write JSON audit event: " + e.getMessage());
         }
     }
 

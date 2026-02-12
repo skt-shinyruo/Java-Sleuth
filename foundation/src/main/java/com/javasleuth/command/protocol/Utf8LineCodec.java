@@ -107,4 +107,3 @@ public final class Utf8LineCodec {
         }
     }
 }
-
