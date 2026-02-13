@@ -18,6 +18,7 @@
 - `CommandContext`：一次请求的上下文（身份/权限/连接信息等）
 - `CommandRegistry` / `CommandProvider`：命令注册与聚合
   - 允许在装配链路中向 builtin provider 传递关键依赖（如 auth/session/confirm manager），减少命令实现内部的 `getInstance()` 隐式依赖
+  - shutdown 路径会 best-effort 关闭实现了 `AutoCloseable` 的命令（例如带自建调度器/后台线程的命令），避免 detach 后残留后台任务
 
 ### 2.2 服务端生命周期拆分（去 God class）
 
@@ -56,4 +57,5 @@
 - **安全边界**：服务端入口处必须先完成握手/鉴权/确认流程，再允许进入高危命令执行
 - **资源治理**：accept 循环需要显式限流/拒绝策略，避免目标 JVM 被诊断流量拖垮
 - **detach/reattach 语义**：shutdown 编排需要覆盖“网络/线程池/安全缓存/插件 classloader”等关键资源，避免同 JVM 二次 attach 时状态残留
+  - 补充：包含命令级后台资源（如 profiler scheduler）与 vmtool track 这类“跨调用会话状态”（session registry + bootstrap interceptor cache）
 - **可测试性优先**：尽量把“线程/IO/生命周期”与“纯逻辑”分离，降低 flaky 风险

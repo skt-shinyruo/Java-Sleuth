@@ -28,6 +28,38 @@ public final class JarLocator {
 
     private JarLocator() {}
 
+    /**
+     * Locate the jar file that contains the given anchor class (via ProtectionDomain/CodeSource).
+     *
+     * <p>This is a generic helper and does not validate manifest markers.</p>
+     */
+    public static File locateCodeSourceJar(Class<?> anchor) {
+        if (anchor == null) {
+            return null;
+        }
+        try {
+            ProtectionDomain pd = anchor.getProtectionDomain();
+            if (pd == null) {
+                return null;
+            }
+            CodeSource cs = pd.getCodeSource();
+            if (cs == null) {
+                return null;
+            }
+            URL location = cs.getLocation();
+            if (location == null) {
+                return null;
+            }
+            File file = toFile(location);
+            if (file != null && file.isFile() && file.getName().toLowerCase().endsWith(".jar")) {
+                return file;
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+        return null;
+    }
+
     public static File locateAgentJar(Class<?> anchor) {
         File override = locateOverrideJar();
         if (override != null) {

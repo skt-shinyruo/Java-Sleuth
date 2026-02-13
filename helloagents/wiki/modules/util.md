@@ -78,7 +78,7 @@ N/A
 - config
 
 ## Utilities Added
-- JarLocator（bootstrap）：Agent/Core/Launcher 产物定位 SSOT（Manifest marker + override + 常见目录扫描）
+- JarLocator（bootstrap）：Agent/Core/Launcher 产物定位 SSOT（Manifest marker + override + 常见目录扫描 + CodeSource 自身 jar 定位）
 - AgentArgsApplier（bootstrap）：`agentArgs` 解析与 sysprop 落地 SSOT（bootstrap/core 共用）
 - RingBuffer（bootstrap）：jobs/tt 等能力复用的环形缓冲
 - SleuthValueFormatter（bootstrap）：安全可读化（限深/限长/脱敏）
@@ -100,3 +100,4 @@ N/A
 - 202602051743_exception_handling_logging (history/2026-02/202602051743_exception_handling_logging/) - SleuthLogger throwable 可控格式化与审计控制台镜像语义收敛
 - 202602101815_layering_modularization (history/2026-02/202602101815_layering_modularization/) - 分层边界恢复：util 下沉到 foundation + 通过 SleuthLogContext 解耦 command 依赖
 - 202602132045_bootstrap_boundary_cleanup (history/2026-02/202602132045_bootstrap_boundary_cleanup/) - 值快照/环形缓冲/JarLocator/agentArgs 落地收敛到 bootstrap，SleuthObjectInspector 迁移到 core
+- 202602132323_arch_boundary_lifecycle_singletons (history/2026-02/202602132323_arch_boundary_lifecycle_singletons/) - JarLocator CodeSource 自身 jar 定位、命令 close 纳管、vmtool/profiler shutdown 闭环

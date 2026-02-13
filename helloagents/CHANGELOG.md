@@ -58,6 +58,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 关键依赖环拆除：`CommandMeta` 下沉到 `com.javasleuth.security`（SSOT），`security` 不再依赖 `command`；`SleuthLogger` 通过 `SleuthLogContext` 注入上下文，避免 `util -> command`；`stop` 通过注入的 shutdown hook 触发 Agent shutdown，避免 `command -> agent`
 - 线程与生命周期治理：`AuthenticationManager` 会话清理任务改为可 shutdown 的调度器并纳入关闭编排；`JobManager` 支持 shutdown 并在后台 job 传播/清理上下文；`AuditLogger`/`PerformanceOptimizer` 支持 detach→re-attach 场景重启
 - 生命周期闭环补齐：`CommandExecutionEngine`/`CommandPipeline` 增加 `shutdown()` 并由 `ShutdownCoordinator` 统一收口；`AuthorizationManager`/`RequestSecurityManager`/`DangerousCommandConfirmationManager` 增加 `shutdownInstance()` 清理缓存，降低同 JVM detach→re-attach 的状态残留风险；关键线程池进一步统一到 `SleuthThreadFactory`
+- 命令/客户端边界进一步显式化：`ProtocolClient` 支持注入 `RequestSecurityManager`（默认行为保持不变），`CommandRegistry.shutdown()` best-effort 关闭实现了 `AutoCloseable` 的命令（用于治理命令级后台线程/资源）
 - 安全组件可注入与实例级 shutdown：`AuthorizationManager`/`RequestSecurityManager`/`DangerousCommandConfirmationManager` 增加 instance `shutdown()`；`ShutdownCoordinator` 优先 shutdown 注入实例并 best-effort 清理全局单例；`vmtool/auth/session` 命令改为依赖注入（默认构造保留兼容）
 - Bootstrap 边界收敛：新增 `bootstrap` Maven 模块（`java-sleuth-bootstrap`）承载 spy/bridge（`monitor`/`data`/值快照工具/JarLocator/AgentArgsApplier），`agent` 仅依赖该模块并 append 到 bootstrap；`foundation` 的 config/security/protocol 等能力不再被提升为 bootstrap 可见；jar 定位与 agentArgs 落地规则统一为 SSOT
 - 移除 ArchUnit 架构守护测试与依赖（按团队偏好，避免测试代码承载分层守护逻辑）
@@ -106,6 +107,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - Launcher 进程列表过滤后序号不一致导致的误选问题
 - Launcher 连接地址不再写死 localhost（按 bind 地址/协商信息解析，0.0.0.0/:: 回退 loopback）
 - 传输层消除 BufferedReader/PrintWriter 与 Data*Stream 混用导致的升级不稳定风险
+- detach→re-attach 残留治理补齐：Agent shutdown 路径显式清理 vmtool track sessions 与 bootstrap interceptor 缓存；Profiler 命令支持 close 并避免定时线程在 shutdown 后残留
 - AuthenticationManager 锁定窗口与客户端标识解析修复（支持 /ip:port、IPv6、unknown）
 - 审计日志脱敏加强：auth/config/sysprop 等命令参数与 sessionId 不再以明文写入
 - server.max.connections 与 performance.command.timeout 配置落地生效

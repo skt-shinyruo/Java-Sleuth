@@ -122,6 +122,21 @@ public class SleuthAgentCore {
         } catch (Exception ignore) {
             // best-effort
         }
+        // vmtool track sessions keep both core-side enhancer references and bootstrap-side weak caches.
+        // Clear them explicitly to avoid detach → re-attach state accumulation.
+        try {
+            SleuthClassFileTransformer t = tx;
+            if (t != null) {
+                com.javasleuth.vmtool.VmToolSessionRegistry.getInstance().stopAll(inst, t, "shutdown");
+            }
+        } catch (Exception ignore) {
+            // best-effort
+        }
+        try {
+            com.javasleuth.monitor.VmToolInterceptor.clearAll();
+        } catch (Exception ignore) {
+            // best-effort
+        }
         try {
             com.javasleuth.monitor.WatchInterceptor.unregisterAllWatches();
         } catch (Exception ignore) {

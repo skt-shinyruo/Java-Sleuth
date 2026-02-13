@@ -2,6 +2,7 @@ package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
 import com.javasleuth.util.PerformanceOptimizer;
+import com.javasleuth.util.SleuthExecutors;
 import com.javasleuth.util.SleuthLogger;
 import com.javasleuth.util.SleuthThreadFactory;
 import com.javasleuth.util.StringUtils;
@@ -18,6 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.List;
 import java.util.ArrayList;
@@ -36,7 +38,7 @@ import java.util.stream.Collectors;
  * profiler report - Generate profiling report
  * profiler clear - Clear profiling data
  */
-public class ProfilerCommand implements Command {
+public class ProfilerCommand implements Command, AutoCloseable {
     private final Instrumentation instrumentation;
     private final ThreadMXBean threadMXBean;
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
@@ -44,6 +46,7 @@ public class ProfilerCommand implements Command {
     private final AtomicLong sampleCount = new AtomicLong(0);
     private final ConcurrentHashMap<String, ProfileSample> profileData = new ConcurrentHashMap<>();
     private ScheduledExecutorService scheduler;
+    private volatile Thread schedulerThread;
     private long startTime;
     private String currentType = "cpu";
     private int intervalMs = 100; // Default 100ms sampling interval
@@ -51,6 +54,17 @@ public class ProfilerCommand implements Command {
     public ProfilerCommand(Instrumentation instrumentation) {
         this.instrumentation = instrumentation;
         this.threadMXBean = ManagementFactory.getThreadMXBean();
+    }
+
+    @Override
+    public void close() {
+        // Best-effort: shutdown should not leave background sampler threads behind.
+        try {
+            isRunning.set(false);
+        } catch (Exception ignore) {
+            // ignore
+        }
+        shutdownScheduler(true);
     }
 
     @Override
@@ -91,6 +105,9 @@ public class ProfilerCommand implements Command {
         intervalMs = interval;
 
         try {
+            // Best-effort: in case previous scheduler was not fully stopped.
+            shutdownScheduler(true);
+
             // Clear previous data
             profileData.clear();
             sampleCount.set(0);
@@ -99,9 +116,13 @@ public class ProfilerCommand implements Command {
             startTime = System.currentTimeMillis();
 
             // Start sampling
-            scheduler = Executors.newSingleThreadScheduledExecutor(
-                SleuthThreadFactory.daemonFixed("sleuth-profiler-sampler")
-            );
+            schedulerThread = null;
+            ThreadFactory tf = r -> {
+                Thread t = SleuthThreadFactory.daemonFixed("sleuth-profiler-sampler").newThread(r);
+                schedulerThread = t;
+                return t;
+            };
+            scheduler = Executors.newSingleThreadScheduledExecutor(tf);
 
             scheduler.scheduleAtFixedRate(this::sampleProfile, 0, intervalMs, TimeUnit.MILLISECONDS);
 
@@ -136,10 +157,7 @@ public class ProfilerCommand implements Command {
 
         try {
             isRunning.set(false);
-            if (scheduler != null) {
-                scheduler.shutdown();
-                scheduler.awaitTermination(5, TimeUnit.SECONDS);
-            }
+            shutdownScheduler(false);
 
             long duration = System.currentTimeMillis() - startTime;
             long samples = sampleCount.get();
@@ -162,6 +180,36 @@ public class ProfilerCommand implements Command {
         } catch (Exception e) {
             isRunning.set(false);
             return "Failed to stop profiler: " + e.getMessage();
+        }
+    }
+
+    private void shutdownScheduler(boolean forceNow) {
+        ScheduledExecutorService ex = scheduler;
+        Thread st = schedulerThread;
+        scheduler = null;
+        schedulerThread = null;
+        if (ex == null) {
+            return;
+        }
+        // If shutdown is called from within the scheduler thread (e.g. auto-stop task), never block on awaitTermination,
+        // otherwise it can deadlock waiting for itself to exit.
+        try {
+            Thread cur = Thread.currentThread();
+            if (st != null && cur == st) {
+                if (forceNow) {
+                    ex.shutdownNow();
+                } else {
+                    ex.shutdown();
+                }
+                return;
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+        if (forceNow) {
+            SleuthExecutors.shutdownNowAndAwait(ex, "profiler-scheduler", 2, TimeUnit.SECONDS);
+        } else {
+            SleuthExecutors.shutdownAndAwait(ex, "profiler-scheduler", 5, TimeUnit.SECONDS);
         }
     }
 

@@ -52,7 +52,8 @@ public final class ProtocolClient implements AutoCloseable {
         int maxLineBytes,
         String connId,
         DataInputStream binaryIn,
-        DataOutputStream binaryOut
+        DataOutputStream binaryOut,
+        RequestSecurityManager securityManager
     ) {
         this.socket = socket;
         this.in = in;
@@ -66,7 +67,7 @@ public final class ProtocolClient implements AutoCloseable {
         this.connId = connId;
         this.binaryIn = binaryIn;
         this.binaryOut = binaryOut;
-        this.securityManager = RequestSecurityManager.getInstance();
+        this.securityManager = securityManager != null ? securityManager : RequestSecurityManager.getInstance();
     }
 
     public static ProtocolClient connect(
@@ -76,6 +77,26 @@ public final class ProtocolClient implements AutoCloseable {
         boolean streamingEnabledHint,
         int maxPayloadBytesHint,
         int maxLineBytesHint
+    ) throws IOException {
+        return connect(
+            host,
+            port,
+            preferredProtocol,
+            streamingEnabledHint,
+            maxPayloadBytesHint,
+            maxLineBytesHint,
+            RequestSecurityManager.getInstance()
+        );
+    }
+
+    public static ProtocolClient connect(
+        String host,
+        int port,
+        String preferredProtocol,
+        boolean streamingEnabledHint,
+        int maxPayloadBytesHint,
+        int maxLineBytesHint,
+        RequestSecurityManager securityManager
     ) throws IOException {
         Socket socket = new Socket(host, port);
         BufferedInputStream in = new BufferedInputStream(socket.getInputStream());
@@ -154,7 +175,8 @@ public final class ProtocolClient implements AutoCloseable {
             maxLineBytes,
             connId,
             binaryIn,
-            binaryOut
+            binaryOut,
+            securityManager
         );
     }
 
@@ -276,4 +298,3 @@ public final class ProtocolClient implements AutoCloseable {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }
-

@@ -103,6 +103,30 @@ public class CommandRegistry {
     }
 
     public void shutdown() {
+        // Best-effort: close commands that own background resources (timers/executors/files).
+        // We intentionally do this before closing pluginClassLoader so that plugin commands can
+        // still execute their cleanup logic with classes available.
+        try {
+            for (Entry e : registry.values()) {
+                if (e == null) {
+                    continue;
+                }
+                Command c = e.getCommand();
+                if (!(c instanceof AutoCloseable)) {
+                    continue;
+                }
+                try {
+                    ((AutoCloseable) c).close();
+                } catch (Exception ex) {
+                    SleuthLogger.debug("Command close() failed (ignored): cmd=" + safeName(c) + ", err=" + ex.getMessage(), ex);
+                } catch (Throwable t) {
+                    SleuthLogger.debug("Command close() failed (ignored): cmd=" + safeName(c) + ", err=" + t.getMessage(), t);
+                }
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+
         URLClassLoader loader = pluginClassLoader;
         pluginClassLoader = null;
         if (loader != null) {
@@ -111,6 +135,28 @@ public class CommandRegistry {
             } catch (IOException e) {
                 SleuthLogger.debug("Failed to close plugin classloader (ignored): " + e.getMessage(), e);
             }
+        }
+
+        try {
+            registry.clear();
+        } catch (Exception ignore) {
+            // ignore
+        }
+        try {
+            commandView.clear();
+        } catch (Exception ignore) {
+            // ignore
+        }
+    }
+
+    private static String safeName(Command c) {
+        if (c == null) {
+            return "<null>";
+        }
+        try {
+            return c.getClass().getName();
+        } catch (Exception ignore) {
+            return "<unknown>";
         }
     }
 

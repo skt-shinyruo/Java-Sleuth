@@ -6,8 +6,6 @@ import java.io.File;
 import java.lang.instrument.Instrumentation;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.security.CodeSource;
-import java.security.ProtectionDomain;
 import java.util.Base64;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.jar.JarFile;
@@ -84,32 +82,7 @@ public final class SleuthAgent {
     }
 
     private static File locateOwnJar() {
-        try {
-            ProtectionDomain pd = SleuthAgent.class.getProtectionDomain();
-            if (pd == null) {
-                return null;
-            }
-            CodeSource cs = pd.getCodeSource();
-            if (cs == null) {
-                return null;
-            }
-            URL location = cs.getLocation();
-            if (location == null) {
-                return null;
-            }
-            File file;
-            try {
-                file = new File(location.toURI());
-            } catch (Exception e) {
-                file = new File(location.getPath());
-            }
-            if (file.isFile() && file.getName().toLowerCase().endsWith(".jar")) {
-                return file;
-            }
-        } catch (Exception ignore) {
-            // ignore
-        }
-        return null;
+        return JarLocator.locateCodeSourceJar(SleuthAgent.class);
     }
 
     // Optional helper for manual debugging when running inside a JVM with no easy log sink.
