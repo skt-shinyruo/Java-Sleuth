@@ -363,7 +363,7 @@ public final class JarLocator {
         }
     }
 
-    private static boolean isBootstrapAgentJar(File jarFile) {
+    public static boolean isBootstrapAgentJar(File jarFile) {
         if (!isAgentJar(jarFile)) {
             return false;
         }

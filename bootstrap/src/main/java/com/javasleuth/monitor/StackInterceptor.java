@@ -1,6 +1,5 @@
 package com.javasleuth.monitor;
 
-import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.data.StackTraceResult;
 import java.util.Arrays;
 import java.util.concurrent.BlockingQueue;
@@ -15,7 +14,6 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class StackInterceptor {
     private static final ConcurrentHashMap<String, BlockingQueue<StackTraceResult>> queues = new ConcurrentHashMap<>();
     private static volatile boolean enabled = false;
-    private static final ProductionConfig config = ProductionConfig.getInstance();
 
     private static final AtomicLong publishedEvents = new AtomicLong(0);
     private static final AtomicLong droppedEvents = new AtomicLong(0);
@@ -75,7 +73,7 @@ public final class StackInterceptor {
         if (q == null) {
             return;
         }
-        if (config.isWatchDropOnFull() && q.remainingCapacity() <= 0) {
+        if (BootstrapMonitorConfig.isWatchDropOnFull() && q.remainingCapacity() <= 0) {
             droppedEvents.incrementAndGet();
             return;
         }
@@ -183,7 +181,7 @@ public final class StackInterceptor {
             return;
         }
 
-        if (config.isWatchDropOnFull()) {
+        if (BootstrapMonitorConfig.isWatchDropOnFull()) {
             droppedEvents.incrementAndGet();
             return;
         }

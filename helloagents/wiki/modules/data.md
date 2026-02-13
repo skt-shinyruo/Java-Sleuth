@@ -7,6 +7,7 @@
 - **Responsibility:** WatchResult/TraceResult 模型
 - **Status:** ✅Stable
 - **Last Updated:** 2026-02-01
+- **Build Module:** bootstrap（bootstrap 可见桥接层）
 
 ## Specifications
 
@@ -35,6 +36,7 @@ N/A
 - WatchResult
 - TraceResult
 - TtRecord（TT-lite 录制条目）
+- StackTraceResult（stack 事件快照）
 
 ## Dependencies
 N/A
@@ -42,3 +44,4 @@ N/A
 ## Change History
 - 202601281100_init_kb (planned)
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - watch/tt 值快照语义落地
+- 202602132045_bootstrap_boundary_cleanup (history/2026-02/202602132045_bootstrap_boundary_cleanup/) - data 模型下沉到 bootstrap（bootstrap 可见桥接层）

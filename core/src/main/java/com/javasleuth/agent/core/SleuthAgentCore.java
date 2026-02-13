@@ -1,7 +1,9 @@
 package com.javasleuth.agent.core;
 
+import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.command.CommandProcessor;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.util.AgentArgsApplier;
 import com.javasleuth.util.SleuthLogger;
 import java.lang.instrument.Instrumentation;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -22,7 +24,8 @@ public class SleuthAgentCore {
         SleuthLogger.info("Java-Sleuth agent attached successfully");
 
         try {
-            applyAgentArgs(agentArgs);
+            AgentArgsApplier.applyToSystemProperties(agentArgs);
+            syncBootstrapMonitoringConfig();
 
             // Initialize the class file transformer
             transformer = new SleuthClassFileTransformer();
@@ -167,35 +170,25 @@ public class SleuthAgentCore {
         SleuthLogger.info("Java-Sleuth agent shutdown");
     }
 
-    private static void applyAgentArgs(String agentArgs) {
-        if (agentArgs == null || agentArgs.trim().isEmpty()) {
+    private static void syncBootstrapMonitoringConfig() {
+        try {
+            ProductionConfig cfg = ProductionConfig.getInstance();
+            setIfAbsent("sleuth.monitoring.watch.drop.on.full", String.valueOf(cfg.isWatchDropOnFull()));
+            setIfAbsent("sleuth.monitoring.trace.drop.on.full", String.valueOf(cfg.isTraceDropOnFull()));
+            setIfAbsent("sleuth.monitoring.trace.sample.rate", String.valueOf(cfg.getTraceSampleRate()));
+            setIfAbsent("sleuth.monitoring.monitor.sample.rate", String.valueOf(cfg.getMonitorSampleRate()));
+        } catch (Exception ignore) {
+            // best-effort
+        }
+    }
+
+    private static void setIfAbsent(String key, String value) {
+        if (key == null || key.trim().isEmpty() || value == null) {
             return;
         }
-
-        String[] pairs = agentArgs.split(";");
-        for (String pair : pairs) {
-            if (pair == null) {
-                continue;
-            }
-            String trimmed = pair.trim();
-            if (trimmed.isEmpty() || !trimmed.contains("=")) {
-                continue;
-            }
-
-            String[] kv = trimmed.split("=", 2);
-            String key = kv[0].trim();
-            String value = kv.length > 1 ? kv[1].trim() : "";
-            if (key.isEmpty() || value.isEmpty()) {
-                continue;
-            }
-
-            if ("configFile".equalsIgnoreCase(key)) {
-                System.setProperty("sleuth.config.file", value);
-            } else if (key.startsWith("sleuth.")) {
-                System.setProperty(key, value);
-            } else {
-                System.setProperty("sleuth." + key, value);
-            }
+        if (System.getProperty(key) != null) {
+            return;
         }
+        System.setProperty(key, value);
     }
 }

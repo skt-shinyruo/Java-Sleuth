@@ -1,7 +1,6 @@
 package com.javasleuth.monitor;
 
 import com.javasleuth.data.TraceResult;
-import com.javasleuth.config.ProductionConfig;
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
@@ -13,7 +12,6 @@ import java.util.concurrent.ThreadLocalRandom;
 public class TraceInterceptor {
     private static final ConcurrentHashMap<String, BlockingQueue<TraceResult>> traceQueues = new ConcurrentHashMap<>();
     private static volatile boolean enabled = false;
-    private static final ProductionConfig config = ProductionConfig.getInstance();
     private static final AtomicLong publishedEvents = new AtomicLong(0);
     private static final AtomicLong droppedEvents = new AtomicLong(0);
     private static final AtomicLong evictedEvents = new AtomicLong(0);
@@ -178,7 +176,7 @@ public class TraceInterceptor {
 
     private static boolean passesSampleRate(String traceId) {
         Double override = traceId != null ? traceSampleRateOverrides.get(traceId) : null;
-        double rate = override != null ? override : config.getTraceSampleRate();
+        double rate = override != null ? override : BootstrapMonitorConfig.getTraceSampleRate();
         if (rate < 0) {
             rate = 0;
         } else if (rate > 1.0) {
@@ -223,7 +221,7 @@ public class TraceInterceptor {
             return;
         }
 
-        if (config.isTraceDropOnFull()) {
+        if (BootstrapMonitorConfig.isTraceDropOnFull()) {
             droppedEvents.incrementAndGet();
             return;
         }

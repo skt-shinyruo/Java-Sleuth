@@ -1,15 +1,14 @@
 package com.javasleuth.agent;
 
+import com.javasleuth.util.AgentArgsApplier;
+import com.javasleuth.util.JarLocator;
 import java.io.File;
 import java.lang.instrument.Instrumentation;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.security.CodeSource;
 import java.security.ProtectionDomain;
-import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Comparator;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.jar.JarFile;
 
@@ -25,13 +24,6 @@ import java.util.jar.JarFile;
  */
 public final class SleuthAgent {
     private static final AtomicBoolean ATTACHED = new AtomicBoolean(false);
-
-    private static final String CORE_JAR_ARG_KEY = "coreJar";
-    private static final String CORE_JAR_SYS_PROP = "sleuth.agent.core.jar";
-    private static final String CORE_JAR_ENV = "SLEUTH_AGENT_CORE_JAR";
-    private static final String CORE_MARKER_ATTR = "Sleuth-Agent-Core";
-    private static final String CORE_FILENAME_HINT = "java-sleuth-agent-core";
-    private static final String CORE_FILENAME_SUFFIX = "-jar-with-dependencies.jar";
 
     private static final String CORE_ENTRYPOINT_CLASS = "com.javasleuth.agent.core.SleuthAgentCore";
 
@@ -50,7 +42,7 @@ public final class SleuthAgent {
 
     private static void bootstrap(String agentArgs, Instrumentation inst) {
         try {
-            applyAgentArgs(agentArgs);
+            AgentArgsApplier.applyToSystemProperties(agentArgs);
 
             File selfJar = locateOwnJar();
             if (selfJar != null && selfJar.isFile() && inst != null) {
@@ -62,12 +54,12 @@ public final class SleuthAgent {
                 }
             }
 
-            File coreJar = locateCoreJar(agentArgs, selfJar);
+            File coreJar = JarLocator.locateAgentCoreJar(SleuthAgent.class);
             if (coreJar == null) {
                 System.err.println("Java-Sleuth: Agent core jar not found.");
                 System.err.println("  - Provide via agent args: coreJar=<path>");
-                System.err.println("  - Or set -D" + CORE_JAR_SYS_PROP + "=<path> / env " + CORE_JAR_ENV);
-                System.err.println("  - Or place core jar near agent jar: " + CORE_FILENAME_HINT + "*");
+                System.err.println("  - Or set -D" + JarLocator.AGENT_CORE_JAR_OVERRIDE_PROPERTY + "=<path> / env " + JarLocator.AGENT_CORE_JAR_OVERRIDE_ENV);
+                System.err.println("  - Or place core jar near bootstrap jar: java-sleuth-agent-core*");
                 return;
             }
 
@@ -89,145 +81,6 @@ public final class SleuthAgent {
                 e.printStackTrace(System.err);
             }
         }
-    }
-
-    private static void applyAgentArgs(String agentArgs) {
-        if (agentArgs == null || agentArgs.trim().isEmpty()) {
-            return;
-        }
-        String[] pairs = agentArgs.split(";");
-        for (String pair : pairs) {
-            if (pair == null) {
-                continue;
-            }
-            String trimmed = pair.trim();
-            if (trimmed.isEmpty() || !trimmed.contains("=")) {
-                continue;
-            }
-
-            String[] kv = trimmed.split("=", 2);
-            String key = kv[0].trim();
-            String value = kv.length > 1 ? kv[1].trim() : "";
-            if (key.isEmpty() || value.isEmpty()) {
-                continue;
-            }
-
-            if ("configFile".equalsIgnoreCase(key)) {
-                System.setProperty("sleuth.config.file", value);
-            } else if (key.startsWith("sleuth.")) {
-                System.setProperty(key, value);
-            } else if (!CORE_JAR_ARG_KEY.equalsIgnoreCase(key)) {
-                System.setProperty("sleuth." + key, value);
-            }
-        }
-    }
-
-    private static File locateCoreJar(String agentArgs, File selfJar) {
-        String fromArgs = getArgValue(agentArgs, CORE_JAR_ARG_KEY);
-        File f = fileIfExists(fromArgs);
-        if (f != null) {
-            return f;
-        }
-
-        f = fileIfExists(System.getProperty(CORE_JAR_SYS_PROP));
-        if (f != null) {
-            return f;
-        }
-
-        f = fileIfExists(System.getenv(CORE_JAR_ENV));
-        if (f != null) {
-            return f;
-        }
-
-        if (selfJar != null && selfJar.isFile()) {
-            File dir = selfJar.getParentFile();
-            File found = locateNewestCoreJarInDir(dir);
-            if (found != null) {
-                return found;
-            }
-        }
-
-        // Fallback: scan current working directory (dev/IDE usage)
-        return locateNewestCoreJarInDir(new File("."));
-    }
-
-    private static File locateNewestCoreJarInDir(File dir) {
-        if (dir == null || !dir.isDirectory()) {
-            return null;
-        }
-        File[] files = dir.listFiles((d, name) -> name != null &&
-            name.contains(CORE_FILENAME_HINT) &&
-            name.endsWith(CORE_FILENAME_SUFFIX));
-        if (files == null || files.length == 0) {
-            return null;
-        }
-        List<File> candidates = new ArrayList<>();
-        for (File file : files) {
-            if (file != null && file.isFile()) {
-                candidates.add(file);
-            }
-        }
-        candidates.sort(Comparator.comparingLong(File::lastModified).reversed());
-        for (File file : candidates) {
-            if (isCoreJar(file)) {
-                return file;
-            }
-        }
-        return null;
-    }
-
-    private static boolean isCoreJar(File jar) {
-        if (jar == null || !jar.isFile()) {
-            return false;
-        }
-        try (JarFile jf = new JarFile(jar)) {
-            java.util.jar.Manifest mf = jf.getManifest();
-            if (mf == null) {
-                return false;
-            }
-            java.util.jar.Attributes attrs = mf.getMainAttributes();
-            if (attrs == null) {
-                return false;
-            }
-            String marker = attrs.getValue(CORE_MARKER_ATTR);
-            return marker != null && !marker.trim().isEmpty() && "true".equalsIgnoreCase(marker.trim());
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private static String getArgValue(String agentArgs, String key) {
-        if (agentArgs == null || key == null) {
-            return null;
-        }
-        String[] pairs = agentArgs.split(";");
-        for (String pair : pairs) {
-            if (pair == null) {
-                continue;
-            }
-            String trimmed = pair.trim();
-            if (trimmed.isEmpty() || !trimmed.contains("=")) {
-                continue;
-            }
-            String[] kv = trimmed.split("=", 2);
-            if (kv.length != 2) {
-                continue;
-            }
-            String k = kv[0] != null ? kv[0].trim() : "";
-            if (!key.equalsIgnoreCase(k)) {
-                continue;
-            }
-            return kv[1] != null ? kv[1].trim() : null;
-        }
-        return null;
-    }
-
-    private static File fileIfExists(String path) {
-        if (path == null || path.trim().isEmpty()) {
-            return null;
-        }
-        File f = new File(path.trim());
-        return f.isFile() ? f : null;
     }
 
     private static File locateOwnJar() {

@@ -1,7 +1,6 @@
 package com.javasleuth.monitor;
 
 import com.javasleuth.data.WatchResult;
-import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.util.SleuthValueFormatter;
 import com.javasleuth.util.SleuthValueSnapshotter;
 import java.util.concurrent.ConcurrentHashMap;
@@ -11,7 +10,6 @@ import java.util.concurrent.atomic.AtomicLong;
 public class WatchInterceptor {
     private static final ConcurrentHashMap<String, BlockingQueue<WatchResult>> watchQueues = new ConcurrentHashMap<>();
     private static volatile boolean enabled = false;
-    private static final ProductionConfig config = ProductionConfig.getInstance();
     private static final AtomicLong publishedEvents = new AtomicLong(0);
     private static final AtomicLong droppedEvents = new AtomicLong(0);
     private static final AtomicLong evictedEvents = new AtomicLong(0);
@@ -44,7 +42,7 @@ public class WatchInterceptor {
 
         BlockingQueue<WatchResult> queue = watchQueues.get(watchId);
         if (queue == null) return;
-        if (config.isWatchDropOnFull() && queue.remainingCapacity() <= 0) {
+        if (BootstrapMonitorConfig.isWatchDropOnFull() && queue.remainingCapacity() <= 0) {
             droppedEvents.incrementAndGet();
             return;
         }
@@ -73,7 +71,7 @@ public class WatchInterceptor {
 
         BlockingQueue<WatchResult> queue = watchQueues.get(watchId);
         if (queue == null) return;
-        if (config.isWatchDropOnFull() && queue.remainingCapacity() <= 0) {
+        if (BootstrapMonitorConfig.isWatchDropOnFull() && queue.remainingCapacity() <= 0) {
             droppedEvents.incrementAndGet();
             return;
         }
@@ -103,7 +101,7 @@ public class WatchInterceptor {
 
         BlockingQueue<WatchResult> queue = watchQueues.get(watchId);
         if (queue == null) return;
-        if (config.isWatchDropOnFull() && queue.remainingCapacity() <= 0) {
+        if (BootstrapMonitorConfig.isWatchDropOnFull() && queue.remainingCapacity() <= 0) {
             droppedEvents.incrementAndGet();
             return;
         }
@@ -134,7 +132,7 @@ public class WatchInterceptor {
             return;
         }
 
-        if (config.isWatchDropOnFull()) {
+        if (BootstrapMonitorConfig.isWatchDropOnFull()) {
             droppedEvents.incrementAndGet();
             return;
         }

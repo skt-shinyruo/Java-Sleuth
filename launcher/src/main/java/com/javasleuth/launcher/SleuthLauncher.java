@@ -78,7 +78,7 @@ public class SleuthLauncher {
         }
 
         File coreJar = JarLocator.locateAgentCoreJar(SleuthLauncher.class);
-        if (coreJar == null && isBootstrapAgentJar(agentJar)) {
+        if (coreJar == null && JarLocator.isBootstrapAgentJar(agentJar)) {
             reportMissingCoreJar();
             return 1;
         }
@@ -145,26 +145,6 @@ public class SleuthLauncher {
         }
         System.err.println("Please build the project first with: mvn clean package");
         System.err.println("Or set -D" + JarLocator.AGENT_CORE_JAR_OVERRIDE_PROPERTY + "=<path> (or env " + JarLocator.AGENT_CORE_JAR_OVERRIDE_ENV + ")");
-    }
-
-    private static boolean isBootstrapAgentJar(File jar) {
-        if (jar == null || !jar.isFile()) {
-            return false;
-        }
-        try (java.util.jar.JarFile jf = new java.util.jar.JarFile(jar)) {
-            java.util.jar.Manifest mf = jf.getManifest();
-            if (mf == null) {
-                return false;
-            }
-            java.util.jar.Attributes attrs = mf.getMainAttributes();
-            if (attrs == null) {
-                return false;
-            }
-            String v = attrs.getValue(JarLocator.MANIFEST_MARKER_BOOTSTRAP);
-            return v != null && "true".equalsIgnoreCase(v.trim());
-        } catch (Exception e) {
-            return false;
-        }
     }
 
     private VirtualMachineDescriptor selectTargetJvm(LauncherArgs args, JvmDiscovery discovery, JvmSelector selector) throws IOException {
@@ -280,4 +260,3 @@ public class SleuthLauncher {
         }
     }
 }
-

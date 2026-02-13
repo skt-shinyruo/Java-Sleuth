@@ -57,11 +57,12 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 ### Changed
 - 关键依赖环拆除：`CommandMeta` 下沉到 `com.javasleuth.security`（SSOT），`security` 不再依赖 `command`；`SleuthLogger` 通过 `SleuthLogContext` 注入上下文，避免 `util -> command`；`stop` 通过注入的 shutdown hook 触发 Agent shutdown，避免 `command -> agent`
 - 线程与生命周期治理：`AuthenticationManager` 会话清理任务改为可 shutdown 的调度器并纳入关闭编排；`JobManager` 支持 shutdown 并在后台 job 传播/清理上下文；`AuditLogger`/`PerformanceOptimizer` 支持 detach→re-attach 场景重启
+- Bootstrap 边界收敛：新增 `bootstrap` Maven 模块（`java-sleuth-bootstrap`）承载 spy/bridge（`monitor`/`data`/值快照工具/JarLocator/AgentArgsApplier），`agent` 仅依赖该模块并 append 到 bootstrap；`foundation` 的 config/security/protocol 等能力不再被提升为 bootstrap 可见；jar 定位与 agentArgs 落地规则统一为 SSOT
 - 移除 ArchUnit 架构守护测试与依赖（按团队偏好，避免测试代码承载分层守护逻辑）
 - 配置层去中心化：引入 `ConfigView`/`MutableConfig`/`ConfigOrigin` 与 `RuntimeConfigStore`（运行时覆写审计），`ProductionConfig` 拆职责并退化为 Facade；部分命令构造改为注入 `ConfigView`，减少散落的 `ProductionConfig.getInstance()` 调用点
 - 示例/测试应用从 main 源集迁移到 `examples/`，发布 jar/fat-jar 不再包含 `com.javasleuth.test.*`（Docker demo 与脚本改为运行 examples 编译产物）
 - Maven 多模块化：根工程改为 parent/aggregator（`packaging=pom`），主产物迁移到 `core/` 模块，示例应用作为 `examples/` 模块独立构建；脚本/Docker/文档同步更新
-- Launcher/Agent 产物与依赖隔离升级：拆分为 `launcher/`（CLI）+ `agent/`（bootstrap agent，appendToBootstrap，保持 JDK-only）+ `core/`（`java-sleuth-agent-core`，隔离 ClassLoader 加载，包含 ASM/Jackson/CFR/RE2J...）；`JarLocator` 按 Manifest 标记 `Sleuth-Agent-Bootstrap` / `Sleuth-Agent-Core` 自动定位产物；`com.javasleuth.monitor` 与 `com.javasleuth.command.protocol` 下沉到 `foundation` 并保持无第三方依赖；脚本/Docker/文档同步更新
+- Launcher/Agent 产物与依赖隔离升级：拆分为 `launcher/`（CLI）+ `agent/`（bootstrap agent，appendToBootstrap，保持 JDK-only）+ `core/`（`java-sleuth-agent-core`，隔离 ClassLoader 加载，包含 ASM/Jackson/CFR/RE2J...）；`JarLocator` 按 Manifest 标记 `Sleuth-Agent-Bootstrap` / `Sleuth-Agent-Core` 自动定位产物；`com.javasleuth.monitor`/`com.javasleuth.data`/值快照工具等桥接类下沉到 `bootstrap` 并保持无第三方依赖（仅 JDK）；`com.javasleuth.command.protocol` 保持在 `foundation`（JDK-only）；脚本/Docker/文档同步更新
 - CommandProcessor 改为注册表 + 统一执行管线
 - CommandPipeline 执行链路显式化：引入 Step/Interceptor Chain（precheck/sync/stream），降低巨型类耦合并提升可测性
 - CommandProcessor 拆分出 CommandClientHandler（framed/binary 协议处理），CommandProcessor 聚焦监听/生命周期

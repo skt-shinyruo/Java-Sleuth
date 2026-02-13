@@ -1,6 +1,5 @@
 package com.javasleuth.monitor;
 
-import com.javasleuth.config.ProductionConfig;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -12,7 +11,6 @@ import java.util.concurrent.atomic.LongAdder;
 public final class MonitorInterceptor {
     private static final ConcurrentHashMap<String, MonitorCollector> collectors = new ConcurrentHashMap<>();
     private static volatile boolean enabled = false;
-    private static final ProductionConfig config = ProductionConfig.getInstance();
 
     private MonitorInterceptor() {}
 
@@ -90,7 +88,7 @@ public final class MonitorInterceptor {
     }
 
     private static boolean passesSampleRate() {
-        double rate = config.getMonitorSampleRate();
+        double rate = BootstrapMonitorConfig.getMonitorSampleRate();
         if (rate >= 1.0) {
             return true;
         }

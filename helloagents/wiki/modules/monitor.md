@@ -7,6 +7,7 @@
 - **Responsibility:** Watch/Trace/Monitor/TT 拦截器、事件分发与聚合
 - **Status:** ✅Stable
 - **Last Updated:** 2026-02-04
+- **Build Module:** bootstrap（bootstrap 可见桥接层）
 
 ## Specifications
 
@@ -60,6 +61,7 @@ N/A
 - TraceAggregator 在命令侧将 TraceResult 聚合为“单次调用树”（简化版），便于快速定位耗时链路。
 - StackInterceptor 以“方法触发点”采集调用栈并写入队列，使用与 watch/tt 相同的队列容量与满队列策略（drop/evict），避免影响业务线程。
 - Watch/Tt 事件在采集阶段会对参数/返回值/异常做“值快照”（限深/限长），避免强引用复杂对象图造成 GC 压力或 OOM。
+- 拦截器侧的背压/采样/丢弃策略读取 `sleuth.monitoring.*` sysprop（带默认值）；core 在启动阶段会 best-effort 将 `ProductionConfig` 的 effective 值同步到 sysprop（未显式覆盖时补齐），保证“配置文件语义”与 bootstrap 拦截器一致。
 - TraceEnhancer 对“同一类内可被 trace 的方法调用”跳过 SUB_METHOD_CALL 注入，避免出现 SUB + 子节点双份记录导致的语义重复。
 - TraceInterceptor 的 ThreadLocal 状态在 map 为空时会 remove，降低线程池场景的潜在残留与固定开销。
 - 断连资源治理：监控类命令会注册到 ClientSession 的清理动作；当连接写失败/断连时会尽快回收增强与队列，避免“误触后后台持续开销”。
@@ -74,3 +76,4 @@ N/A
 - 202602011222_sleuth_hardening_bootstrap (history/2026-02/202602011222_sleuth_hardening_bootstrap/) - Trace 调用级采样一致性与默认采样调整
 - 202602011706_core_fixes_java8_jad_session_regex_trace (history/2026-02/202602011706_core_fixes_java8_jad_session_regex_trace/) - watch/tt 值快照与 trace 语义去重
 - 202602042257_vmtool_instance_diagnostics (history/2026-02/202602042257_vmtool_instance_diagnostics/) - VmToolInterceptor（实例追踪）
+- 202602132045_bootstrap_boundary_cleanup (history/2026-02/202602132045_bootstrap_boundary_cleanup/) - bootstrap 边界收敛（拦截器/数据模型/值快照下沉到 bootstrap）

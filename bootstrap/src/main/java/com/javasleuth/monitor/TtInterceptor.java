@@ -1,6 +1,5 @@
 package com.javasleuth.monitor;
 
-import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.data.TtRecord;
 import com.javasleuth.util.RingBuffer;
 import com.javasleuth.util.SleuthValueFormatter;
@@ -13,7 +12,6 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class TtInterceptor {
     private static final ConcurrentHashMap<String, BlockingQueue<TtRecord>> ttQueues = new ConcurrentHashMap<>();
     private static volatile boolean enabled = false;
-    private static final ProductionConfig config = ProductionConfig.getInstance();
 
     private static final AtomicLong recordSeq = new AtomicLong(1);
     private static volatile RingBuffer<TtRecord> records = new RingBuffer<>(2000);
@@ -93,7 +91,7 @@ public final class TtInterceptor {
         if (queue == null) {
             return;
         }
-        if (config.isWatchDropOnFull() && queue.remainingCapacity() <= 0) {
+        if (BootstrapMonitorConfig.isWatchDropOnFull() && queue.remainingCapacity() <= 0) {
             dropped.incrementAndGet();
             return;
         }
@@ -129,7 +127,7 @@ public final class TtInterceptor {
             return;
         }
 
-        if (config.isWatchDropOnFull()) {
+        if (BootstrapMonitorConfig.isWatchDropOnFull()) {
             dropped.incrementAndGet();
             return;
         }

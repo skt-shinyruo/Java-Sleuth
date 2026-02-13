@@ -7,7 +7,7 @@
 - **Responsibility:** PerformanceOptimizer/MemoryOptimizer/JvmUtils + 诊断辅助工具
 - **Status:** ✅Stable
 - **Last Updated:** 2026-02-10
-- **Build Module:** foundation（低层基础模块）
+- **Build Module:** foundation + bootstrap（bootstrap-bridge）+ core（少量 core 专用 util）
 
 ## Specifications
 
@@ -69,16 +69,18 @@ N/A
 - config
 
 ## Utilities Added
-- WildcardMatcher：统一 `*` 通配符匹配（避免将用户输入当作正则）
-- LoadedClassResolver：已加载类解析/选择（输出候选 + loaderId），用于多 ClassLoader 场景稳定选择目标类并避免回滚错对象
-- RingBuffer：jobs/tt 等能力复用的环形缓冲
-- SleuthValueFormatter：安全可读化（限深/限长/脱敏）
-- SleuthValueSnapshotter / SleuthSnapshotValue：采集阶段“值快照”（避免 watch/tt 强引用复杂对象图导致内存压力）
-- SleuthLogContext：ThreadLocal 日志上下文（由上层写入，util 侧只读）
-- SleuthObjectInspector：对象字段检视（best-effort，仅字段读取，限深/限长/脱敏）
-- StringUtils：Java 8 兼容字符串工具（替代 `String.repeat`），并补充 `isBlank`
-- ReflectionUtils：Java 8 兼容反射访问判断（替代 `Field.canAccess`）
-- CfrDecompiler：CFR 反编译封装（将 `.class` bytecode 可靠喂给 CFR，避免空输出）
+- JarLocator（bootstrap）：Agent/Core/Launcher 产物定位 SSOT（Manifest marker + override + 常见目录扫描）
+- AgentArgsApplier（bootstrap）：`agentArgs` 解析与 sysprop 落地 SSOT（bootstrap/core 共用）
+- RingBuffer（bootstrap）：jobs/tt 等能力复用的环形缓冲
+- SleuthValueFormatter（bootstrap）：安全可读化（限深/限长/脱敏）
+- SleuthValueSnapshotter / SleuthSnapshotValue（bootstrap）：采集阶段“值快照”（避免 watch/tt 强引用复杂对象图导致内存压力）
+- WildcardMatcher（foundation）：统一 `*` 通配符匹配（避免将用户输入当作正则）
+- LoadedClassResolver（foundation）：已加载类解析/选择（输出候选 + loaderId），用于多 ClassLoader 场景稳定选择目标类并避免回滚错对象
+- SleuthLogContext（foundation）：ThreadLocal 日志上下文（由上层写入，util 侧只读）
+- StringUtils（foundation）：Java 8 兼容字符串工具（替代 `String.repeat`），并补充 `isBlank`
+- ReflectionUtils（foundation）：Java 8 兼容反射访问判断（替代 `Field.canAccess`）
+- SleuthObjectInspector（core）：对象字段检视（best-effort，仅字段读取，限深/限长/脱敏）
+- CfrDecompiler（core）：CFR 反编译封装（将 `.class` bytecode 可靠喂给 CFR，避免空输出）
 
 ## Change History
 - 202601281100_init_kb (planned)
@@ -88,3 +90,4 @@ N/A
 - 202602042257_vmtool_instance_diagnostics (history/2026-02/202602042257_vmtool_instance_diagnostics/) - SleuthObjectInspector（对象字段检视）
 - 202602051743_exception_handling_logging (history/2026-02/202602051743_exception_handling_logging/) - SleuthLogger throwable 可控格式化与审计控制台镜像语义收敛
 - 202602101815_layering_modularization (history/2026-02/202602101815_layering_modularization/) - 分层边界恢复：util 下沉到 foundation + 通过 SleuthLogContext 解耦 command 依赖
+- 202602132045_bootstrap_boundary_cleanup (history/2026-02/202602132045_bootstrap_boundary_cleanup/) - 值快照/环形缓冲/JarLocator/agentArgs 落地收敛到 bootstrap，SleuthObjectInspector 迁移到 core

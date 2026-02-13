@@ -21,7 +21,7 @@
     <dependencies>
         <dependency>
             <groupId>com.javasleuth</groupId>
-            <artifactId>java-sleuth-foundation</artifactId>
+            <artifactId>java-sleuth-bootstrap</artifactId>
             <version>${project.version}</version>
         </dependency>
     </dependencies>
