@@ -4,7 +4,6 @@ import com.javasleuth.command.protocol.BinaryFrame;
 import com.javasleuth.command.protocol.BinaryFrameCodec;
 import com.javasleuth.command.session.ClientDisconnectedException;
 import com.javasleuth.command.session.ClientSession;
-import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.monitoring.MetricsCollector;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -20,31 +19,28 @@ public final class BinaryClientProtocolHandler {
 
     private final AtomicBoolean running;
     private final MetricsCollector metricsCollector;
-    private final ProductionConfig config;
     private final CommandRequestExecutor executor;
 
     public BinaryClientProtocolHandler(
         AtomicBoolean running,
         MetricsCollector metricsCollector,
-        ProductionConfig config,
         CommandRequestExecutor executor
     ) {
         this.running = running;
         this.metricsCollector = metricsCollector;
-        this.config = config;
         this.executor = executor;
     }
 
     public void handle(
         DataInputStream in,
         DataOutputStream out,
+        int maxPayloadBytes,
         String clientId,
         String clientInfo,
         String baseSessionId,
         String connId,
         ClientSession clientSession
     ) throws IOException {
-        int maxPayloadBytes = config.getFrameMaxPayload();
         CommandReplyChannel reply = new BinaryReplyChannel(out, maxPayloadBytes);
 
         while (running.get()) {
@@ -207,4 +203,3 @@ public final class BinaryClientProtocolHandler {
         }
     }
 }
-

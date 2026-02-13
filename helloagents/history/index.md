@@ -38,6 +38,7 @@
 - 202602132247_security_di_shutdown
 - 202602132320_commandprocessor_composition_root_split
 - 202602132323_arch_boundary_lifecycle_singletons
+- 202602132355_typed_config_models
 - 202602132357_di_signer_interface
 
 ## 2026-01

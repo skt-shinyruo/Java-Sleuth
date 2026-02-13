@@ -16,7 +16,12 @@ import com.javasleuth.command.session.ClientDisconnectedException;
 import com.javasleuth.command.session.ClientSession;
 import com.javasleuth.command.session.ClientSessionIndex;
 import com.javasleuth.command.session.ClientSessionRegistry;
+import com.javasleuth.config.ConfigSnapshot;
 import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.config.model.ProtocolConfig;
+import com.javasleuth.config.model.SecurityConfig;
+import com.javasleuth.config.model.SleuthConfig;
+import com.javasleuth.config.model.SleuthConfigParser;
 import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.security.AuditLogger;
 import com.javasleuth.security.AuthenticationManager;
@@ -50,7 +55,6 @@ public final class CommandClientHandler {
     private final ClientSessionIndex sessionIndex;
     private final ClientSessionRegistry clientSessionRegistry;
 
-    private final HandshakeNegotiator handshakeNegotiator;
     private final CommandRequestExecutor requestExecutor;
     private final BinaryClientProtocolHandler binaryProtocolHandler;
 
@@ -79,7 +83,6 @@ public final class CommandClientHandler {
         this.sessionIndex = sessionIndex;
         this.clientSessionRegistry = clientSessionRegistry;
 
-        this.handshakeNegotiator = new HandshakeNegotiator(config, metricsCollector);
         this.requestExecutor = new CommandRequestExecutor(
             metricsCollector,
             config,
@@ -90,7 +93,7 @@ public final class CommandClientHandler {
             pipeline,
             sessionIndex
         );
-        this.binaryProtocolHandler = new BinaryClientProtocolHandler(running, metricsCollector, config, requestExecutor);
+        this.binaryProtocolHandler = new BinaryClientProtocolHandler(running, metricsCollector, requestExecutor);
     }
 
     public void handle(Socket clientSocket) {
@@ -99,126 +102,164 @@ public final class CommandClientHandler {
         String clientInfo = clientSocket.getRemoteSocketAddress().toString();
         String sessionId = null;
         String connId = null;
-        final ClientSession clientSession;
-
-        AuthenticationManager.UserRole initialRole = AuthenticationManager.UserRole.VIEWER;
-        String securityMode = config.getSecurityMode();
-        if ("hmac".equalsIgnoreCase(securityMode)) {
-            initialRole = AuthenticationManager.UserRole.fromName(
-                config.getHmacSessionRole(),
-                AuthenticationManager.UserRole.OPERATOR
-            );
-        }
-
-        AuthenticationManager.AuthenticationResult sessionResult =
-            authenticationManager.createSession(initialRole, clientInfo);
-        if (sessionResult.isSuccess()) {
-            sessionId = sessionResult.getSessionId();
-            sessionIndex.put(clientId, sessionId);
-        }
-        clientSession = clientSessionRegistry.open(clientId, clientInfo, sessionId);
-        SleuthLogContext.setConnection(clientId, sessionId, connId);
+        ClientSession clientSession = null;
 
         boolean pendingBinaryUpgrade = false;
         boolean handshakeCompleted = false;
 
-        int maxLineBytes = config.getInt(
-            "protocol.text.max.line.bytes",
-            Math.max(8192, config.getFrameMaxPayload() * 2)
-        );
+        // 会话边界解析配置：避免在握手/循环中散落字符串 key + 默认值。
+        boolean abort = false;
+        SleuthConfig sessionConfig;
+        ProtocolConfig protocolConfig;
+        SecurityConfig securityConfig;
+        int maxLineBytes;
+        int maxPayloadBytes;
 
-        try (BufferedInputStream in = new BufferedInputStream(clientSocket.getInputStream());
-             BufferedOutputStream out = new BufferedOutputStream(clientSocket.getOutputStream())) {
+        try {
+            ConfigSnapshot snapshot = config.snapshot();
+            sessionConfig = SleuthConfigParser.parse(snapshot);
+            protocolConfig = sessionConfig.protocol();
+            securityConfig = sessionConfig.security();
+            maxLineBytes = protocolConfig.getTextMaxLineBytes();
+            maxPayloadBytes = protocolConfig.getFrameMaxPayloadBytes();
+        } catch (Exception e) {
+            SleuthLogger.warn("Invalid configuration for client " + clientId + ": " + e.getMessage(), e);
+            metricsCollector.recordError("config_invalid");
+            // Best-effort: try to notify client, but still close the socket.
+            try (BufferedOutputStream out = new BufferedOutputStream(clientSocket.getOutputStream())) {
+                Utf8LineCodec.writeLine(out, "CONFIG ERROR: " + e.getMessage(), true);
+            } catch (Exception ignore) {
+                // ignore
+            }
+            abort = true;
+            sessionConfig = null;
+            protocolConfig = null;
+            securityConfig = null;
+            maxLineBytes = 8192;
+            maxPayloadBytes = 4096;
+        }
 
-            FramedClientCommandHandler framedHandler =
-                new FramedClientCommandHandler(requestExecutor, out, config.getFrameMaxPayload());
-
-            Utf8LineCodec.writeLine(out, "Welcome to Java-Sleuth! Type 'help' for available commands.", true);
-            metricsCollector.recordSessionStart(clientId);
-            auditLogger.logConnectionEvent(clientId, clientInfo, "CONNECT");
-
-            while (running.get()) {
-                String line;
-                try {
-                    line = Utf8LineCodec.readLine(in, maxLineBytes);
-                } catch (java.net.SocketTimeoutException timeout) {
-                    continue;
-                }
-                if (line == null) {
-                    break;
-                }
-                line = line.trim();
-                if (line.isEmpty()) {
-                    continue;
-                }
-
-                if (line.regionMatches(true, 0, "HELLO", 0, "HELLO".length())) {
-                    HandshakeNegotiator.NegotiationResult negotiated = handshakeNegotiator.handleHello(line, out);
-                    connId = negotiated.getConnId();
-                    String selected = negotiated.getProtocol();
-                    pendingBinaryUpgrade = "binary".equalsIgnoreCase(selected);
-                    handshakeCompleted = true;
-                    SleuthLogContext.setConnection(clientId, sessionId, connId);
-                    continue;
-                }
-
-                if (!handshakeCompleted) {
-                    Utf8LineCodec.writeLine(out, "Handshake required. Send: HELLO", true);
-                    metricsCollector.recordError("handshake_required");
-                    continue;
-                }
-
-                if (pendingBinaryUpgrade) {
-                    if ("UPGRADE BINARY".equalsIgnoreCase(line)) {
-                        Utf8LineCodec.writeLine(out, "OK", true);
-                        metricsCollector.recordBinaryUpgrade();
-                        binaryProtocolHandler.handle(
-                            new DataInputStream(in),
-                            new DataOutputStream(out),
-                            clientId,
-                            clientInfo,
-                            sessionId,
-                            connId,
-                            clientSession
-                        );
-                        break;
-                    } else {
-                        Utf8LineCodec.writeLine(out, "Handshake pending. Send: UPGRADE BINARY", true);
-                        continue;
-                    }
-                }
-
-                final boolean streamRequested;
-                final String raw;
-                if (line.startsWith("CMD ")) {
-                    streamRequested = false;
-                    raw = line.substring(4);
-                } else if (line.startsWith("STREAM ")) {
-                    streamRequested = true;
-                    raw = line.substring(7);
-                } else {
-                    Utf8LineCodec.writeLine(
-                        out,
-                        "Protocol error: expected CMD <signed_command> or STREAM <signed_command>.",
-                        true
+        try {
+            if (abort) {
+                return;
+            }
+            if (sessionConfig != null) {
+                AuthenticationManager.UserRole initialRole = AuthenticationManager.UserRole.VIEWER;
+                if (securityConfig != null && securityConfig.isHmacEnabled()) {
+                    initialRole = AuthenticationManager.UserRole.fromName(
+                        securityConfig.getHmacSessionRole(),
+                        AuthenticationManager.UserRole.OPERATOR
                     );
-                    metricsCollector.recordError("protocol_invalid_prefix");
-                    break;
                 }
 
-                try {
-                    boolean shouldClose =
-                        framedHandler.handle(raw, streamRequested, clientId, clientInfo, sessionId, connId, clientSession);
-                    if (shouldClose) {
-                        break;
-                    }
-                } catch (ClientDisconnectedException disconnected) {
-                    break;
+                AuthenticationManager.AuthenticationResult sessionResult =
+                    authenticationManager.createSession(initialRole, clientInfo);
+                if (sessionResult.isSuccess()) {
+                    sessionId = sessionResult.getSessionId();
+                    sessionIndex.put(clientId, sessionId);
                 }
             }
-        } catch (IOException e) {
-            SleuthLogger.warn("Error handling client " + clientId + ": " + e.getMessage(), e);
-            metricsCollector.recordError("client_io_error");
+
+            clientSession = clientSessionRegistry.open(clientId, clientInfo, sessionId);
+            SleuthLogContext.setConnection(clientId, sessionId, connId);
+
+            try (BufferedInputStream in = new BufferedInputStream(clientSocket.getInputStream());
+                 BufferedOutputStream out = new BufferedOutputStream(clientSocket.getOutputStream())) {
+
+                FramedClientCommandHandler framedHandler =
+                    new FramedClientCommandHandler(requestExecutor, out, maxPayloadBytes);
+
+                HandshakeNegotiator handshakeNegotiator =
+                    new HandshakeNegotiator(sessionConfig, metricsCollector);
+
+                Utf8LineCodec.writeLine(out, "Welcome to Java-Sleuth! Type 'help' for available commands.", true);
+                metricsCollector.recordSessionStart(clientId);
+                auditLogger.logConnectionEvent(clientId, clientInfo, "CONNECT");
+
+                while (running.get()) {
+                    String line;
+                    try {
+                        line = Utf8LineCodec.readLine(in, maxLineBytes);
+                    } catch (java.net.SocketTimeoutException timeout) {
+                        continue;
+                    }
+                    if (line == null) {
+                        break;
+                    }
+                    line = line.trim();
+                    if (line.isEmpty()) {
+                        continue;
+                    }
+
+                    if (line.regionMatches(true, 0, "HELLO", 0, "HELLO".length())) {
+                        HandshakeNegotiator.NegotiationResult negotiated = handshakeNegotiator.handleHello(line, out);
+                        connId = negotiated.getConnId();
+                        String selected = negotiated.getProtocol();
+                        pendingBinaryUpgrade = "binary".equalsIgnoreCase(selected);
+                        handshakeCompleted = true;
+                        SleuthLogContext.setConnection(clientId, sessionId, connId);
+                        continue;
+                    }
+
+                    if (!handshakeCompleted) {
+                        Utf8LineCodec.writeLine(out, "Handshake required. Send: HELLO", true);
+                        metricsCollector.recordError("handshake_required");
+                        continue;
+                    }
+
+                    if (pendingBinaryUpgrade) {
+                        if ("UPGRADE BINARY".equalsIgnoreCase(line)) {
+                            Utf8LineCodec.writeLine(out, "OK", true);
+                            metricsCollector.recordBinaryUpgrade();
+                            binaryProtocolHandler.handle(
+                                new DataInputStream(in),
+                                new DataOutputStream(out),
+                                maxPayloadBytes,
+                                clientId,
+                                clientInfo,
+                                sessionId,
+                                connId,
+                                clientSession
+                            );
+                            break;
+                        } else {
+                            Utf8LineCodec.writeLine(out, "Handshake pending. Send: UPGRADE BINARY", true);
+                            continue;
+                        }
+                    }
+
+                    final boolean streamRequested;
+                    final String raw;
+                    if (line.startsWith("CMD ")) {
+                        streamRequested = false;
+                        raw = line.substring(4);
+                    } else if (line.startsWith("STREAM ")) {
+                        streamRequested = true;
+                        raw = line.substring(7);
+                    } else {
+                        Utf8LineCodec.writeLine(
+                            out,
+                            "Protocol error: expected CMD <signed_command> or STREAM <signed_command>.",
+                            true
+                        );
+                        metricsCollector.recordError("protocol_invalid_prefix");
+                        break;
+                    }
+
+                    try {
+                        boolean shouldClose =
+                            framedHandler.handle(raw, streamRequested, clientId, clientInfo, sessionId, connId, clientSession);
+                        if (shouldClose) {
+                            break;
+                        }
+                    } catch (ClientDisconnectedException disconnected) {
+                        break;
+                    }
+                }
+            } catch (IOException e) {
+                SleuthLogger.warn("Error handling client " + clientId + ": " + e.getMessage(), e);
+                metricsCollector.recordError("client_io_error");
+            }
         } finally {
             SleuthLogContext.clear();
             try {

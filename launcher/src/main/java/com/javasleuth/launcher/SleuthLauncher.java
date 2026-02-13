@@ -7,6 +7,8 @@ package com.javasleuth.launcher;
  */
 import com.sun.tools.attach.VirtualMachineDescriptor;
 import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.config.model.SleuthConfig;
+import com.javasleuth.config.model.SleuthConfigParser;
 import com.javasleuth.launcher.attach.AgentArgsBuilder;
 import com.javasleuth.launcher.attach.AgentAttacher;
 import com.javasleuth.launcher.attach.ToolsAttachApi;
@@ -187,20 +189,18 @@ public class SleuthLauncher {
             Thread.sleep(1000);
 
             ProductionConfig config = ProductionConfig.getInstance();
-            int port = config.getServerPort();
-            boolean streamingEnabled = config.isStreamingEnabled();
-            int maxPayloadBytes = config.getFrameMaxPayload();
-            String connectHost = ConnectHostResolver.resolveConnectHost(config.getServerBindAddress());
-            int maxLineBytes = config.getInt(
-                "protocol.text.max.line.bytes",
-                Math.max(8192, maxPayloadBytes * 2)
-            );
+            SleuthConfig typed = SleuthConfigParser.parse(config.snapshot());
+            int port = typed.server().getPort();
+            boolean streamingEnabled = typed.protocol().isStreamingEnabled();
+            int maxPayloadBytes = typed.protocol().getFrameMaxPayloadBytes();
+            String connectHost = ConnectHostResolver.resolveConnectHost(typed.server().getBindAddress());
+            int maxLineBytes = typed.protocol().getTextMaxLineBytes();
 
             ProtocolOutput output = new ConsoleProtocolOutput(System.out, System.err);
             try (ProtocolClient client = ProtocolClient.connect(
                 connectHost,
                 port,
-                config.getProtocolMode(),
+                typed.protocol().getModeWireName(),
                 streamingEnabled,
                 maxPayloadBytes,
                 maxLineBytes
@@ -224,20 +224,18 @@ public class SleuthLauncher {
 
     private int runHeadless(LauncherArgs parsed) {
         ProductionConfig config = ProductionConfig.getInstance();
-        int port = config.getServerPort();
-        boolean streamingEnabled = config.isStreamingEnabled();
-        int maxPayloadBytes = config.getFrameMaxPayload();
-        String connectHost = ConnectHostResolver.resolveConnectHost(config.getServerBindAddress());
-        int maxLineBytes = config.getInt(
-            "protocol.text.max.line.bytes",
-            Math.max(8192, maxPayloadBytes * 2)
-        );
+        SleuthConfig typed = SleuthConfigParser.parse(config.snapshot());
+        int port = typed.server().getPort();
+        boolean streamingEnabled = typed.protocol().isStreamingEnabled();
+        int maxPayloadBytes = typed.protocol().getFrameMaxPayloadBytes();
+        String connectHost = ConnectHostResolver.resolveConnectHost(typed.server().getBindAddress());
+        int maxLineBytes = typed.protocol().getTextMaxLineBytes();
 
         ProtocolOutput output = new ConsoleProtocolOutput(System.out, System.err);
         try (ProtocolClient client = ProtocolClient.connect(
             connectHost,
             port,
-            config.getProtocolMode(),
+            typed.protocol().getModeWireName(),
             streamingEnabled,
             maxPayloadBytes,
             maxLineBytes

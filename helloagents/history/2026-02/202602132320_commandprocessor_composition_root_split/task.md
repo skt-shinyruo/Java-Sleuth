@@ -1,6 +1,6 @@
 # Task List：CommandProcessor composition root 拆分与去中心化
 
-Directory: `helloagents/plan/202602132320_commandprocessor_composition_root_split/`
+Directory: `helloagents/history/2026-02/202602132320_commandprocessor_composition_root_split/`
 
 ---
 
@@ -21,7 +21,9 @@ Directory: `helloagents/plan/202602132320_commandprocessor_composition_root_spli
 
 ## 5. Tests（回归基座）
 - [√] 5.1 调整 `core/src/test/java/com/javasleuth/command/CommandProcessor*Test*.java`：构造方式迁移到 factory/注入构造，锁定现有行为与边界（过载拒绝/安全边界/队列容量），verify why.md#req-facade-boundary
+> Note: 测试仍调用 `new CommandProcessor(...)`，但构造器已委派到 `CommandProcessorFactory`，因此无需额外改动即可覆盖 factory 装配路径。
 - [√] 5.2 调整 `launcher/src/test/java/com/javasleuth/launcher/client/ProtocolClientIntegrationTest.java`：确保集成闭环仍可启动 processor 并走握手+命令执行路径，verify why.md#req-facade-boundary
+> Note: 同上，构造器委派已覆盖 factory 路径，集成测试无需改动。
 
 ## 6. Security Check
 - [√] 6.1 执行安全检查（G9）：确认未引入 secret 明文日志、权限绕过、输入校验缺失；确认 factory/组件装配不改变安全模式边界
@@ -32,3 +34,10 @@ Directory: `helloagents/plan/202602132320_commandprocessor_composition_root_spli
 
 ## 8. Testing
 - [√] 8.1 执行 `mvn test`（或最小相关模块测试），确保全部测试通过；必要时补充单测覆盖 `ClientSessionIndex` 边界
+
+---
+
+## 执行摘要
+
+- `mvn test`：通过
+- 变更策略：以“装配边界/状态封装”为主，保持协议与权限语义不变

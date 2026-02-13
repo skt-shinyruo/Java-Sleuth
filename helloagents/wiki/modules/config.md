@@ -32,6 +32,24 @@
 - 读取优先级：`runtime overrides > system properties > file > default`
 - `config get <key>` 会返回 masked value + origin（便于定位“为什么变了”）
 
+### Requirement: 强类型配置模型（Typed Config Models）
+**Module:** config
+为降低“字符串 key + 多处默认值”导致的漂移风险，引入强类型配置模型，并建议在连接/会话等边界处一次性解析校验：
+
+- `com.javasleuth.config.model.SleuthConfig`：聚合 `ServerConfig` / `ProtocolConfig` / `SecurityConfig`
+- `com.javasleuth.config.model.SleuthConfigParser`：从 `ConfigView`（建议 `ConfigSnapshot`）解析强类型配置，集中处理默认值/校验/归一化规则
+
+#### Scenario: server/launcher 统一协议上限默认（派生默认）
+前置：用户仅覆盖 `protocol.frame.max.payload`，未显式覆盖 `protocol.text.max.line.bytes`  
+- 使用 `ConfigOrigin` 判断该 key 是否为“显式配置”（FILE/SYSTEM/RUNTIME）  
+- 若 `protocol.text.max.line.bytes` 来源为 DEFAULT/UNKNOWN，则采用派生默认：`max(8192, frameMaxPayload * 2)`  
+- 这样可避免仅调整 frame payload 后，server/launcher/握手读写上限出现不一致
+
+#### Scenario: 默认值一致性可回归验证
+前置：CI/本地单测执行  
+- `SleuthDefaults` 作为“资源缺失时的 fallback 默认集合”，`DefaultConfigFallback` 仅委托调用，避免手写默认散落  
+- 单测确保 `/sleuth-default.properties` 与 fallback 默认一致（防止默认值漂移回归）
+
 ### Requirement: 安全/协议新增配置项
 **Module:** config
 支持以下新增配置项（均可通过 `sleuth.properties` 或 `-Dsleuth.*` 设置）：
@@ -111,6 +129,7 @@ N/A
 - 202602041158_unified_exec_pipeline (history/2026-02/202602041158_unified_exec_pipeline/) - jobs 并发上限、END marker、插件 ServiceLoader 开关与 config save 持久化语义补齐
 - 202602081630_drop_legacy_protocol (history/2026-02/202602081630_drop_legacy_protocol/) - 协议收敛：移除 legacy 文本协议与相关配置项
 - 202602102336_production_config_refactor (history/2026-02/202602102336_production_config_refactor/) - ConfigView/RuntimeConfigStore 引入与 ProductionConfig 去中心化（Facade 化）
+- 202602132355_typed_config_models (history/2026-02/202602132355_typed_config_models/) - 引入强类型配置模型与默认一致性测试，收敛协议/会话边界配置读取
 
 ## 2026-02-08 协议与握手配置收敛
 

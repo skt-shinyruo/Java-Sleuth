@@ -84,6 +84,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 插桩过滤策略放开常见代理类（例如 Spring/CGLIB `$$EnhancerBySpringCGLIB$$`），transform 逐次日志默认降噪（DEBUG 才输出）
 - 性能维护策略：默认不再定时触发 `System.gc()`（由 `performance.maintenance.force_gc` 控制）
 - Config/Sysprop 等命令输出对敏感值自动脱敏（避免控制台/日志泄露 secret）
+- 配置治理：引入强类型配置模型 `SleuthConfig`/`ServerConfig`/`ProtocolConfig`/`SecurityConfig` 与集中解析器 `SleuthConfigParser`；连接/会话边界（CommandClientHandler/HandshakeNegotiator/Launcher）统一解析默认与派生上限，`DefaultConfigFallback` 默认值收敛为 `SleuthDefaults`；补齐默认一致性与派生默认回归测试，降低“字符串 key + 多处默认值”漂移风险
 - Watch/Trace/Monitor/TT 方法匹配支持 `*` 通配符（例如 `execute*`），并修复异常路径退出事件捕获
 - WatchResult 输出改为使用安全格式化（SleuthValueFormatter：限深/限长/脱敏）
 - Monitor/VmOption 命令接口调整为更贴近 Arthas 的简化子命令模型
