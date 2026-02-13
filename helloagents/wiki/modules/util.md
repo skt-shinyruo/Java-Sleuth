@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** PerformanceOptimizer/MemoryOptimizer/JvmUtils + 诊断辅助工具
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-10
+- **Last Updated:** 2026-02-13
 - **Build Module:** foundation + bootstrap（bootstrap-bridge）+ core（少量 core 专用 util）
 
 ## Specifications
@@ -58,6 +58,15 @@
 前置：`mvn test`  
 - Surefire 默认设置 `-Dsleuth.logging.level=ERROR`，避免 INFO/WARN 日志刷屏淹没断言失败
 - 如需排查问题可临时提高：`-Dsleuth.logging.level=DEBUG`
+
+### Requirement: 线程治理基础设施（命名/daemon/异常处理/关闭策略）
+**Module:** util
+将线程与生命周期治理作为“一等概念”统一收敛，降低目标 JVM 内后台线程残留与排障成本。
+
+#### Scenario: 统一 ThreadFactory 与有界 shutdown
+前置：组件需要后台线程或线程池  
+- 统一使用 `SleuthThreadFactory` 创建 daemon 线程（统一命名 + UncaughtExceptionHandler）
+- 统一使用 `SleuthExecutors.shutdownAndAwait(...)` 做有界等待，避免 shutdown hang
 
 ## API Interfaces
 N/A

@@ -114,9 +114,17 @@ public class CommandPipeline {
     private final PipelineChain<StreamInvocation, StreamResult> streamChain;
 
     public CommandPipeline(InputValidator inputValidator, AuthorizationManager authorizationManager, ProductionConfig config) {
+        this(inputValidator, authorizationManager, DangerousCommandConfirmationManager.getInstance(), config);
+    }
+
+    public CommandPipeline(
+        InputValidator inputValidator,
+        AuthorizationManager authorizationManager,
+        DangerousCommandConfirmationManager dangerousConfirm,
+        ProductionConfig config
+    ) {
         this.inputValidator = inputValidator;
         this.config = config;
-        DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
         this.precheckPipeline = new PrecheckPipeline(inputValidator, authorizationManager, dangerousConfirm, config);
         this.executionEngine = new CommandExecutionEngine(config);
 
@@ -135,6 +143,14 @@ public class CommandPipeline {
             },
             Arrays.asList(new GuardedStreamInterceptor(inputValidator))
         );
+    }
+
+    public void shutdown() {
+        try {
+            executionEngine.shutdown();
+        } catch (Exception ignore) {
+            // ignore
+        }
     }
 
     public Result execute(CommandRegistry.Entry entry, String[] args, CommandContext context) {

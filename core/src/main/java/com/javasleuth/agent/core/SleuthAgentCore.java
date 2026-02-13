@@ -3,8 +3,16 @@ package com.javasleuth.agent.core;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.command.CommandProcessor;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.monitoring.MetricsCollector;
+import com.javasleuth.security.AuditLogger;
+import com.javasleuth.security.AuthenticationManager;
+import com.javasleuth.security.AuthorizationManager;
+import com.javasleuth.security.DangerousCommandConfirmationManager;
+import com.javasleuth.security.RequestSecurityManager;
+import com.javasleuth.command.session.ClientSessionRegistry;
 import com.javasleuth.util.AgentArgsApplier;
 import com.javasleuth.util.SleuthLogger;
+import com.javasleuth.util.SleuthThreadFactory;
 import java.lang.instrument.Instrumentation;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -31,14 +39,31 @@ public class SleuthAgentCore {
             transformer = new SleuthClassFileTransformer();
             inst.addTransformer(transformer, true);
 
-            commandProcessor = new CommandProcessor(inst, transformer, SleuthAgentCore::shutdown);
+            ProductionConfig config = ProductionConfig.getInstance();
+            AuditLogger auditLogger = AuditLogger.getInstance();
+            AuthenticationManager authenticationManager = AuthenticationManager.getInstance();
+            AuthorizationManager authorizationManager = AuthorizationManager.getInstance();
+            RequestSecurityManager requestSecurityManager = RequestSecurityManager.getInstance();
+            DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
+            ClientSessionRegistry clientSessionRegistry = ClientSessionRegistry.getInstance();
+            MetricsCollector metricsCollector = new MetricsCollector();
 
-            Thread commandThread = new Thread(() -> {
-                commandProcessor.start();
-            }, "sleuth-command-processor");
+            commandProcessor = new CommandProcessor(
+                inst,
+                transformer,
+                SleuthAgentCore::shutdown,
+                config,
+                auditLogger,
+                authenticationManager,
+                authorizationManager,
+                requestSecurityManager,
+                dangerousConfirm,
+                clientSessionRegistry,
+                metricsCollector
+            );
 
-            // Do not block JVM exit when only daemon threads remain.
-            commandThread.setDaemon(true);
+            Thread commandThread = SleuthThreadFactory.daemonFixed("sleuth-command-processor").newThread(commandProcessor::start);
+
             commandThread.start();
 
         } catch (Exception e) {

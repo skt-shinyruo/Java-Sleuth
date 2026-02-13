@@ -90,6 +90,20 @@ public class DangerousCommandConfirmationManager {
         return instance;
     }
 
+    public static synchronized void shutdownInstance() {
+        DangerousCommandConfirmationManager inst = instance;
+        if (inst == null) {
+            return;
+        }
+        try {
+            inst.pending.clear();
+        } catch (Exception ignore) {
+            // ignore
+        } finally {
+            instance = null;
+        }
+    }
+
     public ConfirmationResult confirmIfRequired(String sessionId,
                                                String clientInfo,
                                                String commandName,

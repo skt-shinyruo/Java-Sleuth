@@ -3,6 +3,7 @@ package com.javasleuth.command;
 import com.javasleuth.util.RingBuffer;
 import com.javasleuth.util.SleuthExecutors;
 import com.javasleuth.util.SleuthLogContext;
+import com.javasleuth.util.SleuthThreadFactory;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -86,7 +87,6 @@ public final class JobManager {
     // Execution limits (hard cap on concurrency + bounded queue).
     private volatile int maxRunning = 4;
     private volatile int queueCapacity = 20;
-    private final AtomicLong workerSeq = new AtomicLong(0);
     private final Object executorLock = new Object();
     private volatile ThreadPoolExecutor executor;
 
@@ -184,11 +184,7 @@ public final class JobManager {
                 60L,
                 TimeUnit.SECONDS,
                 q,
-                r -> {
-                    Thread t = new Thread(r, "sleuth-job-worker-" + workerSeq.incrementAndGet());
-                    t.setDaemon(true);
-                    return t;
-                },
+                SleuthThreadFactory.daemon("sleuth-job-worker"),
                 new ThreadPoolExecutor.AbortPolicy()
             );
             tpe.allowCoreThreadTimeOut(true);

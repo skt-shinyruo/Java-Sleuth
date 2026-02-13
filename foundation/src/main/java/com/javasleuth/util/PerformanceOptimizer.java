@@ -58,22 +58,15 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
             config.getThreadPoolMaxSize(),
             60L, TimeUnit.SECONDS,
             new LinkedBlockingQueue<>(200),
-            r -> {
-                Thread t = new Thread(r, "sleuth-perf-" + System.currentTimeMillis());
-                t.setDaemon(true);
-                t.setPriority(Thread.NORM_PRIORITY);
-                return t;
-            },
+            SleuthThreadFactory.daemon("sleuth-perf"),
             new ThreadPoolExecutor.CallerRunsPolicy()
         );
 
         // Maintenance executor for cache cleanup and optimization
-        this.maintenanceExecutor = Executors.newScheduledThreadPool(2, r -> {
-            Thread t = new Thread(r, "sleuth-maintenance");
-            t.setDaemon(true);
-            t.setPriority(Thread.MIN_PRIORITY);
-            return t;
-        });
+        this.maintenanceExecutor = Executors.newScheduledThreadPool(
+            2,
+            SleuthThreadFactory.daemon("sleuth-maintenance", Thread.MIN_PRIORITY)
+        );
 
         // Schedule periodic maintenance
         maintenanceExecutor.scheduleAtFixedRate(this::performMaintenance, 60, 60, TimeUnit.SECONDS);

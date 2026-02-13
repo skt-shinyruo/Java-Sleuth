@@ -7,7 +7,9 @@ import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
 import com.javasleuth.command.session.ClientDisconnectedException;
 import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.util.SleuthExecutors;
 import com.javasleuth.util.SleuthLogContext;
+import com.javasleuth.util.SleuthThreadFactory;
 import com.javasleuth.security.CommandMeta;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
@@ -19,7 +21,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 命令执行引擎：统一 timeout/executor/impact permit，供 Pipeline 使用。
@@ -41,22 +42,21 @@ public final class CommandExecutionEngine {
         final int queueCapacity = config.getCommandExecutorQueueCapacity();
 
         BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(queueCapacity);
-        AtomicLong threadSeq = new AtomicLong(0);
         ThreadPoolExecutor tpe = new ThreadPoolExecutor(
             coreSize,
             Math.max(coreSize, maxSize),
             60L,
             TimeUnit.SECONDS,
             queue,
-            r -> {
-                Thread t = new Thread(r, "sleuth-cmd-exec-" + threadSeq.incrementAndGet());
-                t.setDaemon(true);
-                return t;
-            },
+            SleuthThreadFactory.daemon("sleuth-cmd-exec"),
             new ThreadPoolExecutor.AbortPolicy()
         );
         tpe.allowCoreThreadTimeOut(true);
         this.commandExecutor = tpe;
+    }
+
+    public void shutdown() {
+        SleuthExecutors.shutdownAndAwait(commandExecutor, "command-exec", 5, TimeUnit.SECONDS);
     }
 
     public String executeSync(Command command, String[] args, CommandMeta meta, long timeoutMs, CommandContext context) throws Exception {

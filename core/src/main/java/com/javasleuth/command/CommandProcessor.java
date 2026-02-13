@@ -11,8 +11,10 @@ import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.security.AuditLogger;
 import com.javasleuth.security.AuthenticationManager;
 import com.javasleuth.security.AuthorizationManager;
+import com.javasleuth.security.DangerousCommandConfirmationManager;
 import com.javasleuth.security.InputValidator;
 import com.javasleuth.security.RequestSecurityManager;
+import com.javasleuth.util.SleuthThreadFactory;
 import com.javasleuth.util.SleuthLogger;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
@@ -45,66 +47,94 @@ public class CommandProcessor {
     private final ConnectionAcceptor acceptor;
     private final ShutdownCoordinator shutdownCoordinator;
     private final ConcurrentHashMap<String, String> sessionByClient = new ConcurrentHashMap<>();
-    private final ClientSessionRegistry clientSessionRegistry = ClientSessionRegistry.getInstance();
+    private final ClientSessionRegistry clientSessionRegistry;
     private ServerSocket serverSocket;
+    private final AtomicBoolean shutdownHookRegistered = new AtomicBoolean(false);
 
     public CommandProcessor(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
         this(instrumentation, transformer, null);
     }
 
     public CommandProcessor(Instrumentation instrumentation, SleuthClassFileTransformer transformer, Runnable shutdownHook) {
+        this(
+            instrumentation,
+            transformer,
+            shutdownHook,
+            ProductionConfig.getInstance(),
+            AuditLogger.getInstance(),
+            AuthenticationManager.getInstance(),
+            AuthorizationManager.getInstance(),
+            RequestSecurityManager.getInstance(),
+            DangerousCommandConfirmationManager.getInstance(),
+            ClientSessionRegistry.getInstance(),
+            new MetricsCollector()
+        );
+    }
+
+    public CommandProcessor(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        Runnable shutdownHook,
+        ProductionConfig config,
+        AuditLogger auditLogger,
+        AuthenticationManager authenticationManager,
+        AuthorizationManager authorizationManager,
+        RequestSecurityManager requestSecurityManager,
+        DangerousCommandConfirmationManager dangerousConfirm,
+        ClientSessionRegistry clientSessionRegistry,
+        MetricsCollector metricsCollector
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.shutdownHook = shutdownHook;
-        this.config = ProductionConfig.getInstance();
+        this.config = config != null ? config : ProductionConfig.getInstance();
         this.bootstrapper = new ServerBootstrapper();
         this.bootstrapper.configureLoggingProvider(this.config);
         this.bootstrapper.configureJobManager(this.config);
 
-        this.auditLogger = AuditLogger.getInstance();
+        this.auditLogger = auditLogger != null ? auditLogger : AuditLogger.getInstance();
         this.inputValidator = new InputValidator();
-        this.authenticationManager = AuthenticationManager.getInstance();
-        this.authorizationManager = AuthorizationManager.getInstance();
-        this.requestSecurityManager = RequestSecurityManager.getInstance();
+        this.authenticationManager = authenticationManager != null ? authenticationManager : AuthenticationManager.getInstance();
+        this.authorizationManager = authorizationManager != null ? authorizationManager : AuthorizationManager.getInstance();
+        this.requestSecurityManager = requestSecurityManager != null ? requestSecurityManager : RequestSecurityManager.getInstance();
+        DangerousCommandConfirmationManager dc =
+            dangerousConfirm != null ? dangerousConfirm : DangerousCommandConfirmationManager.getInstance();
 
         this.clientExecutor = new ThreadPoolExecutor(
-            config.getThreadPoolCoreSize(),
-            config.getThreadPoolMaxSize(),
+            this.config.getThreadPoolCoreSize(),
+            this.config.getThreadPoolMaxSize(),
             60L, TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(config.getServerExecutorQueueCapacity()),
-            r -> {
-                Thread t = new Thread(r, "sleuth-client-" + commandCounter.incrementAndGet());
-                t.setDaemon(true);
-                return t;
-            },
+            new LinkedBlockingQueue<>(this.config.getServerExecutorQueueCapacity()),
+            SleuthThreadFactory.daemon("sleuth-client"),
             new ThreadPoolExecutor.CallerRunsPolicy()
         );
-        this.metricsCollector = new MetricsCollector();
+        this.metricsCollector = metricsCollector != null ? metricsCollector : new MetricsCollector();
         // Expose audit drop count via metrics/health.
         try {
-            this.metricsCollector.recordAuditDropped(auditLogger.getDroppedCount());
+            this.metricsCollector.recordAuditDropped(this.auditLogger.getDroppedCount());
         } catch (Exception e) {
             SleuthLogger.debug("Failed to record initial audit dropped count: " + e.getMessage(), e);
         }
-        this.registry = new CommandRegistry(instrumentation, transformer, metricsCollector, config, auditLogger, shutdownHook);
-        this.pipeline = new CommandPipeline(inputValidator, authorizationManager, config);
+        this.registry = new CommandRegistry(instrumentation, transformer, this.metricsCollector, this.config, this.auditLogger, shutdownHook);
+        this.pipeline = new CommandPipeline(inputValidator, this.authorizationManager, dc, this.config);
+        this.clientSessionRegistry = clientSessionRegistry != null ? clientSessionRegistry : ClientSessionRegistry.getInstance();
         this.clientHandler = new CommandClientHandler(
             running,
             commandCounter,
-            metricsCollector,
-            config,
-            auditLogger,
-            authenticationManager,
-            requestSecurityManager,
+            this.metricsCollector,
+            this.config,
+            this.auditLogger,
+            this.authenticationManager,
+            this.requestSecurityManager,
             registry,
             pipeline,
             sessionByClient,
-            clientSessionRegistry
+            this.clientSessionRegistry
         );
         this.acceptor = new ConnectionAcceptor();
-        this.shutdownCoordinator = new ShutdownCoordinator(running, clientExecutor, metricsCollector, auditLogger, registry);
+        this.shutdownCoordinator = new ShutdownCoordinator(running, clientExecutor, this.metricsCollector, this.auditLogger, registry, pipeline);
 
-        auditLogger.logSystemEvent("COMMAND_PROCESSOR_INIT", "Command processor initialized with " + registry.getCommandMap().size() + " commands");
+        this.auditLogger.logSystemEvent("COMMAND_PROCESSOR_INIT", "Command processor initialized with " + registry.getCommandMap().size() + " commands");
     }
 
     public void start() {
@@ -169,7 +199,7 @@ public class CommandProcessor {
         }
 
         // Restart in new thread
-        Thread restartThread = new Thread(() -> {
+        Thread restartThread = SleuthThreadFactory.daemonFixed("sleuth-restart").newThread(() -> {
             try {
                 Thread.sleep(1000); // Give system time to clean up
                 SleuthLogger.info("🚀 Starting command processor...");
@@ -179,8 +209,7 @@ public class CommandProcessor {
                 SleuthLogger.error("❌ Failed to restart command processor: " + e.getMessage(), e);
                 auditLogger.logSystemEvent("RESTART_FAILED", "Command processor restart failed: " + e.getMessage());
             }
-        }, "sleuth-restart");
-        restartThread.setDaemon(false);
+        });
         restartThread.start();
     }
 
@@ -188,6 +217,9 @@ public class CommandProcessor {
      * Add shutdown hook for graceful termination
      */
     public void addShutdownHook() {
+        if (!shutdownHookRegistered.compareAndSet(false, true)) {
+            return;
+        }
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             SleuthLogger.warn("⚠️ JVM shutdown detected - initiating graceful shutdown...");
             shutdownGracefully(10); // Shorter timeout for JVM shutdown

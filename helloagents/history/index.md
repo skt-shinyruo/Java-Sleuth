@@ -34,6 +34,7 @@
 - 202602122323_kv_line_codec_locale_root_test
 - 202602131214_thread_lifecycle_governance
 - 202602132045_bootstrap_boundary_cleanup
+- 202602132211_singleton_lifecycle_convergence
 
 ## 2026-01
 - 202601281207_sleuth_plugin_stream

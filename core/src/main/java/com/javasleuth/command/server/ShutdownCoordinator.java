@@ -8,9 +8,13 @@ package com.javasleuth.command.server;
 import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.security.AuditLogger;
 import com.javasleuth.security.AuthenticationManager;
+import com.javasleuth.security.AuthorizationManager;
+import com.javasleuth.security.DangerousCommandConfirmationManager;
+import com.javasleuth.security.RequestSecurityManager;
 import com.javasleuth.util.MemoryOptimizer;
 import com.javasleuth.util.PerformanceOptimizer;
 import com.javasleuth.util.SleuthLogger;
+import com.javasleuth.command.CommandPipeline;
 import com.javasleuth.command.CommandRegistry;
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -25,19 +29,22 @@ public final class ShutdownCoordinator {
     private final MetricsCollector metricsCollector;
     private final AuditLogger auditLogger;
     private final CommandRegistry registry;
+    private final CommandPipeline pipeline;
 
     public ShutdownCoordinator(
         AtomicBoolean running,
         ThreadPoolExecutor clientExecutor,
         MetricsCollector metricsCollector,
         AuditLogger auditLogger,
-        CommandRegistry registry
+        CommandRegistry registry,
+        CommandPipeline pipeline
     ) {
         this.running = running;
         this.clientExecutor = clientExecutor;
         this.metricsCollector = metricsCollector;
         this.auditLogger = auditLogger;
         this.registry = registry;
+        this.pipeline = pipeline;
     }
 
     public void shutdownGracefully(ServerSocket serverSocket, int timeoutSeconds) {
@@ -58,6 +65,14 @@ public final class ShutdownCoordinator {
 
             shutdownExecutor(timeoutSeconds);
 
+            try {
+                if (pipeline != null) {
+                    pipeline.shutdown();
+                }
+            } catch (Exception ignore) {
+                // ignore
+            }
+
             // Release plugin classloader resources (important on Windows to avoid JAR locks).
             try {
                 registry.shutdown();
@@ -67,6 +82,21 @@ public final class ShutdownCoordinator {
 
             try {
                 AuthenticationManager.shutdownInstance();
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                AuthorizationManager.shutdownInstance();
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                RequestSecurityManager.shutdownInstance();
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                DangerousCommandConfirmationManager.shutdownInstance();
             } catch (Exception ignore) {
                 // ignore
             }
@@ -109,12 +139,34 @@ public final class ShutdownCoordinator {
                 // ignore
             }
             try {
+                if (pipeline != null) {
+                    pipeline.shutdown();
+                }
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
                 registry.shutdown();
             } catch (Exception ignore) {
                 // ignore
             }
             try {
                 AuthenticationManager.shutdownInstance();
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                AuthorizationManager.shutdownInstance();
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                RequestSecurityManager.shutdownInstance();
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                DangerousCommandConfirmationManager.shutdownInstance();
             } catch (Exception ignore) {
                 // ignore
             }

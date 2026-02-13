@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** InputValidator/AuditLogger/Auth/AuthZ/SecurityValidator
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-12
+- **Last Updated:** 2026-02-13
 - **Build Module:** foundation（低层基础模块）
 
 ## Specifications
@@ -39,6 +39,11 @@
 前置：`AuthenticationManager` 会启动后台会话清理任务（daemon）  
 - stop/detach 或服务端 shutdown 时，关闭编排会停止清理任务（幂等 best-effort）
 - 再次 attach 时可重新启动清理任务（避免复用已 shutdown 的执行器）
+
+#### Scenario: detach 时清理安全缓存（避免状态残留）
+前置：同一 JVM 内发生 detach → re-attach  
+- shutdown 编排会调用 `AuthorizationManager.shutdownInstance()`、`RequestSecurityManager.shutdownInstance()`、`DangerousCommandConfirmationManager.shutdownInstance()` 清空内部缓存并允许重新初始化
+- 避免 rate limit/nonce/pending confirm 等状态跨 attach 残留，降低误判与不可预期行为
 
 **Module:** security
 为每个连接建立角色与权限边界。

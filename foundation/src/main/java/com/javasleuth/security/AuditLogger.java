@@ -2,6 +2,7 @@ package com.javasleuth.security;
 
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.util.SleuthLogger;
+import com.javasleuth.util.SleuthThreadFactory;
 
 import java.io.*;
 import java.time.Instant;
@@ -35,7 +36,7 @@ public class AuditLogger {
         this.running = new AtomicBoolean(false);
         this.eventCounter = new AtomicLong(0);
         this.droppedCounter = new AtomicLong(0);
-        this.auditThread = new Thread(this::processAuditEvents, "sleuth-audit-logger");
+        this.auditThread = SleuthThreadFactory.daemonFixed("sleuth-audit-logger").newThread(this::processAuditEvents);
 
         initializeWriters();
         start();
@@ -80,7 +81,6 @@ public class AuditLogger {
             return;
         }
 
-        auditThread.setDaemon(true);
         auditThread.start();
     }
 

@@ -75,6 +75,20 @@ public class RequestSecurityManager {
         return instance;
     }
 
+    public static synchronized void shutdownInstance() {
+        RequestSecurityManager inst = instance;
+        if (inst == null) {
+            return;
+        }
+        try {
+            inst.seenNonces.clear();
+        } catch (Exception ignore) {
+            // ignore
+        } finally {
+            instance = null;
+        }
+    }
+
     public VerificationResult verifyAndExtract(String sessionId, String raw) {
         String mode = config.getSecurityMode();
         if (mode == null || "off".equalsIgnoreCase(mode)) {

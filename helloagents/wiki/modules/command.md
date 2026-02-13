@@ -28,8 +28,10 @@
   - 负责 accept 循环与连接级控制（如 maxConnections、过载拒绝）
 - `ShutdownCoordinator`
   - 负责优雅/紧急关闭编排，保证幂等与资源释放顺序
+  - 关闭编排会收口 `CommandPipeline`（含 `CommandExecutionEngine` 线程池），避免 detach 后残留后台执行器
 - `CommandProcessor`
   - 作为 facade：装配上述组件 + 现有的 `CommandClientHandler`，对外保持稳定入口
+  - 支持“注入式构造方法”，将单例获取收敛到 composition root（如 `SleuthAgentCore`），降低依赖隐式化
 
 收益：
 
@@ -52,4 +54,5 @@
 
 - **安全边界**：服务端入口处必须先完成握手/鉴权/确认流程，再允许进入高危命令执行
 - **资源治理**：accept 循环需要显式限流/拒绝策略，避免目标 JVM 被诊断流量拖垮
+- **detach/reattach 语义**：shutdown 编排需要覆盖“网络/线程池/安全缓存/插件 classloader”等关键资源，避免同 JVM 二次 attach 时状态残留
 - **可测试性优先**：尽量把“线程/IO/生命周期”与“纯逻辑”分离，降低 flaky 风险

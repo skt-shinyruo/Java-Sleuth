@@ -64,6 +64,20 @@ public class AuthorizationManager {
         return instance;
     }
 
+    public static synchronized void shutdownInstance() {
+        AuthorizationManager inst = instance;
+        if (inst == null) {
+            return;
+        }
+        try {
+            inst.rateLimits.clear();
+        } catch (Exception ignore) {
+            // ignore
+        } finally {
+            instance = null;
+        }
+    }
+
     public AuthorizationResult authorize(String sessionId, String command, String[] args, CommandMeta meta) {
         if (!config.isAuthorizationEnabled()) {
             return AuthorizationResult.allowed();

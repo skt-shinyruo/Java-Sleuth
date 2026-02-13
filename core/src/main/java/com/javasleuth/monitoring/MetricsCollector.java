@@ -1,7 +1,9 @@
 package com.javasleuth.monitoring;
 
 import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.util.SleuthExecutors;
 import com.javasleuth.util.SleuthLogger;
+import com.javasleuth.util.SleuthThreadFactory;
 import java.lang.management.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -77,12 +79,10 @@ public class MetricsCollector implements MetricsCollectorMBean {
 
     public MetricsCollector() {
         // Initialize metrics collection scheduler
-        this.metricsExecutor = Executors.newScheduledThreadPool(1, r -> {
-            Thread t = new Thread(r, "sleuth-metrics");
-            t.setDaemon(true);
-            t.setPriority(Thread.MIN_PRIORITY);
-            return t;
-        });
+        this.metricsExecutor = Executors.newScheduledThreadPool(
+            1,
+            SleuthThreadFactory.daemonFixed("sleuth-metrics", Thread.MIN_PRIORITY)
+        );
 
         // Schedule periodic metrics collection
         metricsExecutor.scheduleAtFixedRate(this::collectPeriodicMetrics, 30, 30, TimeUnit.SECONDS);
@@ -524,15 +524,7 @@ public class MetricsCollector implements MetricsCollectorMBean {
     public void shutdown() {
         SleuthLogger.debug("Shutting down metrics collector...");
 
-        metricsExecutor.shutdown();
-        try {
-            if (!metricsExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                metricsExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            metricsExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
+        SleuthExecutors.shutdownAndAwait(metricsExecutor, "metrics", 5, TimeUnit.SECONDS);
 
         unregisterMBean();
         SleuthLogger.debug("Metrics collector shutdown complete");

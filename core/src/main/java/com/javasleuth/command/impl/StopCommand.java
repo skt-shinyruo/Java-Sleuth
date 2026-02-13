@@ -2,6 +2,7 @@ package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
 import com.javasleuth.util.SleuthLogger;
+import com.javasleuth.util.SleuthThreadFactory;
 
 /**
  * Stop the agent inside the target JVM.
@@ -20,7 +21,7 @@ public class StopCommand implements Command {
         if (shutdownHook == null) {
             return "Stop is not supported in this runtime.";
         }
-        Thread t = new Thread(() -> {
+        Thread t = SleuthThreadFactory.daemonFixed("sleuth-stop").newThread(() -> {
             try {
                 Thread.sleep(100);
             } catch (InterruptedException ignored) {
@@ -31,8 +32,7 @@ public class StopCommand implements Command {
             } catch (Throwable e) {
                 SleuthLogger.warn("Stop command shutdown hook failed: " + e.getMessage(), e);
             }
-        }, "sleuth-stop");
-        t.setDaemon(true);
+        });
         t.start();
         return "Stopping Java-Sleuth agent...";
     }

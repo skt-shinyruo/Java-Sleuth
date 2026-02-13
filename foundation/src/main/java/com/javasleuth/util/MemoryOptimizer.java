@@ -32,12 +32,10 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
         this.memoryBean = ManagementFactory.getMemoryMXBean();
 
         // Create memory monitoring thread
-        this.memoryMonitor = Executors.newScheduledThreadPool(1, r -> {
-            Thread t = new Thread(r, "sleuth-memory-monitor");
-            t.setDaemon(true);
-            t.setPriority(Thread.MIN_PRIORITY);
-            return t;
-        });
+        this.memoryMonitor = Executors.newScheduledThreadPool(
+            1,
+            SleuthThreadFactory.daemonFixed("sleuth-memory-monitor", Thread.MIN_PRIORITY)
+        );
 
         // Start memory monitoring
         startMemoryMonitoring();

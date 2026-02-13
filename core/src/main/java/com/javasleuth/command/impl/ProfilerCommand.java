@@ -3,6 +3,7 @@ package com.javasleuth.command.impl;
 import com.javasleuth.command.Command;
 import com.javasleuth.util.PerformanceOptimizer;
 import com.javasleuth.util.SleuthLogger;
+import com.javasleuth.util.SleuthThreadFactory;
 import com.javasleuth.util.StringUtils;
 import java.io.File;
 import java.io.FileWriter;
@@ -98,11 +99,9 @@ public class ProfilerCommand implements Command {
             startTime = System.currentTimeMillis();
 
             // Start sampling
-            scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "profiler-sampler");
-                t.setDaemon(true);
-                return t;
-            });
+            scheduler = Executors.newSingleThreadScheduledExecutor(
+                SleuthThreadFactory.daemonFixed("sleuth-profiler-sampler")
+            );
 
             scheduler.scheduleAtFixedRate(this::sampleProfile, 0, intervalMs, TimeUnit.MILLISECONDS);
 
