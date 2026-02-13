@@ -6,6 +6,16 @@ import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.security.AuthenticationManager;
 
 public class SessionCommand implements Command {
+    private final AuthenticationManager authManager;
+
+    public SessionCommand() {
+        this(AuthenticationManager.getInstance());
+    }
+
+    public SessionCommand(AuthenticationManager authManager) {
+        this.authManager = authManager != null ? authManager : AuthenticationManager.getInstance();
+    }
+
     @Override
     public String execute(String[] args) {
         CommandContext ctx = CommandContextHolder.get();
@@ -31,8 +41,7 @@ public class SessionCommand implements Command {
             return "Session: <null> (not authenticated).";
         }
 
-        AuthenticationManager auth = AuthenticationManager.getInstance();
-        AuthenticationManager.SessionValidationResult r = auth.validateSession(sessionId);
+        AuthenticationManager.SessionValidationResult r = authManager.validateSession(sessionId);
         if (!r.isValid()) {
             return "Session invalid: " + r.getMessage();
         }

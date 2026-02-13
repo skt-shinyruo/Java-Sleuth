@@ -17,6 +17,7 @@
 - `CommandArgs`：参数解析后的结构化对象
 - `CommandContext`：一次请求的上下文（身份/权限/连接信息等）
 - `CommandRegistry` / `CommandProvider`：命令注册与聚合
+  - 允许在装配链路中向 builtin provider 传递关键依赖（如 auth/session/confirm manager），减少命令实现内部的 `getInstance()` 隐式依赖
 
 ### 2.2 服务端生命周期拆分（去 God class）
 

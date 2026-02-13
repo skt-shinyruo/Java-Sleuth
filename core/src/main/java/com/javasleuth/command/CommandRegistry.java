@@ -4,7 +4,9 @@ import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.security.AuditLogger;
+import com.javasleuth.security.AuthenticationManager;
 import com.javasleuth.security.CommandMeta;
+import com.javasleuth.security.DangerousCommandConfirmationManager;
 import com.javasleuth.util.SleuthLogger;
 import java.io.File;
 import java.io.FileInputStream;
@@ -56,6 +58,8 @@ public class CommandRegistry {
     private final MetricsCollector metricsCollector;
     private final AuditLogger auditLogger;
     private final Runnable shutdownHook;
+    private final AuthenticationManager authenticationManager;
+    private final DangerousCommandConfirmationManager dangerousConfirm;
     private volatile URLClassLoader pluginClassLoader;
 
     public CommandRegistry(Instrumentation instrumentation,
@@ -64,10 +68,24 @@ public class CommandRegistry {
                            ProductionConfig config,
                            AuditLogger auditLogger,
                            Runnable shutdownHook) {
+        this(instrumentation, transformer, metricsCollector, config, auditLogger, shutdownHook,
+            AuthenticationManager.getInstance(), DangerousCommandConfirmationManager.getInstance());
+    }
+
+    public CommandRegistry(Instrumentation instrumentation,
+                           SleuthClassFileTransformer transformer,
+                           MetricsCollector metricsCollector,
+                           ProductionConfig config,
+                           AuditLogger auditLogger,
+                           Runnable shutdownHook,
+                           AuthenticationManager authenticationManager,
+                           DangerousCommandConfirmationManager dangerousConfirm) {
         this.config = config;
         this.metricsCollector = metricsCollector;
         this.auditLogger = auditLogger;
         this.shutdownHook = shutdownHook;
+        this.authenticationManager = authenticationManager != null ? authenticationManager : AuthenticationManager.getInstance();
+        this.dangerousConfirm = dangerousConfirm != null ? dangerousConfirm : DangerousCommandConfirmationManager.getInstance();
         loadProviders(instrumentation, transformer, metricsCollector, auditLogger);
         registerHelpCommand();
     }
@@ -106,7 +124,16 @@ public class CommandRegistry {
                                MetricsCollector metricsCollector,
                                AuditLogger auditLogger) {
         List<CommandProvider> providers = new ArrayList<>();
-        providers.add(new BuiltinCommandProvider(instrumentation, transformer, metricsCollector, config, auditLogger, shutdownHook));
+        providers.add(new BuiltinCommandProvider(
+            instrumentation,
+            transformer,
+            metricsCollector,
+            config,
+            auditLogger,
+            shutdownHook,
+            authenticationManager,
+            dangerousConfirm
+        ));
 
         if (config.isPluginsServiceLoaderEnabled()) {
             ServiceLoader<CommandProvider> loader = ServiceLoader.load(CommandProvider.class);

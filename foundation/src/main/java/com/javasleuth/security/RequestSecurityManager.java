@@ -75,13 +75,21 @@ public class RequestSecurityManager {
         return instance;
     }
 
+    public void shutdown() {
+        try {
+            seenNonces.clear();
+        } catch (Exception ignore) {
+            // ignore
+        }
+    }
+
     public static synchronized void shutdownInstance() {
         RequestSecurityManager inst = instance;
         if (inst == null) {
             return;
         }
         try {
-            inst.seenNonces.clear();
+            inst.shutdown();
         } catch (Exception ignore) {
             // ignore
         } finally {

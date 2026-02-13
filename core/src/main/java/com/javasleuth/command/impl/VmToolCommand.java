@@ -37,12 +37,23 @@ public class VmToolCommand implements Command {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
     private final ConfigView config;
+    private final DangerousCommandConfirmationManager dangerousConfirm;
     private final VmToolSessionRegistry registry = VmToolSessionRegistry.getInstance();
 
     public VmToolCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer, ConfigView config) {
+        this(instrumentation, transformer, config, DangerousCommandConfirmationManager.getInstance());
+    }
+
+    public VmToolCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        DangerousCommandConfirmationManager dangerousConfirm
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.config = config;
+        this.dangerousConfirm = dangerousConfirm != null ? dangerousConfirm : DangerousCommandConfirmationManager.getInstance();
     }
 
     @Override
@@ -548,11 +559,10 @@ public class VmToolCommand implements Command {
         String sessionId = ctx != null ? ctx.getSessionId() : null;
         String clientInfo = ctx != null ? ctx.getClientInfo() : null;
 
-        DangerousCommandConfirmationManager mgr = DangerousCommandConfirmationManager.getInstance();
         CommandMeta meta = CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH);
 
         DangerousCommandConfirmationManager.ConfirmationResult r =
-            mgr.confirmIfRequired(sessionId, clientInfo, "vmtool:" + subcommand, args, meta);
+            dangerousConfirm.confirmIfRequired(sessionId, clientInfo, "vmtool:" + subcommand, args, meta);
         if (r == null) {
             return args;
         }

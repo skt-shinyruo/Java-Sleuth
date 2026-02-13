@@ -44,6 +44,7 @@
 前置：同一 JVM 内发生 detach → re-attach  
 - shutdown 编排会调用 `AuthorizationManager.shutdownInstance()`、`RequestSecurityManager.shutdownInstance()`、`DangerousCommandConfirmationManager.shutdownInstance()` 清空内部缓存并允许重新初始化
 - 避免 rate limit/nonce/pending confirm 等状态跨 attach 残留，降低误判与不可预期行为
+- 同时，上述 manager 也提供 instance `shutdown()`，关闭编排会优先对“注入实例”执行 shutdown，再 best-effort 清理全局单例，便于未来做多实例/隔离测试
 
 **Module:** security
 为每个连接建立角色与权限边界。

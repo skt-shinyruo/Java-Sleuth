@@ -64,13 +64,21 @@ public class AuthorizationManager {
         return instance;
     }
 
+    public void shutdown() {
+        try {
+            rateLimits.clear();
+        } catch (Exception ignore) {
+            // ignore
+        }
+    }
+
     public static synchronized void shutdownInstance() {
         AuthorizationManager inst = instance;
         if (inst == null) {
             return;
         }
         try {
-            inst.rateLimits.clear();
+            inst.shutdown();
         } catch (Exception ignore) {
             // ignore
         } finally {

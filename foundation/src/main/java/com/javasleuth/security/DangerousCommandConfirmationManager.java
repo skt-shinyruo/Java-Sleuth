@@ -90,13 +90,21 @@ public class DangerousCommandConfirmationManager {
         return instance;
     }
 
+    public void shutdown() {
+        try {
+            pending.clear();
+        } catch (Exception ignore) {
+            // ignore
+        }
+    }
+
     public static synchronized void shutdownInstance() {
         DangerousCommandConfirmationManager inst = instance;
         if (inst == null) {
             return;
         }
         try {
-            inst.pending.clear();
+            inst.shutdown();
         } catch (Exception ignore) {
             // ignore
         } finally {

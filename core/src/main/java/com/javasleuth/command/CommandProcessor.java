@@ -40,6 +40,7 @@ public class CommandProcessor {
     private final AuthenticationManager authenticationManager;
     private final AuthorizationManager authorizationManager;
     private final RequestSecurityManager requestSecurityManager;
+    private final DangerousCommandConfirmationManager dangerousConfirm;
     private final CommandRegistry registry;
     private final CommandPipeline pipeline;
     private final CommandClientHandler clientHandler;
@@ -99,6 +100,7 @@ public class CommandProcessor {
         this.requestSecurityManager = requestSecurityManager != null ? requestSecurityManager : RequestSecurityManager.getInstance();
         DangerousCommandConfirmationManager dc =
             dangerousConfirm != null ? dangerousConfirm : DangerousCommandConfirmationManager.getInstance();
+        this.dangerousConfirm = dc;
 
         this.clientExecutor = new ThreadPoolExecutor(
             this.config.getThreadPoolCoreSize(),
@@ -115,7 +117,16 @@ public class CommandProcessor {
         } catch (Exception e) {
             SleuthLogger.debug("Failed to record initial audit dropped count: " + e.getMessage(), e);
         }
-        this.registry = new CommandRegistry(instrumentation, transformer, this.metricsCollector, this.config, this.auditLogger, shutdownHook);
+        this.registry = new CommandRegistry(
+            instrumentation,
+            transformer,
+            this.metricsCollector,
+            this.config,
+            this.auditLogger,
+            shutdownHook,
+            this.authenticationManager,
+            dc
+        );
         this.pipeline = new CommandPipeline(inputValidator, this.authorizationManager, dc, this.config);
         this.clientSessionRegistry = clientSessionRegistry != null ? clientSessionRegistry : ClientSessionRegistry.getInstance();
         this.clientHandler = new CommandClientHandler(
@@ -132,7 +143,18 @@ public class CommandProcessor {
             this.clientSessionRegistry
         );
         this.acceptor = new ConnectionAcceptor();
-        this.shutdownCoordinator = new ShutdownCoordinator(running, clientExecutor, this.metricsCollector, this.auditLogger, registry, pipeline);
+        this.shutdownCoordinator = new ShutdownCoordinator(
+            running,
+            clientExecutor,
+            this.metricsCollector,
+            this.auditLogger,
+            registry,
+            pipeline,
+            this.authenticationManager,
+            this.authorizationManager,
+            this.requestSecurityManager,
+            this.dangerousConfirm
+        );
 
         this.auditLogger.logSystemEvent("COMMAND_PROCESSOR_INIT", "Command processor initialized with " + registry.getCommandMap().size() + " commands");
     }

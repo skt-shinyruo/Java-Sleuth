@@ -6,6 +6,16 @@ import com.javasleuth.command.CommandContextHolder;
 import com.javasleuth.security.AuthenticationManager;
 
 public class AuthCommand implements Command {
+    private final AuthenticationManager authManager;
+
+    public AuthCommand() {
+        this(AuthenticationManager.getInstance());
+    }
+
+    public AuthCommand(AuthenticationManager authManager) {
+        this.authManager = authManager != null ? authManager : AuthenticationManager.getInstance();
+    }
+
     @Override
     public String execute(String[] args) throws Exception {
         if (args.length < 3) {
@@ -15,7 +25,6 @@ public class AuthCommand implements Command {
         CommandContext context = CommandContextHolder.get();
         String clientInfo = context != null ? context.getClientInfo() : "unknown";
 
-        AuthenticationManager authManager = AuthenticationManager.getInstance();
         AuthenticationManager.AuthenticationResult result =
             authManager.authenticate(args[1], args[2], clientInfo);
 

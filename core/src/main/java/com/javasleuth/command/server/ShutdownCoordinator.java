@@ -30,6 +30,10 @@ public final class ShutdownCoordinator {
     private final AuditLogger auditLogger;
     private final CommandRegistry registry;
     private final CommandPipeline pipeline;
+    private final AuthenticationManager authenticationManager;
+    private final AuthorizationManager authorizationManager;
+    private final RequestSecurityManager requestSecurityManager;
+    private final DangerousCommandConfirmationManager dangerousConfirm;
 
     public ShutdownCoordinator(
         AtomicBoolean running,
@@ -37,7 +41,11 @@ public final class ShutdownCoordinator {
         MetricsCollector metricsCollector,
         AuditLogger auditLogger,
         CommandRegistry registry,
-        CommandPipeline pipeline
+        CommandPipeline pipeline,
+        AuthenticationManager authenticationManager,
+        AuthorizationManager authorizationManager,
+        RequestSecurityManager requestSecurityManager,
+        DangerousCommandConfirmationManager dangerousConfirm
     ) {
         this.running = running;
         this.clientExecutor = clientExecutor;
@@ -45,6 +53,10 @@ public final class ShutdownCoordinator {
         this.auditLogger = auditLogger;
         this.registry = registry;
         this.pipeline = pipeline;
+        this.authenticationManager = authenticationManager;
+        this.authorizationManager = authorizationManager;
+        this.requestSecurityManager = requestSecurityManager;
+        this.dangerousConfirm = dangerousConfirm;
     }
 
     public void shutdownGracefully(ServerSocket serverSocket, int timeoutSeconds) {
@@ -80,6 +92,36 @@ public final class ShutdownCoordinator {
                 // ignore
             }
 
+            try {
+                if (authenticationManager != null) {
+                    authenticationManager.shutdown();
+                }
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                if (authorizationManager != null) {
+                    authorizationManager.shutdown();
+                }
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                if (requestSecurityManager != null) {
+                    requestSecurityManager.shutdown();
+                }
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                if (dangerousConfirm != null) {
+                    dangerousConfirm.shutdown();
+                }
+            } catch (Exception ignore) {
+                // ignore
+            }
+
+            // Clear global singletons too (best-effort), to support detach → re-attach in the same JVM.
             try {
                 AuthenticationManager.shutdownInstance();
             } catch (Exception ignore) {
@@ -147,6 +189,34 @@ public final class ShutdownCoordinator {
             }
             try {
                 registry.shutdown();
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                if (authenticationManager != null) {
+                    authenticationManager.shutdown();
+                }
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                if (authorizationManager != null) {
+                    authorizationManager.shutdown();
+                }
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                if (requestSecurityManager != null) {
+                    requestSecurityManager.shutdown();
+                }
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                if (dangerousConfirm != null) {
+                    dangerousConfirm.shutdown();
+                }
             } catch (Exception ignore) {
                 // ignore
             }

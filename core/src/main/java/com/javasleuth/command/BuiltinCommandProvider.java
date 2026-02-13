@@ -5,8 +5,10 @@ import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.security.AuditLogger;
+import com.javasleuth.security.AuthenticationManager;
 import com.javasleuth.security.CommandMeta;
 import com.javasleuth.security.AuthenticationManager.UserRole;
+import com.javasleuth.security.DangerousCommandConfirmationManager;
 import java.lang.instrument.Instrumentation;
 import java.util.HashMap;
 import java.util.Map;
@@ -18,19 +20,25 @@ public class BuiltinCommandProvider implements CommandProvider {
     private final ProductionConfig config;
     private final AuditLogger auditLogger;
     private final Runnable shutdownHook;
+    private final AuthenticationManager authenticationManager;
+    private final DangerousCommandConfirmationManager dangerousConfirm;
 
     public BuiltinCommandProvider(Instrumentation instrumentation,
                                   SleuthClassFileTransformer transformer,
                                   MetricsCollector metricsCollector,
                                   ProductionConfig config,
                                   AuditLogger auditLogger,
-                                  Runnable shutdownHook) {
+                                  Runnable shutdownHook,
+                                  AuthenticationManager authenticationManager,
+                                  DangerousCommandConfirmationManager dangerousConfirm) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.metricsCollector = metricsCollector;
         this.config = config;
         this.auditLogger = auditLogger;
         this.shutdownHook = shutdownHook;
+        this.authenticationManager = authenticationManager != null ? authenticationManager : AuthenticationManager.getInstance();
+        this.dangerousConfirm = dangerousConfirm != null ? dangerousConfirm : DangerousCommandConfirmationManager.getInstance();
     }
 
     @Override
@@ -72,19 +80,19 @@ public class BuiltinCommandProvider implements CommandProvider {
         commands.put("classloader", new ClassLoaderCommand(instrumentation));
         commands.put("mbean", new MBeanCommand(instrumentation));
         commands.put("logger", new LoggerCommand());
-        commands.put("vmtool", new VmToolCommand(instrumentation, transformer, config));
+        commands.put("vmtool", new VmToolCommand(instrumentation, transformer, config, dangerousConfirm));
 
         commands.put("health", new HealthCommand(metricsCollector));
         commands.put("metrics", new MetricsCommand(metricsCollector));
         commands.put("status", new StatusCommand(instrumentation, metricsCollector, transformer, config));
         commands.put("config", new ConfigCommand(config));
         commands.put("audit", new AuditCommand(auditLogger));
-        commands.put("session", new SessionCommand());
+        commands.put("session", new SessionCommand(authenticationManager));
         commands.put("perm", new PermCommand());
         commands.put("version", new VersionCommand());
 
         commands.put("quit", new QuitCommand());
-        commands.put("auth", new AuthCommand());
+        commands.put("auth", new AuthCommand(authenticationManager));
         commands.put("stop", new StopCommand(shutdownHook));
 
         return commands;
