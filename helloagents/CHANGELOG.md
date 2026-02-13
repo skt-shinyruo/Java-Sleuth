@@ -69,6 +69,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - CommandProcessor 改为注册表 + 统一执行管线
 - CommandPipeline 执行链路显式化：引入 Step/Interceptor Chain（precheck/sync/stream），降低巨型类耦合并提升可测性
 - CommandProcessor 拆分出 CommandClientHandler（framed/binary 协议处理），CommandProcessor 聚焦监听/生命周期
+- CommandProcessor 门面纯化：引入 `CommandProcessorFactory` + `CommandProcessorComponents` 作为装配边界；会话映射由 `ClientSessionIndex` 封装，减少共享状态穿透与横切关注点耦合
 - CommandClientHandler 进一步按协议拆分：framed/binary handlers + 共享 CommandRequestExecutor，握手协商抽取为 HandshakeNegotiator
 - Launcher 支持 framed/stream 协议与端口配置读取
 - Enhancer 支持链式叠加与按会话移除
