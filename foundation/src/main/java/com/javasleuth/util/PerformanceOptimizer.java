@@ -424,9 +424,15 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
         getInstance().clearExpiredCacheInternal();
     }
 
-    public static void shutdown() {
-        if (instance != null) {
-            instance.shutdownInternal();
+    public static synchronized void shutdown() {
+        PerformanceOptimizer inst = instance;
+        if (inst == null) {
+            return;
+        }
+        try {
+            inst.shutdownInternal();
+        } finally {
+            instance = null;
         }
     }
 }

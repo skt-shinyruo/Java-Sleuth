@@ -1,6 +1,8 @@
 package com.javasleuth.command;
 
 import com.javasleuth.util.RingBuffer;
+import com.javasleuth.util.SleuthExecutors;
+import com.javasleuth.util.SleuthLogContext;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -164,13 +166,15 @@ public final class JobManager {
 
     private ThreadPoolExecutor ensureExecutor() {
         ThreadPoolExecutor ex = executor;
-        if (ex != null) {
+        if (ex != null && !ex.isShutdown() && !ex.isTerminated()) {
             return ex;
         }
         synchronized (executorLock) {
-            if (executor != null) {
+            if (executor != null && !executor.isShutdown() && !executor.isTerminated()) {
                 return executor;
             }
+            // Recreate after shutdown (supports detach → re-attach in the same JVM).
+            executor = null;
             int mr = Math.max(1, Math.min(maxRunning, 64));
             int qc = Math.max(1, Math.min(queueCapacity, 10000));
             BlockingQueue<Runnable> q = new LinkedBlockingQueue<>(qc);
@@ -241,12 +245,46 @@ public final class JobManager {
         Job j = new Job(id, name, commandLine, maxOutputBytesPerJob);
         jobs.put(id, j);
 
+        final CommandContext capturedContext = CommandContextHolder.get();
+        final String capturedClientId = capturedContext != null ? capturedContext.getClientId() : null;
+        final String capturedSessionId = capturedContext != null ? capturedContext.getSessionId() : null;
+        final String capturedConnId = capturedContext != null ? capturedContext.getConnId() : null;
+        final String capturedCommand = capturedContext != null ? capturedContext.getCommandName() : null;
+        final String logCommand = capturedCommand != null ? capturedCommand : (name == null ? null : name.trim());
+
         try {
             Future<?> f = ex.submit(() -> {
                 j.thread = Thread.currentThread();
                 try {
+                    try {
+                        if (capturedContext != null) {
+                            CommandContextHolder.set(capturedContext);
+                        }
+                    } catch (Exception ignore) {
+                        // ignore
+                    }
+                    try {
+                        if (capturedClientId != null || capturedSessionId != null || capturedConnId != null) {
+                            SleuthLogContext.setConnection(capturedClientId, capturedSessionId, capturedConnId);
+                        }
+                        if (logCommand != null && !logCommand.isEmpty()) {
+                            SleuthLogContext.setCommand(logCommand);
+                        }
+                    } catch (Exception ignore) {
+                        // ignore
+                    }
                     runJob(j, job);
                 } finally {
+                    try {
+                        CommandContextHolder.clear();
+                    } catch (Exception ignore) {
+                        // ignore
+                    }
+                    try {
+                        SleuthLogContext.clear();
+                    } catch (Exception ignore) {
+                        // ignore
+                    }
                     j.thread = null;
                 }
             });
@@ -319,6 +357,18 @@ public final class JobManager {
             }
         }
         return stopped;
+    }
+
+    public void shutdown(String reason) {
+        stopAll(reason == null ? "shutdown" : reason);
+
+        ThreadPoolExecutor ex;
+        synchronized (executorLock) {
+            ex = executor;
+            executor = null;
+        }
+        SleuthExecutors.shutdownAndAwait(ex, "job-manager", 5, TimeUnit.SECONDS);
+        jobs.clear();
     }
 
     private void runJob(Job j, StreamJob job) {

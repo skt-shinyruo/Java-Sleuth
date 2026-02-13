@@ -32,6 +32,7 @@
 - 202602122247_kv_line_codec_unify
 - 202602122316_remove_kv_parse_wrappers
 - 202602122323_kv_line_codec_locale_root_test
+- 202602131214_thread_lifecycle_governance
 
 ## 2026-01
 - 202601281207_sleuth_plugin_stream

@@ -56,6 +56,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
 ### Changed
 - 关键依赖环拆除：`CommandMeta` 下沉到 `com.javasleuth.security`（SSOT），`security` 不再依赖 `command`；`SleuthLogger` 通过 `SleuthLogContext` 注入上下文，避免 `util -> command`；`stop` 通过注入的 shutdown hook 触发 Agent shutdown，避免 `command -> agent`
+- 线程与生命周期治理：`AuthenticationManager` 会话清理任务改为可 shutdown 的调度器并纳入关闭编排；`JobManager` 支持 shutdown 并在后台 job 传播/清理上下文；`AuditLogger`/`PerformanceOptimizer` 支持 detach→re-attach 场景重启
 - 移除 ArchUnit 架构守护测试与依赖（按团队偏好，避免测试代码承载分层守护逻辑）
 - 配置层去中心化：引入 `ConfigView`/`MutableConfig`/`ConfigOrigin` 与 `RuntimeConfigStore`（运行时覆写审计），`ProductionConfig` 拆职责并退化为 Facade；部分命令构造改为注入 `ConfigView`，减少散落的 `ProductionConfig.getInstance()` 调用点
 - 示例/测试应用从 main 源集迁移到 `examples/`，发布 jar/fat-jar 不再包含 `com.javasleuth.test.*`（Docker demo 与脚本改为运行 examples 编译产物）

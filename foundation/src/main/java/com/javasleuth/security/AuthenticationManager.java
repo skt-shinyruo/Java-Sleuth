@@ -4,18 +4,26 @@ import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.util.SleuthLogger;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.nio.charset.StandardCharsets;
+import com.javasleuth.util.SleuthExecutors;
+import com.javasleuth.util.SleuthThreadFactory;
 
 public class AuthenticationManager {
     private static AuthenticationManager instance;
     private final ProductionConfig config;
     private final AuditLogger auditLogger;
+    private final AtomicBoolean shutdown = new AtomicBoolean(false);
+    private final Object lifecycleLock = new Object();
+    private volatile ScheduledExecutorService sessionCleanupExecutor;
 
     // Session management
     private final Map<String, SessionInfo> activeSessions = new ConcurrentHashMap<>();
@@ -130,14 +138,30 @@ public class AuthenticationManager {
         this.auditLogger = AuditLogger.getInstance();
 
         // Schedule cleanup of expired sessions
-        startSessionCleanupTask();
+        ensureSessionCleanupTaskRunning();
     }
 
     public static synchronized AuthenticationManager getInstance() {
         if (instance == null) {
             instance = new AuthenticationManager();
+        } else {
+            instance.ensureSessionCleanupTaskRunning();
         }
         return instance;
+    }
+
+    public static synchronized void shutdownInstance() {
+        AuthenticationManager inst = instance;
+        if (inst == null) {
+            return;
+        }
+        try {
+            inst.shutdown();
+        } catch (Exception ignore) {
+            // ignore
+        } finally {
+            instance = null;
+        }
     }
 
     /**
@@ -385,22 +409,42 @@ public class AuthenticationManager {
     /**
      * Start background task to cleanup expired sessions
      */
-    private void startSessionCleanupTask() {
-        Thread cleanupThread = new Thread(() -> {
-            while (true) {
+    private void ensureSessionCleanupTaskRunning() {
+        ScheduledExecutorService ex = sessionCleanupExecutor;
+        if (ex != null && !ex.isShutdown() && !ex.isTerminated()) {
+            return;
+        }
+        synchronized (lifecycleLock) {
+            ex = sessionCleanupExecutor;
+            if (ex != null && !ex.isShutdown() && !ex.isTerminated()) {
+                return;
+            }
+            if (shutdown.get()) {
+                return;
+            }
+            sessionCleanupExecutor = Executors.newSingleThreadScheduledExecutor(
+                SleuthThreadFactory.daemonFixed("sleuth-session-cleanup", Thread.MIN_PRIORITY)
+            );
+            sessionCleanupExecutor.scheduleAtFixedRate(() -> {
                 try {
                     cleanupExpiredSessions();
-                    Thread.sleep(TimeUnit.MINUTES.toMillis(5)); // Cleanup every 5 minutes
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
                 } catch (Exception e) {
                     SleuthLogger.warn("Error during session cleanup: " + e.getMessage(), e);
                 }
-            }
-        }, "sleuth-session-cleanup");
-        cleanupThread.setDaemon(true);
-        cleanupThread.start();
+            }, 0, 5, TimeUnit.MINUTES);
+        }
+    }
+
+    public void shutdown() {
+        if (!shutdown.compareAndSet(false, true)) {
+            return;
+        }
+        ScheduledExecutorService ex;
+        synchronized (lifecycleLock) {
+            ex = sessionCleanupExecutor;
+            sessionCleanupExecutor = null;
+        }
+        SleuthExecutors.shutdownAndAwait(ex, "session-cleanup", 5, TimeUnit.SECONDS);
     }
 
     /**

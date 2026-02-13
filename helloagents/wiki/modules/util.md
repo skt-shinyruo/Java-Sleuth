@@ -52,6 +52,7 @@
 前置：命令执行链路已建立 `CommandContext`  
 - `SleuthLogger` 仅从 `SleuthLogContext`（ThreadLocal）读取上下文字段（脱敏 sessionId/connId），便于线上聚合与检索
 - `command` 层在执行入口/链路中负责写入 `SleuthLogContext` 并在请求结束时 clear（避免线程池复用导致泄露）
+- `jobs`（后台任务）在提交时捕获触发命令的上下文，并在 Job 线程执行前写入、执行后 clear（避免线程池复用导致串号）
 
 #### Scenario: 单测默认降噪
 前置：`mvn test`  

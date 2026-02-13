@@ -442,6 +442,14 @@ public class AuditLogger {
             securityWriter.flush();
             securityWriter.close();
         }
+
+        // Allow detach → re-attach in the same JVM to reinitialize audit logging.
+        // Note: existing references should not be used after shutdown.
+        synchronized (AuditLogger.class) {
+            if (instance == this) {
+                instance = null;
+            }
+        }
     }
 
     public String getAuditStatus() {

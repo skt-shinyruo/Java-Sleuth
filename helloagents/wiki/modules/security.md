@@ -35,6 +35,11 @@
 - 产物写入（例如 `mc -o` 输出）通过 `SecurityValidator.canWriteFile` 校验
 
 ### Requirement: 会话认证与授权
+#### Scenario: shutdown 时会话清理任务停止（避免后台线程残留）
+前置：`AuthenticationManager` 会启动后台会话清理任务（daemon）  
+- stop/detach 或服务端 shutdown 时，关闭编排会停止清理任务（幂等 best-effort）
+- 再次 attach 时可重新启动清理任务（避免复用已 shutdown 的执行器）
+
 **Module:** security
 为每个连接建立角色与权限边界。
 

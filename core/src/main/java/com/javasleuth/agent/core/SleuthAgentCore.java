@@ -90,7 +90,7 @@ public class SleuthAgentCore {
 
         // 2) Stop jobs / clear interceptor sessions.
         try {
-            com.javasleuth.command.JobManager.getInstance().stopAll("shutdown");
+            com.javasleuth.command.JobManager.getInstance().shutdown("shutdown");
         } catch (Exception ignore) {
             // best-effort
         }

@@ -7,6 +7,8 @@ package com.javasleuth.command.server;
  */
 import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.security.AuditLogger;
+import com.javasleuth.security.AuthenticationManager;
+import com.javasleuth.util.MemoryOptimizer;
 import com.javasleuth.util.PerformanceOptimizer;
 import com.javasleuth.util.SleuthLogger;
 import com.javasleuth.command.CommandRegistry;
@@ -63,7 +65,18 @@ public final class ShutdownCoordinator {
                 // ignore
             }
 
+            try {
+                AuthenticationManager.shutdownInstance();
+            } catch (Exception ignore) {
+                // ignore
+            }
+
             PerformanceOptimizer.shutdown();
+            try {
+                MemoryOptimizer.shutdownInstance();
+            } catch (Exception ignore) {
+                // ignore
+            }
 
             metricsCollector.recordServerShutdown();
             metricsCollector.shutdown();
@@ -101,7 +114,17 @@ public final class ShutdownCoordinator {
                 // ignore
             }
             try {
+                AuthenticationManager.shutdownInstance();
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
                 PerformanceOptimizer.shutdown();
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                MemoryOptimizer.shutdownInstance();
             } catch (Exception ignore) {
                 // ignore
             }

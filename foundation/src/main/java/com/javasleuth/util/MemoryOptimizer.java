@@ -411,6 +411,20 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
         }
     }
 
+    public static synchronized void shutdownInstance() {
+        MemoryOptimizer inst = instance;
+        if (inst == null) {
+            return;
+        }
+        try {
+            inst.shutdown();
+        } catch (Exception ignore) {
+            // ignore
+        } finally {
+            instance = null;
+        }
+    }
+
     /**
      * Shutdown memory optimizer
      */
