@@ -1,5 +1,10 @@
 package com.javasleuth.command.server;
 
+/**
+ * 单个客户端连接的处理逻辑（握手、协议协商、命令执行与断连清理）。
+ *
+ * <p>该类通过注入依赖运行，避免在 CommandProcessor 中继续堆叠协议与会话细节。</p>
+ */
 import com.javasleuth.command.CommandPipeline;
 import com.javasleuth.command.CommandRegistry;
 import com.javasleuth.command.protocol.Utf8LineCodec;
@@ -9,6 +14,7 @@ import com.javasleuth.command.server.protocol.FramedClientCommandHandler;
 import com.javasleuth.command.server.protocol.HandshakeNegotiator;
 import com.javasleuth.command.session.ClientDisconnectedException;
 import com.javasleuth.command.session.ClientSession;
+import com.javasleuth.command.session.ClientSessionIndex;
 import com.javasleuth.command.session.ClientSessionRegistry;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.monitoring.MetricsCollector;
@@ -23,7 +29,6 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -42,7 +47,7 @@ public final class CommandClientHandler {
     private final RequestSecurityManager requestSecurityManager;
     private final CommandRegistry registry;
     private final CommandPipeline pipeline;
-    private final ConcurrentHashMap<String, String> sessionByClient;
+    private final ClientSessionIndex sessionIndex;
     private final ClientSessionRegistry clientSessionRegistry;
 
     private final HandshakeNegotiator handshakeNegotiator;
@@ -59,7 +64,7 @@ public final class CommandClientHandler {
         RequestSecurityManager requestSecurityManager,
         CommandRegistry registry,
         CommandPipeline pipeline,
-        ConcurrentHashMap<String, String> sessionByClient,
+        ClientSessionIndex sessionIndex,
         ClientSessionRegistry clientSessionRegistry
     ) {
         this.running = running;
@@ -71,7 +76,7 @@ public final class CommandClientHandler {
         this.requestSecurityManager = requestSecurityManager;
         this.registry = registry;
         this.pipeline = pipeline;
-        this.sessionByClient = sessionByClient;
+        this.sessionIndex = sessionIndex;
         this.clientSessionRegistry = clientSessionRegistry;
 
         this.handshakeNegotiator = new HandshakeNegotiator(config, metricsCollector);
@@ -83,7 +88,7 @@ public final class CommandClientHandler {
             requestSecurityManager,
             registry,
             pipeline,
-            sessionByClient
+            sessionIndex
         );
         this.binaryProtocolHandler = new BinaryClientProtocolHandler(running, metricsCollector, config, requestExecutor);
     }
@@ -109,7 +114,7 @@ public final class CommandClientHandler {
             authenticationManager.createSession(initialRole, clientInfo);
         if (sessionResult.isSuccess()) {
             sessionId = sessionResult.getSessionId();
-            sessionByClient.put(clientId, sessionId);
+            sessionIndex.put(clientId, sessionId);
         }
         clientSession = clientSessionRegistry.open(clientId, clientInfo, sessionId);
         SleuthLogContext.setConnection(clientId, sessionId, connId);
@@ -222,7 +227,7 @@ public final class CommandClientHandler {
                 metricsCollector.recordSessionEnd(clientId, sessionDuration);
                 auditLogger.logConnectionEvent(clientId, clientInfo, "DISCONNECT");
                 metricsCollector.recordClientDisconnection();
-                String activeSession = sessionByClient.remove(clientId);
+                String activeSession = sessionIndex.remove(clientId);
                 if (activeSession != null) {
                     authenticationManager.logout(activeSession);
                 }

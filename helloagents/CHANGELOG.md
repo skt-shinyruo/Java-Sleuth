@@ -157,3 +157,10 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - protocol/security：`KvLineCodec` 的 key 归一化改为 `toLowerCase(Locale.ROOT)` 并补充 `KvLineCodecTest`，避免非英语 Locale 下的解析命中异常。
 - agent：通过 bootstrap → core 的隔离加载策略，降低 ASM/Jackson/CFR/JLine 等第三方依赖与业务依赖碰撞概率。
 - 验证：`mvn test`、`mvn -DskipTests package` 通过。
+
+## 2026-02-13
+
+- security：新增最小签名接口 `CommandSigner`，并由 `RequestSecurityManager` 实现（仅覆盖客户端签名能力，服务端校验逻辑不变）。
+- security：`RequestSecurityManager` / `AuthorizationManager` 增加显式构造注入路径（兼容保留 `getInstance()`）。
+- launcher：`ProtocolClient.connect` 新增接收 `CommandSigner` 的重载；兼容保留 `RequestSecurityManager` 重载与默认 connect 行为。
+- command：引入 `CommandProcessorFactory` / `CommandProcessorComponents` / `ClientSessionIndex`，将装配与会话映射边界显式化，降低隐式依赖与演进耦合。

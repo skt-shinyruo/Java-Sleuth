@@ -44,7 +44,8 @@
 ### 3.4 `client`
 
 - `ProtocolClient`：协议客户端门面（连接/握手/收发/关闭）
-  - 支持注入 `RequestSecurityManager`（降低对全局单例的隐式依赖，便于 headless client/Web UI/测试替换 signer；默认行为保持不变）
+  - 支持注入 `CommandSigner`（降低对全局单例的隐式依赖，便于 headless client/Web UI/测试替换 signer；默认行为保持不变）
+  - 兼容路径：仍保留接收 `RequestSecurityManager` 的 connect 重载；默认 connect 仍使用 `RequestSecurityManager.getInstance()`
 - `HandshakeClient` / `HandshakeConfig`：握手协商与安全配置
 - `KvLineCodec`（foundation）：`HELLO/CONFIG/SIG` 的通用 KV 行解析 SSOT（通过 `HandshakeClient` 间接使用），降低协议解析漂移风险。
 - `ConnectHostResolver`：连接目标解析（host/port 约定集中化）

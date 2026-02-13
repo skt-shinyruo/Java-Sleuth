@@ -104,6 +104,7 @@
 #### Scenario: SIG 包装命令校验
 前置：`security.mode=hmac`  
 - 客户端以 `SIG ts=... nonce=... sid=<connId> sig=... cmd=...` 发送命令（不允许 `v` 字段）
+- 客户端签名逻辑通过 `CommandSigner` 抽象（最小接口，便于 headless/Web UI/测试替换）；默认实现复用 `RequestSecurityManager`（实现 `CommandSigner`）
 - 服务端验证 HMAC-SHA256 签名
 - 对 nonce 做去重与窗口期校验，拒绝重放
 - `SIG` 行的 `k=v` 解析与握手 `HELLO/CONFIG` 解析统一走 `foundation` 的 `KvLineCodec`（SSOT），避免 client/server/security 三套解析逐渐分叉。
@@ -166,6 +167,7 @@ N/A
 - 202602051743_exception_handling_logging (history/2026-02/202602051743_exception_handling_logging/) - 审计控制台镜像语义收敛（stderr-only）+ 异常最小披露规范补充
 - 202602081959_remove_compat_paths (history/2026-02/202602081959_remove_compat_paths/) - SIG 单一格式收敛（禁用 v 字段）与兼容路径清理
 - 202602101815_layering_modularization (history/2026-02/202602101815_layering_modularization/) - CommandMeta 下沉到 security（SSOT）并消除 security->command 依赖环
+- 202602132357_di_signer_interface (history/2026-02/202602132357_di_signer_interface/) - 新增 CommandSigner 抽象与 Security Managers 显式构造注入（保留 getInstance 兼容）
 
 ## 2026-02-08 HMAC 签名强制升级
 

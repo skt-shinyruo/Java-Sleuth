@@ -36,7 +36,9 @@
 - 202602132045_bootstrap_boundary_cleanup
 - 202602132211_singleton_lifecycle_convergence
 - 202602132247_security_di_shutdown
+- 202602132320_commandprocessor_composition_root_split
 - 202602132323_arch_boundary_lifecycle_singletons
+- 202602132357_di_signer_interface
 
 ## 2026-01
 - 202601281207_sleuth_plugin_stream

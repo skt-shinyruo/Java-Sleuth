@@ -22,7 +22,7 @@ import javax.crypto.spec.SecretKeySpec;
  * Signature base string:
  *   sid + "\\n" + ts + "\\n" + nonce + "\\n" + cmd
  */
-public class RequestSecurityManager {
+public class RequestSecurityManager implements CommandSigner {
     public static class VerificationResult {
         private final boolean ok;
         private final String command;
@@ -63,9 +63,13 @@ public class RequestSecurityManager {
     // bindingId is per-connection (sid from handshake).
     private final ConcurrentHashMap<String, Long> seenNonces = new ConcurrentHashMap<>();
 
+    public RequestSecurityManager(ProductionConfig config, AuditLogger auditLogger) {
+        this.config = config != null ? config : ProductionConfig.getInstance();
+        this.auditLogger = auditLogger != null ? auditLogger : AuditLogger.getInstance();
+    }
+
     private RequestSecurityManager() {
-        this.config = ProductionConfig.getInstance();
-        this.auditLogger = AuditLogger.getInstance();
+        this(null, null);
     }
 
     public static synchronized RequestSecurityManager getInstance() {
@@ -213,6 +217,11 @@ public class RequestSecurityManager {
         } catch (Exception e) {
             return command;
         }
+    }
+
+    @Override
+    public String sign(String command, long timestampMs, String nonce, String connId) {
+        return signCommand(command, timestampMs, nonce, connId);
     }
 
     private void pruneOldNonces(long now, long windowMs) {

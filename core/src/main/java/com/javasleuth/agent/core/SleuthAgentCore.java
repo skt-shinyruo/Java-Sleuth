@@ -1,7 +1,13 @@
 package com.javasleuth.agent.core;
 
+/**
+ * Agent 核心入口（attach/premain），作为核心组合根（composition root）。
+ *
+ * <p>该类负责组装并启动命令服务与 transformer，尽量避免将单例获取与全局副作用散落到各业务对象构造阶段。</p>
+ */
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.command.CommandProcessor;
+import com.javasleuth.command.CommandProcessorFactory;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.monitoring.MetricsCollector;
 import com.javasleuth.security.AuditLogger;
@@ -42,13 +48,13 @@ public class SleuthAgentCore {
             ProductionConfig config = ProductionConfig.getInstance();
             AuditLogger auditLogger = AuditLogger.getInstance();
             AuthenticationManager authenticationManager = AuthenticationManager.getInstance();
-            AuthorizationManager authorizationManager = AuthorizationManager.getInstance();
-            RequestSecurityManager requestSecurityManager = RequestSecurityManager.getInstance();
+            AuthorizationManager authorizationManager = new AuthorizationManager(config, auditLogger, authenticationManager);
+            RequestSecurityManager requestSecurityManager = new RequestSecurityManager(config, auditLogger);
             DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
             ClientSessionRegistry clientSessionRegistry = ClientSessionRegistry.getInstance();
             MetricsCollector metricsCollector = new MetricsCollector();
 
-            commandProcessor = new CommandProcessor(
+            commandProcessor = CommandProcessorFactory.create(
                 inst,
                 transformer,
                 SleuthAgentCore::shutdown,

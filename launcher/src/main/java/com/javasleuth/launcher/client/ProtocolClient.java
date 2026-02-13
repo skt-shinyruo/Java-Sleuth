@@ -5,6 +5,7 @@ import com.javasleuth.command.protocol.BinaryFrameCodec;
 import com.javasleuth.command.protocol.Frame;
 import com.javasleuth.command.protocol.FrameCodec;
 import com.javasleuth.command.protocol.Utf8LineCodec;
+import com.javasleuth.security.CommandSigner;
 import com.javasleuth.security.RequestSecurityManager;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -38,7 +39,7 @@ public final class ProtocolClient implements AutoCloseable {
     private final DataInputStream binaryIn;
     private final DataOutputStream binaryOut;
 
-    private final RequestSecurityManager securityManager;
+    private final CommandSigner signer;
 
     private ProtocolClient(
         Socket socket,
@@ -53,7 +54,7 @@ public final class ProtocolClient implements AutoCloseable {
         String connId,
         DataInputStream binaryIn,
         DataOutputStream binaryOut,
-        RequestSecurityManager securityManager
+        CommandSigner signer
     ) {
         this.socket = socket;
         this.in = in;
@@ -67,7 +68,7 @@ public final class ProtocolClient implements AutoCloseable {
         this.connId = connId;
         this.binaryIn = binaryIn;
         this.binaryOut = binaryOut;
-        this.securityManager = securityManager != null ? securityManager : RequestSecurityManager.getInstance();
+        this.signer = signer != null ? signer : CommandSigner.noop();
     }
 
     public static ProtocolClient connect(
@@ -97,6 +98,26 @@ public final class ProtocolClient implements AutoCloseable {
         int maxPayloadBytesHint,
         int maxLineBytesHint,
         RequestSecurityManager securityManager
+    ) throws IOException {
+        return connect(
+            host,
+            port,
+            preferredProtocol,
+            streamingEnabledHint,
+            maxPayloadBytesHint,
+            maxLineBytesHint,
+            (CommandSigner) (securityManager != null ? securityManager : RequestSecurityManager.getInstance())
+        );
+    }
+
+    public static ProtocolClient connect(
+        String host,
+        int port,
+        String preferredProtocol,
+        boolean streamingEnabledHint,
+        int maxPayloadBytesHint,
+        int maxLineBytesHint,
+        CommandSigner signer
     ) throws IOException {
         Socket socket = new Socket(host, port);
         BufferedInputStream in = new BufferedInputStream(socket.getInputStream());
@@ -176,7 +197,7 @@ public final class ProtocolClient implements AutoCloseable {
             connId,
             binaryIn,
             binaryOut,
-            securityManager
+            signer != null ? signer : CommandSigner.noop()
         );
     }
 
@@ -220,7 +241,7 @@ public final class ProtocolClient implements AutoCloseable {
         boolean shouldStream = (binary || framed) && streamingEnabled && stream;
         String signed;
         try {
-            signed = securityManager.signCommand(trimmed, System.currentTimeMillis(), generateNonce(), connId);
+            signed = signer.sign(trimmed, System.currentTimeMillis(), generateNonce(), connId);
         } catch (Exception e) {
             return CommandResult.error("Failed to sign command: " + e.getMessage());
         }

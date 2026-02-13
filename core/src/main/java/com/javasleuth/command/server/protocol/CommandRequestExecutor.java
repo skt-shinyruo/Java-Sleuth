@@ -1,5 +1,10 @@
 package com.javasleuth.command.server.protocol;
 
+/**
+ * 单次命令请求的执行入口（安全校验、解析、调度与回写）。
+ *
+ * <p>该类不直接依赖 CommandProcessor 的内部状态，通过注入的会话索引与 pipeline 执行。</p>
+ */
 import com.javasleuth.command.protocol.KvLineCodec;
 import com.javasleuth.command.CommandContext;
 import com.javasleuth.command.CommandContextHolder;
@@ -10,6 +15,7 @@ import com.javasleuth.command.CommandRegistry;
 import com.javasleuth.command.StreamCommand;
 import com.javasleuth.command.StreamSink;
 import com.javasleuth.command.session.ClientDisconnectedException;
+import com.javasleuth.command.session.ClientSessionIndex;
 import com.javasleuth.command.session.ClientSession;
 import com.javasleuth.config.ProductionConfig;
 import com.javasleuth.monitoring.MetricsCollector;
@@ -20,7 +26,6 @@ import com.javasleuth.util.SleuthLogger;
 import java.io.IOException;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public final class CommandRequestExecutor {
     private final MetricsCollector metricsCollector;
@@ -30,7 +35,7 @@ public final class CommandRequestExecutor {
     private final RequestSecurityManager requestSecurityManager;
     private final CommandRegistry registry;
     private final CommandPipeline pipeline;
-    private final ConcurrentHashMap<String, String> sessionByClient;
+    private final ClientSessionIndex sessionIndex;
 
     public CommandRequestExecutor(
         MetricsCollector metricsCollector,
@@ -40,7 +45,7 @@ public final class CommandRequestExecutor {
         RequestSecurityManager requestSecurityManager,
         CommandRegistry registry,
         CommandPipeline pipeline,
-        ConcurrentHashMap<String, String> sessionByClient
+        ClientSessionIndex sessionIndex
     ) {
         this.metricsCollector = metricsCollector;
         this.config = config;
@@ -49,7 +54,7 @@ public final class CommandRequestExecutor {
         this.requestSecurityManager = requestSecurityManager;
         this.registry = registry;
         this.pipeline = pipeline;
-        this.sessionByClient = sessionByClient;
+        this.sessionIndex = sessionIndex;
     }
 
     public boolean execute(
@@ -69,7 +74,7 @@ public final class CommandRequestExecutor {
         String errorDisconnectedMessage
     ) throws IOException {
         long commandStart = System.currentTimeMillis();
-        String verifyKey = sessionByClient.get(clientId);
+        String verifyKey = sessionIndex.get(clientId);
         if (verifyKey == null) {
             verifyKey = baseSessionId;
         }
@@ -117,7 +122,7 @@ public final class CommandRequestExecutor {
             return false;
         }
 
-        String currentSessionId = sessionByClient.getOrDefault(clientId, baseSessionId);
+        String currentSessionId = sessionIndex.getOrDefault(clientId, baseSessionId);
         if (currentSessionId == null && !"auth".equals(commandName)) {
             reply.sendError(authRequiredMessage);
             metricsCollector.recordError("unauthorized");
@@ -202,7 +207,7 @@ public final class CommandRequestExecutor {
                     if (currentSessionId != null) {
                         authenticationManager.logout(currentSessionId);
                     }
-                    sessionByClient.put(clientId, context.getSessionId());
+                    sessionIndex.put(clientId, context.getSessionId());
                     clientSession.setSessionId(context.getSessionId());
                 }
             } catch (Exception ignore) {

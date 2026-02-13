@@ -51,10 +51,14 @@ public class AuthorizationManager {
         }
     }
 
+    public AuthorizationManager(ProductionConfig config, AuditLogger auditLogger, AuthenticationManager authManager) {
+        this.config = config != null ? config : ProductionConfig.getInstance();
+        this.auditLogger = auditLogger != null ? auditLogger : AuditLogger.getInstance();
+        this.authManager = authManager != null ? authManager : AuthenticationManager.getInstance();
+    }
+
     private AuthorizationManager() {
-        this.config = ProductionConfig.getInstance();
-        this.auditLogger = AuditLogger.getInstance();
-        this.authManager = AuthenticationManager.getInstance();
+        this(null, null, null);
     }
 
     public static synchronized AuthorizationManager getInstance() {

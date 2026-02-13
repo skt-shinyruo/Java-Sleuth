@@ -1,5 +1,10 @@
 package com.javasleuth.command;
 
+/**
+ * 命令服务端生命周期门面（facade）。
+ *
+ * <p>该类仅保留 start/shutdown/restart 等稳定入口，依赖装配与全局副作用由 {@link CommandProcessorFactory} 负责。</p>
+ */
 import com.javasleuth.command.server.CommandClientHandler;
 import com.javasleuth.command.server.ConnectionAcceptor;
 import com.javasleuth.command.server.ServerBootstrapper;
@@ -12,64 +17,34 @@ import com.javasleuth.security.AuditLogger;
 import com.javasleuth.security.AuthenticationManager;
 import com.javasleuth.security.AuthorizationManager;
 import com.javasleuth.security.DangerousCommandConfirmationManager;
-import com.javasleuth.security.InputValidator;
 import com.javasleuth.security.RequestSecurityManager;
 import com.javasleuth.util.SleuthThreadFactory;
 import com.javasleuth.util.SleuthLogger;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.net.ServerSocket;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 
 public class CommandProcessor {
-    private final Instrumentation instrumentation;
-    private final SleuthClassFileTransformer transformer;
-    private final Runnable shutdownHook;
-    private final AtomicBoolean running = new AtomicBoolean(false);
-    private final AtomicLong commandCounter = new AtomicLong(0);
+    private final AtomicBoolean running;
     private final ThreadPoolExecutor clientExecutor;
     private final MetricsCollector metricsCollector;
     private final ProductionConfig config;
     private final AuditLogger auditLogger;
-    private final InputValidator inputValidator;
-    private final AuthenticationManager authenticationManager;
-    private final AuthorizationManager authorizationManager;
-    private final RequestSecurityManager requestSecurityManager;
-    private final DangerousCommandConfirmationManager dangerousConfirm;
-    private final CommandRegistry registry;
-    private final CommandPipeline pipeline;
     private final CommandClientHandler clientHandler;
     private final ServerBootstrapper bootstrapper;
     private final ConnectionAcceptor acceptor;
     private final ShutdownCoordinator shutdownCoordinator;
-    private final ConcurrentHashMap<String, String> sessionByClient = new ConcurrentHashMap<>();
-    private final ClientSessionRegistry clientSessionRegistry;
     private ServerSocket serverSocket;
     private final AtomicBoolean shutdownHookRegistered = new AtomicBoolean(false);
 
     public CommandProcessor(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
-        this(instrumentation, transformer, null);
+        this(CommandProcessorFactory.createComponents(instrumentation, transformer, null));
     }
 
     public CommandProcessor(Instrumentation instrumentation, SleuthClassFileTransformer transformer, Runnable shutdownHook) {
-        this(
-            instrumentation,
-            transformer,
-            shutdownHook,
-            ProductionConfig.getInstance(),
-            AuditLogger.getInstance(),
-            AuthenticationManager.getInstance(),
-            AuthorizationManager.getInstance(),
-            RequestSecurityManager.getInstance(),
-            DangerousCommandConfirmationManager.getInstance(),
-            ClientSessionRegistry.getInstance(),
-            new MetricsCollector()
-        );
+        this(CommandProcessorFactory.createComponents(instrumentation, transformer, shutdownHook));
     }
 
     public CommandProcessor(
@@ -85,78 +60,34 @@ public class CommandProcessor {
         ClientSessionRegistry clientSessionRegistry,
         MetricsCollector metricsCollector
     ) {
-        this.instrumentation = instrumentation;
-        this.transformer = transformer;
-        this.shutdownHook = shutdownHook;
-        this.config = config != null ? config : ProductionConfig.getInstance();
-        this.bootstrapper = new ServerBootstrapper();
-        this.bootstrapper.configureLoggingProvider(this.config);
-        this.bootstrapper.configureJobManager(this.config);
-
-        this.auditLogger = auditLogger != null ? auditLogger : AuditLogger.getInstance();
-        this.inputValidator = new InputValidator();
-        this.authenticationManager = authenticationManager != null ? authenticationManager : AuthenticationManager.getInstance();
-        this.authorizationManager = authorizationManager != null ? authorizationManager : AuthorizationManager.getInstance();
-        this.requestSecurityManager = requestSecurityManager != null ? requestSecurityManager : RequestSecurityManager.getInstance();
-        DangerousCommandConfirmationManager dc =
-            dangerousConfirm != null ? dangerousConfirm : DangerousCommandConfirmationManager.getInstance();
-        this.dangerousConfirm = dc;
-
-        this.clientExecutor = new ThreadPoolExecutor(
-            this.config.getThreadPoolCoreSize(),
-            this.config.getThreadPoolMaxSize(),
-            60L, TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(this.config.getServerExecutorQueueCapacity()),
-            SleuthThreadFactory.daemon("sleuth-client"),
-            new ThreadPoolExecutor.CallerRunsPolicy()
-        );
-        this.metricsCollector = metricsCollector != null ? metricsCollector : new MetricsCollector();
-        // Expose audit drop count via metrics/health.
-        try {
-            this.metricsCollector.recordAuditDropped(this.auditLogger.getDroppedCount());
-        } catch (Exception e) {
-            SleuthLogger.debug("Failed to record initial audit dropped count: " + e.getMessage(), e);
-        }
-        this.registry = new CommandRegistry(
+        this(CommandProcessorFactory.createComponents(
             instrumentation,
             transformer,
-            this.metricsCollector,
-            this.config,
-            this.auditLogger,
             shutdownHook,
-            this.authenticationManager,
-            dc
-        );
-        this.pipeline = new CommandPipeline(inputValidator, this.authorizationManager, dc, this.config);
-        this.clientSessionRegistry = clientSessionRegistry != null ? clientSessionRegistry : ClientSessionRegistry.getInstance();
-        this.clientHandler = new CommandClientHandler(
-            running,
-            commandCounter,
-            this.metricsCollector,
-            this.config,
-            this.auditLogger,
-            this.authenticationManager,
-            this.requestSecurityManager,
-            registry,
-            pipeline,
-            sessionByClient,
-            this.clientSessionRegistry
-        );
-        this.acceptor = new ConnectionAcceptor();
-        this.shutdownCoordinator = new ShutdownCoordinator(
-            running,
-            clientExecutor,
-            this.metricsCollector,
-            this.auditLogger,
-            registry,
-            pipeline,
-            this.authenticationManager,
-            this.authorizationManager,
-            this.requestSecurityManager,
-            this.dangerousConfirm
-        );
+            config,
+            auditLogger,
+            authenticationManager,
+            authorizationManager,
+            requestSecurityManager,
+            dangerousConfirm,
+            clientSessionRegistry,
+            metricsCollector
+        ));
+    }
 
-        this.auditLogger.logSystemEvent("COMMAND_PROCESSOR_INIT", "Command processor initialized with " + registry.getCommandMap().size() + " commands");
+    public CommandProcessor(CommandProcessorComponents components) {
+        if (components == null) {
+            throw new IllegalArgumentException("components is required");
+        }
+        this.running = components.getRunning();
+        this.clientExecutor = components.getClientExecutor();
+        this.metricsCollector = components.getMetricsCollector();
+        this.config = components.getConfig();
+        this.auditLogger = components.getAuditLogger();
+        this.clientHandler = components.getClientHandler();
+        this.bootstrapper = components.getBootstrapper();
+        this.acceptor = components.getAcceptor();
+        this.shutdownCoordinator = components.getShutdownCoordinator();
     }
 
     public void start() {

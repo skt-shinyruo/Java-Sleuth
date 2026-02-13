@@ -32,8 +32,9 @@
   - 负责优雅/紧急关闭编排，保证幂等与资源释放顺序
   - 关闭编排会收口 `CommandPipeline`（含 `CommandExecutionEngine` 线程池），避免 detach 后残留后台执行器
 - `CommandProcessor`
-  - 作为 facade：装配上述组件 + 现有的 `CommandClientHandler`，对外保持稳定入口
-  - 支持“注入式构造方法”，将单例获取收敛到 composition root（如 `SleuthAgentCore`），降低依赖隐式化
+  - 作为 facade：对外保持稳定入口（`start/shutdown/restart/...`），内部只做编排与状态持有
+  - 依赖装配与全局副作用由 `CommandProcessorFactory` / composition root（如 `SleuthAgentCore`）集中处理，避免门面类继续膨胀
+  - 通过 `CommandProcessorComponents` 聚合依赖，降低构造器参数与字段扇出
 
 收益：
 
@@ -49,6 +50,10 @@
 - `BinaryClientProtocolHandler`：二进制协议处理
 - `CommandRequestExecutor`：把请求映射到命令执行
 - `CommandReplyChannel` / `FramedReplyChannel`：回包通道抽象
+
+补充：会话映射边界
+
+- `ClientSessionIndex`：封装 `clientId -> sessionId` 映射，替代在多个组件间直接共享 `ConcurrentHashMap`，显式化会话索引边界并降低状态穿透
 
 补充（SSOT）：`HELLO/CONFIG/SIG` 这类行级 `k=v` 解析统一由 `foundation/src/main/java/com/javasleuth/command/protocol/KvLineCodec.java` 提供（key 归一化使用 `toLowerCase(Locale.ROOT)`，并由 `KvLineCodecTest` 覆盖关键边界），避免 launcher/server/security 各自维护解析规则导致漂移。
 
