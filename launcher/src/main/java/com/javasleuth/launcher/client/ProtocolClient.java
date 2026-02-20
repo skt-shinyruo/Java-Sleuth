@@ -12,6 +12,7 @@ import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.security.SecureRandom;
 import java.util.Base64;
@@ -23,6 +24,10 @@ import java.util.Base64;
  */
 public final class ProtocolClient implements AutoCloseable {
     private static final SecureRandom NONCE_RANDOM = new SecureRandom();
+    private static final int DEFAULT_CONNECT_TIMEOUT_MS = 5000;
+    private static final int DEFAULT_HANDSHAKE_READ_TIMEOUT_MS = 15000;
+    private static final int DEFAULT_OVERALL_TIMEOUT_MS = 15000;
+    private static final int DEFAULT_INITIAL_BACKOFF_MS = 100;
 
     private final Socket socket;
     private final BufferedInputStream in;
@@ -119,7 +124,58 @@ public final class ProtocolClient implements AutoCloseable {
         int maxLineBytesHint,
         CommandSigner signer
     ) throws IOException {
-        Socket socket = new Socket(host, port);
+        return connect(
+            host,
+            port,
+            preferredProtocol,
+            streamingEnabledHint,
+            maxPayloadBytesHint,
+            maxLineBytesHint,
+            signer,
+            DEFAULT_CONNECT_TIMEOUT_MS,
+            DEFAULT_HANDSHAKE_READ_TIMEOUT_MS
+        );
+    }
+
+    public static ProtocolClient connect(
+        String host,
+        int port,
+        String preferredProtocol,
+        boolean streamingEnabledHint,
+        int maxPayloadBytesHint,
+        int maxLineBytesHint,
+        CommandSigner signer,
+        int connectTimeoutMs,
+        int handshakeReadTimeoutMs
+    ) throws IOException {
+        Socket socket = new Socket();
+        int ct = connectTimeoutMs > 0 ? connectTimeoutMs : DEFAULT_CONNECT_TIMEOUT_MS;
+        int rt = handshakeReadTimeoutMs > 0 ? handshakeReadTimeoutMs : DEFAULT_HANDSHAKE_READ_TIMEOUT_MS;
+
+        // Like Arthas: make connect/read bounded to avoid "hang forever" under network issues.
+        socket.connect(new InetSocketAddress(host, port), ct);
+        return handshakeOnSocket(
+            socket,
+            preferredProtocol,
+            streamingEnabledHint,
+            maxPayloadBytesHint,
+            maxLineBytesHint,
+            signer,
+            rt
+        );
+    }
+
+    private static ProtocolClient handshakeOnSocket(
+        Socket socket,
+        String preferredProtocol,
+        boolean streamingEnabledHint,
+        int maxPayloadBytesHint,
+        int maxLineBytesHint,
+        CommandSigner signer,
+        int handshakeReadTimeoutMs
+    ) throws IOException {
+        int rt = handshakeReadTimeoutMs > 0 ? handshakeReadTimeoutMs : DEFAULT_HANDSHAKE_READ_TIMEOUT_MS;
+        socket.setSoTimeout(rt);
         BufferedInputStream in = new BufferedInputStream(socket.getInputStream());
         BufferedOutputStream out = new BufferedOutputStream(socket.getOutputStream());
 
@@ -156,10 +212,8 @@ public final class ProtocolClient implements AutoCloseable {
             throw new IOException("Handshake failed: unsupported negotiated protocol: " + protocol);
         }
 
-        boolean streamingEnabled = streamingEnabledHint;
-        if (hc.isStreamingEnabled()) {
-            streamingEnabled = true;
-        }
+        // 服务端 CONFIG streaming= 是最终协议能力的 SSOT：客户端不能用本地 hint 覆盖服务端的关闭状态。
+        boolean streamingEnabled = hc.isStreamingEnabled();
 
         if (hc.getMaxPayloadBytes() != null && hc.getMaxPayloadBytes() > 0) {
             maxPayloadBytes = hc.getMaxPayloadBytes();
@@ -184,7 +238,7 @@ public final class ProtocolClient implements AutoCloseable {
             binaryOut = new DataOutputStream(out);
         }
 
-        return new ProtocolClient(
+        ProtocolClient client = new ProtocolClient(
             socket,
             in,
             out,
@@ -199,6 +253,118 @@ public final class ProtocolClient implements AutoCloseable {
             binaryOut,
             signer != null ? signer : CommandSigner.noop()
         );
+        // Handshake completed: don't apply read timeout to normal command execution (watch/trace may stream for long time).
+        socket.setSoTimeout(0);
+        return client;
+    }
+
+    public static ProtocolClient connectWithRetry(
+        String host,
+        int port,
+        String preferredProtocol,
+        boolean streamingEnabledHint,
+        int maxPayloadBytesHint,
+        int maxLineBytesHint
+    ) throws IOException {
+        return connectWithRetry(
+            host,
+            port,
+            preferredProtocol,
+            streamingEnabledHint,
+            maxPayloadBytesHint,
+            maxLineBytesHint,
+            DEFAULT_OVERALL_TIMEOUT_MS,
+            DEFAULT_CONNECT_TIMEOUT_MS,
+            DEFAULT_HANDSHAKE_READ_TIMEOUT_MS
+        );
+    }
+
+    public static ProtocolClient connectWithRetry(
+        String host,
+        int port,
+        String preferredProtocol,
+        boolean streamingEnabledHint,
+        int maxPayloadBytesHint,
+        int maxLineBytesHint,
+        int overallTimeoutMs,
+        int connectTimeoutMs,
+        int handshakeReadTimeoutMs
+    ) throws IOException {
+        long start = System.currentTimeMillis();
+        long deadline = start + Math.max(1000, overallTimeoutMs);
+
+        IOException last = null;
+        int attempts = 0;
+        int backoffMs = DEFAULT_INITIAL_BACKOFF_MS;
+
+        while (System.currentTimeMillis() < deadline) {
+            attempts++;
+            try {
+                long now = System.currentTimeMillis();
+                long remaining = deadline - now;
+                if (remaining <= 0) {
+                    break;
+                }
+
+                int ct = connectTimeoutMs > 0 ? connectTimeoutMs : DEFAULT_CONNECT_TIMEOUT_MS;
+                int rt = handshakeReadTimeoutMs > 0 ? handshakeReadTimeoutMs : DEFAULT_HANDSHAKE_READ_TIMEOUT_MS;
+
+                // Cap per-attempt timeouts by remaining budget to make overall timeout meaningful.
+                int attemptConnectTimeout = (int) Math.min(ct, Math.min(Integer.MAX_VALUE, remaining));
+
+                Socket socket = new Socket();
+                try {
+                    socket.connect(new InetSocketAddress(host, port), attemptConnectTimeout);
+
+                    long afterConnect = System.currentTimeMillis();
+                    long remainingAfterConnect = deadline - afterConnect;
+                    if (remainingAfterConnect <= 0) {
+                        closeQuietly(socket);
+                        break;
+                    }
+                    int attemptHandshakeTimeout = (int) Math.min(rt, Math.min(Integer.MAX_VALUE, remainingAfterConnect));
+
+                    return handshakeOnSocket(
+                        socket,
+                        preferredProtocol,
+                        streamingEnabledHint,
+                        maxPayloadBytesHint,
+                        maxLineBytesHint,
+                        RequestSecurityManager.getInstance(),
+                        attemptHandshakeTimeout
+                    );
+                } catch (IOException e) {
+                    closeQuietly(socket);
+                    throw e;
+                }
+            } catch (IOException e) {
+                last = e;
+                long now = System.currentTimeMillis();
+                long remaining = deadline - now;
+                if (remaining <= 0) {
+                    break;
+                }
+                try {
+                    Thread.sleep(Math.min(backoffMs, (int) Math.min(Integer.MAX_VALUE, remaining)));
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    IOException out = new IOException("Connect interrupted: host=" + host + " port=" + port);
+                    out.addSuppressed(e);
+                    throw out;
+                }
+                backoffMs = Math.min(1000, backoffMs * 2);
+            }
+        }
+
+        long spent = System.currentTimeMillis() - start;
+        IOException out = new IOException(
+            "Failed to connect to agent within " + spent + "ms (timeout=" + overallTimeoutMs + "ms, attempts=" + attempts + "): host=" + host + " port=" + port +
+                (last != null ? ", lastError=" + last.getMessage() : "")
+        );
+        if (last != null) {
+            out.addSuppressed(last);
+        }
+        throw out;
     }
 
     public String getWelcomeMessage() {

@@ -63,8 +63,6 @@ public final class AgentAttacher {
             vm = attachApi.attach(pid);
             vm.loadAgent(agentJar.getAbsolutePath(), built.getAgentArgs());
             System.out.println("Agent attached successfully!");
-            // 给予目标 JVM 少量时间启动监听与握手自举。
-            Thread.sleep(2000);
             return true;
         } finally {
             if (vm != null) {
@@ -77,4 +75,3 @@ public final class AgentAttacher {
         }
     }
 }
-

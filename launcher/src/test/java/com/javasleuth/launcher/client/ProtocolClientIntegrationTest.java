@@ -34,13 +34,110 @@ public class ProtocolClientIntegrationTest {
             int port = waitForBoundPort(processor, 3, TimeUnit.SECONDS);
 
             CapturingOutput output = new CapturingOutput();
-            try (ProtocolClient client = ProtocolClient.connect(
+            try (ProtocolClient client = ProtocolClient.connectWithRetry(
                 "127.0.0.1",
                 port,
                 "framed",
                 true,
                 1024 * 1024,
                 8192
+            )) {
+                CommandResult result = client.execute("version", false, output);
+                Assert.assertTrue("Expected version command to succeed", result.isOk());
+            } finally {
+                processor.shutdownGracefully(3);
+                serverThread.join(2000);
+            }
+
+            Assert.assertTrue("Expected stdout contains version", output.getStdout().contains("version:"));
+        } finally {
+            config.clearRuntimeConfig();
+        }
+    }
+
+    @Test
+    public void testHandshakeNegotiatesStreamingDisabledOverridesClientHint() throws Exception {
+        ProductionConfig config = ProductionConfig.getInstance();
+        config.clearRuntimeConfig();
+        try {
+            config.setRuntimeConfig("server.bind.address", "127.0.0.1");
+            config.setRuntimeConfig("server.port", "0");
+            config.setRuntimeConfig("security.mode", "off");
+            config.setRuntimeConfig("protocol.mode", "framed");
+            config.setRuntimeConfig("protocol.streaming.enabled", "false");
+
+            CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer());
+            Thread serverThread = new Thread(processor::start, "test-cp-start-streaming-disabled");
+            serverThread.setDaemon(true);
+            serverThread.start();
+
+            int port = waitForBoundPort(processor, 3, TimeUnit.SECONDS);
+
+            CapturingOutput output = new CapturingOutput();
+            try (ProtocolClient client = ProtocolClient.connectWithRetry(
+                "127.0.0.1",
+                port,
+                "framed",
+                true,
+                1024 * 1024,
+                8192
+            )) {
+                Assert.assertFalse(
+                    "Expected client streaming to be disabled when server CONFIG streaming=false",
+                    client.isStreamingEnabled()
+                );
+
+                CommandResult result = client.execute("version", true, output);
+                Assert.assertTrue("Expected version command to succeed", result.isOk());
+            } finally {
+                processor.shutdownGracefully(3);
+                serverThread.join(2000);
+            }
+
+            Assert.assertTrue("Expected stdout contains version", output.getStdout().contains("version:"));
+        } finally {
+            config.clearRuntimeConfig();
+        }
+    }
+
+    @Test
+    public void testConnectWithRetry_succeedsWhenServerStartsLate() throws Exception {
+        ProductionConfig config = ProductionConfig.getInstance();
+        config.clearRuntimeConfig();
+        try {
+            config.setRuntimeConfig("server.bind.address", "127.0.0.1");
+            config.setRuntimeConfig("server.port", "0");
+            config.setRuntimeConfig("security.mode", "off");
+            config.setRuntimeConfig("protocol.mode", "framed");
+            config.setRuntimeConfig("protocol.streaming.enabled", "true");
+
+            CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer());
+
+            Thread serverThread = new Thread(() -> {
+                try {
+                    // Simulate attach/startup jitter: server starts a bit later.
+                    Thread.sleep(600);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                processor.start();
+            }, "test-cp-start-delayed");
+            serverThread.setDaemon(true);
+            serverThread.start();
+
+            int port = waitForBoundPort(processor, 3, TimeUnit.SECONDS);
+
+            CapturingOutput output = new CapturingOutput();
+            try (ProtocolClient client = ProtocolClient.connectWithRetry(
+                "127.0.0.1",
+                port,
+                "framed",
+                true,
+                1024 * 1024,
+                8192,
+                10000,
+                1000,
+                5000
             )) {
                 CommandResult result = client.execute("version", false, output);
                 Assert.assertTrue("Expected version command to succeed", result.isOk());
@@ -144,4 +241,3 @@ public class ProtocolClientIntegrationTest {
         }
     }
 }
-

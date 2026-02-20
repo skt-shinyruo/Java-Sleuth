@@ -186,8 +186,6 @@ public class SleuthLauncher {
         System.out.println("Connecting to Java-Sleuth agent...");
 
         try {
-            Thread.sleep(1000);
-
             ProductionConfig config = ProductionConfig.getInstance();
             SleuthConfig typed = SleuthConfigParser.parse(config.snapshot());
             int port = typed.server().getPort();
@@ -197,7 +195,7 @@ public class SleuthLauncher {
             int maxLineBytes = typed.protocol().getTextMaxLineBytes();
 
             ProtocolOutput output = new ConsoleProtocolOutput(System.out, System.err);
-            try (ProtocolClient client = ProtocolClient.connect(
+            try (ProtocolClient client = ProtocolClient.connectWithRetry(
                 connectHost,
                 port,
                 typed.protocol().getModeWireName(),
@@ -213,8 +211,6 @@ public class SleuthLauncher {
         } catch (IOException e) {
             System.err.println("Failed to connect to agent: " + e.getMessage());
             System.err.println("Make sure the target JVM is running and the agent is loaded.");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
         }
@@ -232,7 +228,7 @@ public class SleuthLauncher {
         int maxLineBytes = typed.protocol().getTextMaxLineBytes();
 
         ProtocolOutput output = new ConsoleProtocolOutput(System.out, System.err);
-        try (ProtocolClient client = ProtocolClient.connect(
+        try (ProtocolClient client = ProtocolClient.connectWithRetry(
             connectHost,
             port,
             typed.protocol().getModeWireName(),
