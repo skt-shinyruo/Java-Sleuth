@@ -18,6 +18,9 @@
 - `CommandContext`：一次请求的上下文（身份/权限/连接信息等）
 - `CommandRegistry` / `CommandProvider`：命令注册与聚合
   - 允许在装配链路中向 builtin provider 传递关键依赖（如 auth/session/confirm manager），减少命令实现内部的 `getInstance()` 隐式依赖
+  - 注入优先：`CommandRegistry` / `BuiltinCommandProvider` 的构造器为 strict non-null（不再在构造器内对 null 依赖隐式回退到 `getInstance()`）；不提供 legacy/简化构造器，依赖必须在装配层显式提供
+  - 装配收口：`JobManager` / `VmToolSessionRegistry` 由 `SleuthAgentRuntime`（per attach）持有，并在 `CommandProcessorFactory` 装配阶段注入到 `CommandRegistry`/`BuiltinCommandProvider`；命令实现仅接收注入对象，不再在执行路径内散落 `getInstance()` 获取
+    - `PerformanceOptimizer` 仍为全局组件（MBean/维护线程等），但其获取点收口到装配层，避免 provider/命令实现内部隐式取单例
   - shutdown 路径会 best-effort 关闭实现了 `AutoCloseable` 的命令（例如带自建调度器/后台线程的命令），避免 detach 后残留后台任务
 
 ### 2.2 服务端生命周期拆分（去 God class）
@@ -26,11 +29,14 @@
 
 - `ServerBootstrapper`
   - 负责自举边界：读取配置、初始化安全要素、绑定端口等
+  - JobManager 配置走注入：由组合根（`SleuthAgentRuntime`/`CommandProcessorFactory`）提供 `JobManager` 实例并传入 `configureJobManager(jobManager, cfg)`，避免在 bootstrapper 内部隐式调用 `getInstance()`
 - `ConnectionAcceptor`
   - 负责 accept 循环与连接级控制（如 maxConnections、过载拒绝）
 - `ShutdownCoordinator`
   - 负责优雅/紧急关闭编排，保证幂等与资源释放顺序
   - 关闭编排会收口 `CommandPipeline`（含 `CommandExecutionEngine` 线程池），避免 detach 后残留后台执行器
+- `CommandPipeline`
+  - 注入优先：构造器 strict non-null，必须显式注入 `DangerousCommandConfirmationManager`，避免在构造器内部隐式调用 `getInstance()`
 - `CommandProcessor`
   - 作为 facade：对外保持稳定入口（`start/shutdown/restart/...`），内部只做编排与状态持有
   - 依赖装配与全局副作用由 `CommandProcessorFactory` / composition root（如 `SleuthAgentCore`）集中处理，避免门面类继续膨胀

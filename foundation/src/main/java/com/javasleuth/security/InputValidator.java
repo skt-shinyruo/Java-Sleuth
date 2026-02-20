@@ -34,9 +34,27 @@ public class InputValidator {
     private final ProductionConfig config;
     private final AuditLogger auditLogger;
 
-    public InputValidator() {
-        this.config = ProductionConfig.getInstance();
-        this.auditLogger = AuditLogger.getInstance();
+    /**
+     * 构造注入路径（推荐）。
+     *
+     * <p>注意：该构造器不再对 null 依赖做隐式单例回退，以避免不透明的依赖来源。</p>
+     */
+    public InputValidator(ProductionConfig config, AuditLogger auditLogger) {
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
+        }
+        if (auditLogger == null) {
+            throw new IllegalArgumentException("auditLogger is required");
+        }
+        this.config = config;
+        this.auditLogger = auditLogger;
+    }
+
+    /**
+     * 默认装配（显式列出依赖来源，避免构造器内部隐式 getInstance 回退）。
+     */
+    public static InputValidator createDefault() {
+        return new InputValidator(ProductionConfig.getInstance(), AuditLogger.getInstance());
     }
 
     public ValidationResult validateCommand(String sessionId, String clientInfo, String command, String[] args) {

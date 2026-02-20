@@ -8,12 +8,11 @@ import com.javasleuth.security.AuthenticationManager;
 public class AuthCommand implements Command {
     private final AuthenticationManager authManager;
 
-    public AuthCommand() {
-        this(AuthenticationManager.getInstance());
-    }
-
     public AuthCommand(AuthenticationManager authManager) {
-        this.authManager = authManager != null ? authManager : AuthenticationManager.getInstance();
+        if (authManager == null) {
+            throw new IllegalArgumentException("authManager");
+        }
+        this.authManager = authManager;
     }
 
     @Override

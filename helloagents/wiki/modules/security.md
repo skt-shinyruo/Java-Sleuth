@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** InputValidator/AuditLogger/Auth/AuthZ/SecurityValidator
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-13
+- **Last Updated:** 2026-02-20
 - **Build Module:** foundation（低层基础模块）
 
 ## Specifications
@@ -20,6 +20,7 @@
 - 校验命令与参数
 - 清洗输出防注入
 - 流式命令输出同样统一走 `InputValidator.sanitizeOutput`（按 chunk），避免 watch/trace/tt/monitor/stack 绕过输出治理
+- 注入优先：`InputValidator` 的构造注入路径为 **strict non-null**（不再在构造器内对 null 依赖隐式回退到 `ProductionConfig.getInstance()` / `AuditLogger.getInstance()`）；默认装配请使用 `InputValidator.createDefault()` 或由 composition root 显式注入
 
 ### Requirement: 插件与文件路径安全边界一致性
 **Module:** security / command / config
@@ -42,9 +43,10 @@
 
 #### Scenario: detach 时清理安全缓存（避免状态残留）
 前置：同一 JVM 内发生 detach → re-attach  
-- shutdown 编排会调用 `AuthorizationManager.shutdownInstance()`、`RequestSecurityManager.shutdownInstance()`、`DangerousCommandConfirmationManager.shutdownInstance()` 清空内部缓存并允许重新初始化
+- shutdown 编排会对注入的 `AuthorizationManager` / `RequestSecurityManager` / `DangerousCommandConfirmationManager` 执行 instance `shutdown()`（幂等 best-effort）
+- 对仍保留全局单例的组件（例如 `AuthenticationManager`、`DangerousCommandConfirmationManager` 等）再 best-effort 执行 `shutdownInstance()`，以支持同 JVM detach→re-attach
 - 避免 rate limit/nonce/pending confirm 等状态跨 attach 残留，降低误判与不可预期行为
-- 同时，上述 manager 也提供 instance `shutdown()`，关闭编排会优先对“注入实例”执行 shutdown，再 best-effort 清理全局单例，便于未来做多实例/隔离测试
+- 约束补充：`AuthorizationManager` / `RequestSecurityManager` 的构造注入路径为 **strict non-null**（不再在构造器内对 null 依赖隐式回退到 `getInstance()`）；不提供 `getInstance()` 兼容入口，依赖来源必须显式装配（composition root 或 `createDefault()`）
 
 **Module:** security
 为每个连接建立角色与权限边界。

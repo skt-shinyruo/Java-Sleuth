@@ -2,12 +2,8 @@ package com.javasleuth.command.impl;
 
 import com.javasleuth.command.Command;
 import com.javasleuth.command.JobManager;
+import com.javasleuth.agent.runtime.AgentGlobalState;
 import com.javasleuth.enhancement.SleuthClassFileTransformer;
-import com.javasleuth.monitor.MonitorInterceptor;
-import com.javasleuth.monitor.StackInterceptor;
-import com.javasleuth.monitor.TraceInterceptor;
-import com.javasleuth.monitor.WatchInterceptor;
-import com.javasleuth.monitor.TtInterceptor;
 import com.javasleuth.vmtool.VmToolSessionRegistry;
 import java.lang.instrument.Instrumentation;
 import java.util.HashSet;
@@ -25,31 +21,42 @@ import java.util.Set;
 public class ResetCommand implements Command {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
+    private final JobManager jobManager;
+    private final VmToolSessionRegistry vmToolSessionRegistry;
 
-    public ResetCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
+    public ResetCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        JobManager jobManager,
+        VmToolSessionRegistry vmToolSessionRegistry
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
+        if (jobManager == null) {
+            throw new IllegalArgumentException("jobManager");
+        }
+        if (vmToolSessionRegistry == null) {
+            throw new IllegalArgumentException("vmToolSessionRegistry");
+        }
+        this.jobManager = jobManager;
+        this.vmToolSessionRegistry = vmToolSessionRegistry;
     }
 
     @Override
     public String execute(String[] args) {
-        int stoppedJobs = JobManager.getInstance().stopAll("reset");
+        int stoppedJobs = jobManager.stopAll("reset");
 
         Set<String> enhanced = new HashSet<>(transformer.getEnhancedClassNames());
 
         // Clear vmtool sessions first (remove its enhancers best-effort).
         try {
-            VmToolSessionRegistry.getInstance().stopAll(instrumentation, transformer, "reset");
+            vmToolSessionRegistry.stopAll(instrumentation, transformer, "reset");
         } catch (Exception ignore) {
             // best-effort
         }
 
         // Clear interceptor sessions first to reduce further event publishing.
-        WatchInterceptor.unregisterAllWatches();
-        TraceInterceptor.unregisterAllTraces();
-        MonitorInterceptor.unregisterAllMonitors();
-        TtInterceptor.unregisterAll();
-        StackInterceptor.unregisterAll();
+        AgentGlobalState.resetInterceptorsBestEffort();
 
         transformer.removeAllEnhancers();
 

@@ -20,11 +20,21 @@ public class TtCommand implements StreamCommand {
     private final TtRecordParser recordParser;
     private final TtRecordEngine recordEngine;
     private final TtReplayTemplateGenerator replayGenerator;
+    private final JobManager jobManager;
 
-    public TtCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer, ConfigView config) {
+    public TtCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        JobManager jobManager
+    ) {
+        if (jobManager == null) {
+            throw new IllegalArgumentException("jobManager");
+        }
         this.recordParser = new TtRecordParser();
         this.recordEngine = new TtRecordEngine(instrumentation, transformer, config);
         this.replayGenerator = new TtReplayTemplateGenerator();
+        this.jobManager = jobManager;
     }
 
     @Override
@@ -86,7 +96,7 @@ public class TtCommand implements StreamCommand {
         if (parsed.isBackground()) {
             String[] jobArgs = parsed.getSanitizedArgs();
             String commandLine = String.join(" ", jobArgs);
-            String jobId = JobManager.getInstance().submitStreamJob(
+            String jobId = jobManager.submitStreamJob(
                 "tt",
                 commandLine,
                 jobSink -> runRecord(jobArgs, jobSink)

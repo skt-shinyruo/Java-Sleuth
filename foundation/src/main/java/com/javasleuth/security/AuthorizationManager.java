@@ -13,7 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>注意：该类不再维护“命令名 → 权限”的第二份映射，避免与 CommandMeta 产生漂移。</p>
  */
 public class AuthorizationManager {
-    private static AuthorizationManager instance;
     private final ProductionConfig config;
     private final AuditLogger auditLogger;
     private final AuthenticationManager authManager;
@@ -51,21 +50,35 @@ public class AuthorizationManager {
         }
     }
 
+    /**
+     * 构造注入路径（推荐）。
+     *
+     * <p>注意：该构造器不再对 null 依赖做隐式单例回退，以避免“看似 DI、实际全局获取”的不透明依赖来源。</p>
+     */
     public AuthorizationManager(ProductionConfig config, AuditLogger auditLogger, AuthenticationManager authManager) {
-        this.config = config != null ? config : ProductionConfig.getInstance();
-        this.auditLogger = auditLogger != null ? auditLogger : AuditLogger.getInstance();
-        this.authManager = authManager != null ? authManager : AuthenticationManager.getInstance();
-    }
-
-    private AuthorizationManager() {
-        this(null, null, null);
-    }
-
-    public static synchronized AuthorizationManager getInstance() {
-        if (instance == null) {
-            instance = new AuthorizationManager();
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
         }
-        return instance;
+        if (auditLogger == null) {
+            throw new IllegalArgumentException("auditLogger is required");
+        }
+        if (authManager == null) {
+            throw new IllegalArgumentException("authManager is required");
+        }
+        this.config = config;
+        this.auditLogger = auditLogger;
+        this.authManager = authManager;
+    }
+
+    /**
+     * 默认装配（显式列出依赖来源，避免构造器内部隐式 getInstance 回退）。
+     */
+    public static AuthorizationManager createDefault() {
+        return new AuthorizationManager(
+            ProductionConfig.getInstance(),
+            AuditLogger.getInstance(),
+            AuthenticationManager.getInstance()
+        );
     }
 
     public void shutdown() {
@@ -73,20 +86,6 @@ public class AuthorizationManager {
             rateLimits.clear();
         } catch (Exception ignore) {
             // ignore
-        }
-    }
-
-    public static synchronized void shutdownInstance() {
-        AuthorizationManager inst = instance;
-        if (inst == null) {
-            return;
-        }
-        try {
-            inst.shutdown();
-        } catch (Exception ignore) {
-            // ignore
-        } finally {
-            instance = null;
         }
     }
 

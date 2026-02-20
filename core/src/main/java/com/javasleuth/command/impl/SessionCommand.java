@@ -8,12 +8,11 @@ import com.javasleuth.security.AuthenticationManager;
 public class SessionCommand implements Command {
     private final AuthenticationManager authManager;
 
-    public SessionCommand() {
-        this(AuthenticationManager.getInstance());
-    }
-
     public SessionCommand(AuthenticationManager authManager) {
-        this.authManager = authManager != null ? authManager : AuthenticationManager.getInstance();
+        if (authManager == null) {
+            throw new IllegalArgumentException("authManager");
+        }
+        this.authManager = authManager;
     }
 
     @Override

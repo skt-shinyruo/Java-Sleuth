@@ -38,6 +38,7 @@ public class CommandProcessor {
     private final ShutdownCoordinator shutdownCoordinator;
     private ServerSocket serverSocket;
     private final AtomicBoolean shutdownHookRegistered = new AtomicBoolean(false);
+    private volatile Thread jvmShutdownHook;
 
     public CommandProcessor(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
         this(CommandProcessorFactory.createComponents(instrumentation, transformer, null));
@@ -121,6 +122,17 @@ public class CommandProcessor {
     }
 
     /**
+     * Shutdown for detach/agent runtime close.
+     *
+     * <p>Differs from {@link #shutdown()} in that it also best-effort removes the JVM shutdown hook,
+     * to avoid hook accumulation across detach → re-attach in the same JVM.</p>
+     */
+    public void shutdownForDetach() {
+        shutdown();
+        removeShutdownHook();
+    }
+
+    /**
      * Graceful shutdown with configurable timeout
      */
     public void shutdownGracefully(int timeoutSeconds) {
@@ -173,11 +185,29 @@ public class CommandProcessor {
         if (!shutdownHookRegistered.compareAndSet(false, true)) {
             return;
         }
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+        Thread hook = new Thread(() -> {
             SleuthLogger.warn("⚠️ JVM shutdown detected - initiating graceful shutdown...");
             shutdownGracefully(10); // Shorter timeout for JVM shutdown
-        }, "sleuth-shutdown-hook"));
+        }, "sleuth-shutdown-hook");
+        jvmShutdownHook = hook;
+        Runtime.getRuntime().addShutdownHook(hook);
         SleuthLogger.debug("✅ Shutdown hook registered");
+    }
+
+    private void removeShutdownHook() {
+        Thread hook = jvmShutdownHook;
+        if (hook == null) {
+            return;
+        }
+        try {
+            Runtime.getRuntime().removeShutdownHook(hook);
+        } catch (IllegalStateException ignore) {
+            // JVM is already shutting down.
+        } catch (Exception ignore) {
+            // best-effort
+        } finally {
+            jvmShutdownHook = null;
+        }
     }
 
     /**

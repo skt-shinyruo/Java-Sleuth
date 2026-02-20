@@ -21,7 +21,7 @@ public class CommandProcessorExecutorQueueTest {
         config.setRuntimeConfig("server.executor.queue.capacity", "1");
         try {
             Instrumentation inst = fakeInstrumentation();
-            SleuthClassFileTransformer transformer = new SleuthClassFileTransformer();
+            SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(config);
 
             CommandProcessor processor = new CommandProcessor(inst, transformer);
 
@@ -69,4 +69,3 @@ public class CommandProcessorExecutorQueueTest {
             });
     }
 }
-

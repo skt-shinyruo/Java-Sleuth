@@ -6,9 +6,11 @@ import com.javasleuth.command.protocol.Frame;
 import com.javasleuth.command.protocol.FrameCodec;
 import com.javasleuth.command.protocol.Utf8LineCodec;
 import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.security.AuditLogger;
 import com.javasleuth.security.AuthenticationManager;
 import com.javasleuth.security.AuthorizationManager;
 import com.javasleuth.security.CommandMeta;
+import com.javasleuth.security.DangerousCommandConfirmationManager;
 import com.javasleuth.security.InputValidator;
 import com.javasleuth.security.RequestSecurityManager;
 import org.junit.Test;
@@ -162,7 +164,12 @@ public class CommandProcessorTest {
             System.setProperty("sleuth.performance.command.timeout", "50");
 
             ProductionConfig config = ProductionConfig.getInstance();
-            CommandPipeline pipeline = new CommandPipeline(new InputValidator(), AuthorizationManager.getInstance(), config);
+            AuditLogger auditLogger = AuditLogger.getInstance();
+            AuthenticationManager authn = AuthenticationManager.getInstance();
+            AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
+            DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
+            InputValidator validator = new InputValidator(config, auditLogger);
+            CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
 
             Command slow = new Command() {
                 @Override
@@ -193,7 +200,7 @@ public class CommandProcessorTest {
     @Test
     public void testAuthorizationManagerDynamicPermissionRegistration() {
         String oldAnon = System.getProperty("sleuth.security.anonymous.viewer");
-        AuthorizationManager authorizationManager = AuthorizationManager.getInstance();
+        AuthorizationManager authorizationManager = AuthorizationManager.createDefault();
         AuthenticationManager authenticationManager = AuthenticationManager.getInstance();
 
         try {
@@ -216,7 +223,7 @@ public class CommandProcessorTest {
     public void testAuthorizationManagerDangerousCommandUpgradesToAdmin() {
         String oldAnon = System.getProperty("sleuth.security.anonymous.viewer");
         String oldAuthz = System.getProperty("sleuth.security.authorization.enabled");
-        AuthorizationManager authorizationManager = AuthorizationManager.getInstance();
+        AuthorizationManager authorizationManager = AuthorizationManager.createDefault();
         AuthenticationManager authenticationManager = AuthenticationManager.getInstance();
 
         try {
@@ -248,7 +255,7 @@ public class CommandProcessorTest {
             System.setProperty("sleuth.security.hmac.secret", "test-secret");
             System.setProperty("sleuth.security.hmac.timestamp.window.ms", "60000");
 
-            RequestSecurityManager mgr = RequestSecurityManager.getInstance();
+            RequestSecurityManager mgr = RequestSecurityManager.createDefault();
             String nonce = "nonce123";
             long ts = System.currentTimeMillis();
             String signed = mgr.signCommand("help", ts, nonce, "test-sid");

@@ -13,7 +13,7 @@ public class RequestSecurityManagerTest {
         System.setProperty("sleuth.security.hmac.secret", "test-secret");
         System.setProperty("sleuth.security.hmac.timestamp.window.ms", "600000");
 
-        RequestSecurityManager mgr = RequestSecurityManager.getInstance();
+        RequestSecurityManager mgr = RequestSecurityManager.createDefault();
 
         String signed = mgr.signCommand("help", System.currentTimeMillis(), "nonce1", "connA");
         assertTrue(signed.startsWith("SIG "));
@@ -30,7 +30,7 @@ public class RequestSecurityManagerTest {
         System.setProperty("sleuth.security.hmac.secret", "test-secret");
         System.setProperty("sleuth.security.hmac.timestamp.window.ms", "600000");
 
-        RequestSecurityManager mgr = RequestSecurityManager.getInstance();
+        RequestSecurityManager mgr = RequestSecurityManager.createDefault();
 
         String signed1 = mgr.signCommand("help", System.currentTimeMillis(), "nonce2", "connC");
         assertTrue(mgr.verifyAndExtract("session", signed1).isOk());

@@ -1,5 +1,6 @@
 package com.javasleuth.security;
 
+import com.javasleuth.config.ProductionConfig;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -12,7 +13,7 @@ public class InputValidatorTest {
         try {
             System.setProperty("sleuth.security.input.validation", "true");
 
-            InputValidator validator = new InputValidator();
+            InputValidator validator = new InputValidator(ProductionConfig.getInstance(), AuditLogger.getInstance());
             InputValidator.ValidationResult ok = validator.validateCommand(
                 "s1",
                 "test-client",
@@ -32,7 +33,7 @@ public class InputValidatorTest {
         try {
             System.setProperty("sleuth.security.input.validation", "true");
 
-            InputValidator validator = new InputValidator();
+            InputValidator validator = new InputValidator(ProductionConfig.getInstance(), AuditLogger.getInstance());
             InputValidator.ValidationResult bad = validator.validateCommand(
                 "s1",
                 "test-client",
@@ -53,7 +54,7 @@ public class InputValidatorTest {
         try {
             System.setProperty("sleuth.security.input.validation", "true");
 
-            InputValidator validator = new InputValidator();
+            InputValidator validator = new InputValidator(ProductionConfig.getInstance(), AuditLogger.getInstance());
 
             InputValidator.ValidationResult ok = validator.validateCommand(
                 "s1",
@@ -81,7 +82,7 @@ public class InputValidatorTest {
         try {
             System.setProperty("sleuth.security.input.validation", "true");
 
-            InputValidator validator = new InputValidator();
+            InputValidator validator = new InputValidator(ProductionConfig.getInstance(), AuditLogger.getInstance());
             InputValidator.ValidationResult bad = validator.validateCommand(
                 "s1",
                 "test-client",
@@ -103,4 +104,3 @@ public class InputValidatorTest {
         }
     }
 }
-

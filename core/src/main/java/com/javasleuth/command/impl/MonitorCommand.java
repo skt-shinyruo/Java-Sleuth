@@ -30,11 +30,20 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MonitorCommand implements StreamCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
+    private final JobManager jobManager;
     private final ConcurrentHashMap<String, MonitorSession> activeSessions = new ConcurrentHashMap<>();
 
-    public MonitorCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
+    public MonitorCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        JobManager jobManager
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
+        if (jobManager == null) {
+            throw new IllegalArgumentException("jobManager");
+        }
+        this.jobManager = jobManager;
     }
 
     @Override
@@ -89,7 +98,7 @@ public class MonitorCommand implements StreamCommand {
         if (background) {
             String[] jobArgs = removeFlag(args, "--bg");
             String commandLine = String.join(" ", jobArgs);
-            String jobId = JobManager.getInstance().submitStreamJob(
+            String jobId = jobManager.submitStreamJob(
                 "monitor",
                 commandLine,
                 jobSink -> runMonitor(jobArgs, jobSink)

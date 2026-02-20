@@ -12,8 +12,7 @@ public class JobManagerConcurrencyTest {
 
     @Test
     public void submitStreamJob_isBoundedByMaxRunningAndQueueCapacity() throws Exception {
-        JobManager jm = JobManager.getInstance();
-        jm.stopAll("test_setup");
+        JobManager jm = new JobManager();
 
         // Ensure a small bound for deterministic rejection: 1 running + 1 queued.
         jm.configureExecution(1, 1);
@@ -43,8 +42,7 @@ public class JobManagerConcurrencyTest {
         } finally {
             block.countDown();
             // Best-effort cleanup (avoid leaking background jobs across test suite).
-            jm.stopAll("test_teardown");
+            jm.shutdown("test_teardown");
         }
     }
 }
-

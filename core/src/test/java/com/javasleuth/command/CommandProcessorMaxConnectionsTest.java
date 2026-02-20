@@ -25,7 +25,7 @@ public class CommandProcessorMaxConnectionsTest {
             config.setRuntimeConfig("security.mode", "off");
             config.setRuntimeConfig("server.max.connections", "1");
 
-            CommandProcessor processor = new CommandProcessor(fakeInstrumentation(), new SleuthClassFileTransformer());
+            CommandProcessor processor = new CommandProcessor(fakeInstrumentation(), new SleuthClassFileTransformer(config));
             Thread serverThread = new Thread(processor::start, "test-cp-start-maxconn");
             serverThread.setDaemon(true);
             serverThread.start();
@@ -114,4 +114,3 @@ public class CommandProcessorMaxConnectionsTest {
             });
     }
 }
-

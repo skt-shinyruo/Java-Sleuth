@@ -6,7 +6,14 @@ import java.time.Instant;
 import java.util.List;
 
 public class JobsCommand implements Command {
-    private final JobManager jobManager = JobManager.getInstance();
+    private final JobManager jobManager;
+
+    public JobsCommand(JobManager jobManager) {
+        if (jobManager == null) {
+            throw new IllegalArgumentException("jobManager");
+        }
+        this.jobManager = jobManager;
+    }
 
     @Override
     public String execute(String[] args) {
@@ -95,4 +102,3 @@ public class JobsCommand implements Command {
         return "Manage background jobs (list/tail/stop)";
     }
 }
-

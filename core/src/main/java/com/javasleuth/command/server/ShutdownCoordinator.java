@@ -128,16 +128,6 @@ public final class ShutdownCoordinator {
                 // ignore
             }
             try {
-                AuthorizationManager.shutdownInstance();
-            } catch (Exception ignore) {
-                // ignore
-            }
-            try {
-                RequestSecurityManager.shutdownInstance();
-            } catch (Exception ignore) {
-                // ignore
-            }
-            try {
                 DangerousCommandConfirmationManager.shutdownInstance();
             } catch (Exception ignore) {
                 // ignore
@@ -222,16 +212,6 @@ public final class ShutdownCoordinator {
             }
             try {
                 AuthenticationManager.shutdownInstance();
-            } catch (Exception ignore) {
-                // ignore
-            }
-            try {
-                AuthorizationManager.shutdownInstance();
-            } catch (Exception ignore) {
-                // ignore
-            }
-            try {
-                RequestSecurityManager.shutdownInstance();
             } catch (Exception ignore) {
                 // ignore
             }

@@ -8,9 +8,14 @@ import java.util.Map;
 
 public class HealthCommand implements Command {
     private final MetricsCollector metricsCollector;
+    private final PerformanceOptimizer performanceOptimizer;
 
-    public HealthCommand(MetricsCollector metricsCollector) {
+    public HealthCommand(MetricsCollector metricsCollector, PerformanceOptimizer performanceOptimizer) {
         this.metricsCollector = metricsCollector;
+        if (performanceOptimizer == null) {
+            throw new IllegalArgumentException("performanceOptimizer");
+        }
+        this.performanceOptimizer = performanceOptimizer;
     }
 
     @Override
@@ -42,8 +47,7 @@ public class HealthCommand implements Command {
         health.append("Heap Max: ").append(formatBytes(heapMemory.getMax())).append("\n");
 
         // Performance health
-        PerformanceOptimizer perfOpt = PerformanceOptimizer.getInstance();
-        Map<String, Object> perfMetrics = perfOpt.getPerformanceMetrics();
+        Map<String, Object> perfMetrics = performanceOptimizer.getPerformanceMetrics();
 
         health.append("\n-- Performance Health --\n");
         long cacheHitRatio = (Long) perfMetrics.get("cacheHitRatio");

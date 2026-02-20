@@ -113,16 +113,24 @@ public class CommandPipeline {
     private final PipelineChain<SyncInvocation, String> syncChain;
     private final PipelineChain<StreamInvocation, StreamResult> streamChain;
 
-    public CommandPipeline(InputValidator inputValidator, AuthorizationManager authorizationManager, ProductionConfig config) {
-        this(inputValidator, authorizationManager, DangerousCommandConfirmationManager.getInstance(), config);
-    }
-
     public CommandPipeline(
         InputValidator inputValidator,
         AuthorizationManager authorizationManager,
         DangerousCommandConfirmationManager dangerousConfirm,
         ProductionConfig config
     ) {
+        if (inputValidator == null) {
+            throw new IllegalArgumentException("inputValidator is required");
+        }
+        if (authorizationManager == null) {
+            throw new IllegalArgumentException("authorizationManager is required");
+        }
+        if (dangerousConfirm == null) {
+            throw new IllegalArgumentException("dangerousConfirm is required");
+        }
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
+        }
         this.inputValidator = inputValidator;
         this.config = config;
         this.precheckPipeline = new PrecheckPipeline(inputValidator, authorizationManager, dangerousConfirm, config);

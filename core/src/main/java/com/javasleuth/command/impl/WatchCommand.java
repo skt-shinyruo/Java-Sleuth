@@ -35,12 +35,22 @@ public class WatchCommand implements StreamCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
     private final ConfigView config;
+    private final JobManager jobManager;
     private final ConcurrentHashMap<String, WatchSession> activeSessions = new ConcurrentHashMap<>();
 
-    public WatchCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer, ConfigView config) {
+    public WatchCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        JobManager jobManager
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.config = config;
+        if (jobManager == null) {
+            throw new IllegalArgumentException("jobManager");
+        }
+        this.jobManager = jobManager;
     }
 
     @Override
@@ -147,7 +157,7 @@ public class WatchCommand implements StreamCommand {
         if (background) {
             String[] jobArgs = removeFlag(args, "--bg");
             String commandLine = String.join(" ", jobArgs);
-            String jobId = JobManager.getInstance().submitStreamJob(
+            String jobId = jobManager.submitStreamJob(
                 "watch",
                 commandLine,
                 jobSink -> runWatch(jobArgs, jobSink)

@@ -35,12 +35,22 @@ public class TraceCommand implements StreamCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
     private final ConfigView config;
+    private final JobManager jobManager;
     private final ConcurrentHashMap<String, TraceSession> activeSessions = new ConcurrentHashMap<>();
 
-    public TraceCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer, ConfigView config) {
+    public TraceCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        JobManager jobManager
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.config = config;
+        if (jobManager == null) {
+            throw new IllegalArgumentException("jobManager");
+        }
+        this.jobManager = jobManager;
     }
 
     @Override
@@ -147,7 +157,7 @@ public class TraceCommand implements StreamCommand {
         if (background) {
             String[] jobArgs = removeFlag(args, "--bg");
             String commandLine = String.join(" ", jobArgs);
-            String jobId = JobManager.getInstance().submitStreamJob(
+            String jobId = jobManager.submitStreamJob(
                 "trace",
                 commandLine,
                 jobSink -> runTrace(jobArgs, jobSink)

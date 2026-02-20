@@ -1,5 +1,6 @@
 package com.javasleuth.enhancement;
 
+import com.javasleuth.config.ProductionConfig;
 import org.junit.Test;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
@@ -35,7 +36,7 @@ public class SleuthClassFileTransformerFailurePolicyTest {
             BytesClassLoader loader = new BytesClassLoader(bytes);
             Class<?> clazz = loader.define("com.example.Dup3");
 
-            SleuthClassFileTransformer transformer = new SleuthClassFileTransformer();
+            SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(ProductionConfig.getInstance());
             ClassEnhancer badEnhancer = new ClassEnhancer() {
                 @Override
                 public org.objectweb.asm.ClassVisitor createClassVisitor(org.objectweb.asm.ClassVisitor delegate, String className) {
@@ -90,4 +91,3 @@ public class SleuthClassFileTransformerFailurePolicyTest {
         return cw.toByteArray();
     }
 }
-

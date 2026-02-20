@@ -42,6 +42,11 @@
 - 202602132357_di_signer_interface
 - 202602141515_streaming_negotiation_ssot
 - 202602200937_watch_no_params_no_return_semantics
+- 202602201234_agent_runtime_container
+- 202602201335_agent_runtime_container_v2
+- 202602201353_compress_global_state_v3
+- 202602201418_compress_global_state_v4
+- 202602201447_remove_legacy_compat_v5
 
 ## 2026-01
 - 202601281207_sleuth_plugin_stream

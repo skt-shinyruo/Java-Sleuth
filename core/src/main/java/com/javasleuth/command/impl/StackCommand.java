@@ -18,13 +18,23 @@ import java.util.Locale;
  * 2) 方法触发栈追踪（Arthas 风格简化版）：stack <class-pattern> <method-pattern> [options]
  */
 public class StackCommand implements StreamCommand {
-private final StackTraceLiteParser traceParser;
+    private final StackTraceLiteParser traceParser;
     private final StackTraceLiteEngine traceEngine;
+    private final JobManager jobManager;
 
-    public StackCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer, ConfigView config) {
+    public StackCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        JobManager jobManager
+    ) {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
         this.traceParser = new StackTraceLiteParser();
         this.traceEngine = new StackTraceLiteEngine(instrumentation, transformer, config);
+        if (jobManager == null) {
+            throw new IllegalArgumentException("jobManager");
+        }
+        this.jobManager = jobManager;
     }
 
     @Override
@@ -61,7 +71,7 @@ private final StackTraceLiteParser traceParser;
         if (parsed.isBackground()) {
             String[] jobArgs = parsed.getSanitizedArgs();
             String commandLine = String.join(" ", jobArgs);
-            String jobId = JobManager.getInstance().submitStreamJob(
+            String jobId = jobManager.submitStreamJob(
                 "stack",
                 commandLine,
                 jobSink -> runStack(jobArgs, jobSink)

@@ -9,6 +9,8 @@ import com.javasleuth.security.AuthenticationManager;
 import com.javasleuth.security.CommandMeta;
 import com.javasleuth.security.AuthenticationManager.UserRole;
 import com.javasleuth.security.DangerousCommandConfirmationManager;
+import com.javasleuth.util.PerformanceOptimizer;
+import com.javasleuth.vmtool.VmToolSessionRegistry;
 import java.lang.instrument.Instrumentation;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,6 +24,9 @@ public class BuiltinCommandProvider implements CommandProvider {
     private final Runnable shutdownHook;
     private final AuthenticationManager authenticationManager;
     private final DangerousCommandConfirmationManager dangerousConfirm;
+    private final JobManager jobManager;
+    private final VmToolSessionRegistry vmToolSessionRegistry;
+    private final PerformanceOptimizer performanceOptimizer;
 
     public BuiltinCommandProvider(Instrumentation instrumentation,
                                   SleuthClassFileTransformer transformer,
@@ -30,15 +35,36 @@ public class BuiltinCommandProvider implements CommandProvider {
                                   AuditLogger auditLogger,
                                   Runnable shutdownHook,
                                   AuthenticationManager authenticationManager,
-                                  DangerousCommandConfirmationManager dangerousConfirm) {
+                                  DangerousCommandConfirmationManager dangerousConfirm,
+                                  JobManager jobManager,
+                                  VmToolSessionRegistry vmToolSessionRegistry,
+                                  PerformanceOptimizer performanceOptimizer) {
+        if (authenticationManager == null) {
+            throw new IllegalArgumentException("authenticationManager is required");
+        }
+        if (dangerousConfirm == null) {
+            throw new IllegalArgumentException("dangerousConfirm is required");
+        }
+        if (jobManager == null) {
+            throw new IllegalArgumentException("jobManager is required");
+        }
+        if (vmToolSessionRegistry == null) {
+            throw new IllegalArgumentException("vmToolSessionRegistry is required");
+        }
+        if (performanceOptimizer == null) {
+            throw new IllegalArgumentException("performanceOptimizer is required");
+        }
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.metricsCollector = metricsCollector;
         this.config = config;
         this.auditLogger = auditLogger;
         this.shutdownHook = shutdownHook;
-        this.authenticationManager = authenticationManager != null ? authenticationManager : AuthenticationManager.getInstance();
-        this.dangerousConfirm = dangerousConfirm != null ? dangerousConfirm : DangerousCommandConfirmationManager.getInstance();
+        this.authenticationManager = authenticationManager;
+        this.dangerousConfirm = dangerousConfirm;
+        this.jobManager = jobManager;
+        this.vmToolSessionRegistry = vmToolSessionRegistry;
+        this.performanceOptimizer = performanceOptimizer;
     }
 
     @Override
@@ -50,22 +76,26 @@ public class BuiltinCommandProvider implements CommandProvider {
     public Map<String, Command> getCommands() {
         Map<String, Command> commands = new HashMap<>();
 
+        JobManager jobManager = this.jobManager;
+        VmToolSessionRegistry vmToolSessionRegistry = this.vmToolSessionRegistry;
+        PerformanceOptimizer performanceOptimizer = this.performanceOptimizer;
+
         commands.put("dashboard", new DashboardCommand(instrumentation));
         commands.put("thread", new ThreadCommand(instrumentation));
         commands.put("sc", new SearchClassCommand(instrumentation));
         commands.put("sm", new SearchMethodCommand(instrumentation));
-        commands.put("watch", new WatchCommand(instrumentation, transformer, config));
-        commands.put("trace", new TraceCommand(instrumentation, transformer, config));
-        commands.put("tt", new TtCommand(instrumentation, transformer, config));
-        commands.put("jobs", new JobsCommand());
+        commands.put("watch", new WatchCommand(instrumentation, transformer, config, jobManager));
+        commands.put("trace", new TraceCommand(instrumentation, transformer, config, jobManager));
+        commands.put("tt", new TtCommand(instrumentation, transformer, config, jobManager));
+        commands.put("jobs", new JobsCommand(jobManager));
         commands.put("redefine", new RedefineCommand(instrumentation));
         commands.put("mc", new MemoryCompilerCommand());
         commands.put("retransform", new RetransformCommand(instrumentation));
 
         commands.put("profiler", new ProfilerCommand(instrumentation));
-        commands.put("monitor", new MonitorCommand(instrumentation, transformer));
-        commands.put("stack", new StackCommand(instrumentation, transformer, config));
-        commands.put("reset", new ResetCommand(instrumentation, transformer));
+        commands.put("monitor", new MonitorCommand(instrumentation, transformer, jobManager));
+        commands.put("stack", new StackCommand(instrumentation, transformer, config, jobManager));
+        commands.put("reset", new ResetCommand(instrumentation, transformer, jobManager, vmToolSessionRegistry));
 
         commands.put("jvm", new JvmCommand(instrumentation));
         commands.put("sysprop", new SysPropCommand(instrumentation));
@@ -80,11 +110,11 @@ public class BuiltinCommandProvider implements CommandProvider {
         commands.put("classloader", new ClassLoaderCommand(instrumentation));
         commands.put("mbean", new MBeanCommand(instrumentation));
         commands.put("logger", new LoggerCommand());
-        commands.put("vmtool", new VmToolCommand(instrumentation, transformer, config, dangerousConfirm));
+        commands.put("vmtool", new VmToolCommand(instrumentation, transformer, config, dangerousConfirm, vmToolSessionRegistry));
 
-        commands.put("health", new HealthCommand(metricsCollector));
+        commands.put("health", new HealthCommand(metricsCollector, performanceOptimizer));
         commands.put("metrics", new MetricsCommand(metricsCollector));
-        commands.put("status", new StatusCommand(instrumentation, metricsCollector, transformer, config));
+        commands.put("status", new StatusCommand(instrumentation, metricsCollector, transformer, config, performanceOptimizer));
         commands.put("config", new ConfigCommand(config));
         commands.put("audit", new AuditCommand(auditLogger));
         commands.put("session", new SessionCommand(authenticationManager));

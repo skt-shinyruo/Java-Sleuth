@@ -9,14 +9,24 @@ import java.util.concurrent.ConcurrentMap;
  * <p>该对象作为“断连清理”的统一入口：CommandProcessor 负责创建/关闭，会话内命令可注册清理动作。</p>
  */
 public class ClientSessionRegistry {
-    private static final ClientSessionRegistry INSTANCE = new ClientSessionRegistry();
-
     private final ConcurrentMap<String, ClientSession> sessions = new ConcurrentHashMap<>();
 
-    private ClientSessionRegistry() {}
+    public ClientSessionRegistry() {}
 
-    public static ClientSessionRegistry getInstance() {
-        return INSTANCE;
+    public void shutdown(String reason) {
+        try {
+            for (String clientId : new java.util.ArrayList<>(sessions.keySet())) {
+                close(clientId, reason != null ? reason : "shutdown");
+            }
+        } catch (Exception ignore) {
+            // ignore
+        } finally {
+            try {
+                sessions.clear();
+            } catch (Exception ignore) {
+                // ignore
+            }
+        }
     }
 
     public ClientSession open(String clientId, String clientInfo, String sessionId) {
@@ -54,4 +64,3 @@ public class ClientSessionRegistry {
         session.close(reason);
     }
 }
-

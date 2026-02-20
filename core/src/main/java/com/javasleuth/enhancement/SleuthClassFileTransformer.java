@@ -81,10 +81,17 @@ public class SleuthClassFileTransformer implements ClassFileTransformer {
 
     private final ConcurrentHashMap<EnhancerKey, CopyOnWriteArrayList<ClassEnhancer>> enhancers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<EnhancerKey, FailureState> failures = new ConcurrentHashMap<>();
-    private final ProductionConfig config = ProductionConfig.getInstance();
+    private final ProductionConfig config;
     private final AtomicLong transformationCount = new AtomicLong(0);
     private final AtomicLong enhancementFailureCount = new AtomicLong(0);
     private final AtomicLong enhancementSuppressedCount = new AtomicLong(0);
+
+    public SleuthClassFileTransformer(ProductionConfig config) {
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
+        }
+        this.config = config;
+    }
 
     private static final class FailureState {
         private final AtomicInteger count = new AtomicInteger(0);

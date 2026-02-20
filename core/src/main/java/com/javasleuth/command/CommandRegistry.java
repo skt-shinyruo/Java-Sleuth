@@ -7,7 +7,9 @@ import com.javasleuth.security.AuditLogger;
 import com.javasleuth.security.AuthenticationManager;
 import com.javasleuth.security.CommandMeta;
 import com.javasleuth.security.DangerousCommandConfirmationManager;
+import com.javasleuth.util.PerformanceOptimizer;
 import com.javasleuth.util.SleuthLogger;
+import com.javasleuth.vmtool.VmToolSessionRegistry;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -60,17 +62,10 @@ public class CommandRegistry {
     private final Runnable shutdownHook;
     private final AuthenticationManager authenticationManager;
     private final DangerousCommandConfirmationManager dangerousConfirm;
+    private final JobManager jobManager;
+    private final VmToolSessionRegistry vmToolSessionRegistry;
+    private final PerformanceOptimizer performanceOptimizer;
     private volatile URLClassLoader pluginClassLoader;
-
-    public CommandRegistry(Instrumentation instrumentation,
-                           SleuthClassFileTransformer transformer,
-                           MetricsCollector metricsCollector,
-                           ProductionConfig config,
-                           AuditLogger auditLogger,
-                           Runnable shutdownHook) {
-        this(instrumentation, transformer, metricsCollector, config, auditLogger, shutdownHook,
-            AuthenticationManager.getInstance(), DangerousCommandConfirmationManager.getInstance());
-    }
 
     public CommandRegistry(Instrumentation instrumentation,
                            SleuthClassFileTransformer transformer,
@@ -79,13 +74,40 @@ public class CommandRegistry {
                            AuditLogger auditLogger,
                            Runnable shutdownHook,
                            AuthenticationManager authenticationManager,
-                           DangerousCommandConfirmationManager dangerousConfirm) {
+                           DangerousCommandConfirmationManager dangerousConfirm,
+                           JobManager jobManager,
+                           VmToolSessionRegistry vmToolSessionRegistry,
+                           PerformanceOptimizer performanceOptimizer) {
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
+        }
+        if (auditLogger == null) {
+            throw new IllegalArgumentException("auditLogger is required");
+        }
+        if (authenticationManager == null) {
+            throw new IllegalArgumentException("authenticationManager is required");
+        }
+        if (dangerousConfirm == null) {
+            throw new IllegalArgumentException("dangerousConfirm is required");
+        }
+        if (jobManager == null) {
+            throw new IllegalArgumentException("jobManager is required");
+        }
+        if (vmToolSessionRegistry == null) {
+            throw new IllegalArgumentException("vmToolSessionRegistry is required");
+        }
+        if (performanceOptimizer == null) {
+            throw new IllegalArgumentException("performanceOptimizer is required");
+        }
         this.config = config;
         this.metricsCollector = metricsCollector;
         this.auditLogger = auditLogger;
         this.shutdownHook = shutdownHook;
-        this.authenticationManager = authenticationManager != null ? authenticationManager : AuthenticationManager.getInstance();
-        this.dangerousConfirm = dangerousConfirm != null ? dangerousConfirm : DangerousCommandConfirmationManager.getInstance();
+        this.authenticationManager = authenticationManager;
+        this.dangerousConfirm = dangerousConfirm;
+        this.jobManager = jobManager;
+        this.vmToolSessionRegistry = vmToolSessionRegistry;
+        this.performanceOptimizer = performanceOptimizer;
         loadProviders(instrumentation, transformer, metricsCollector, auditLogger);
         registerHelpCommand();
     }
@@ -178,7 +200,10 @@ public class CommandRegistry {
             auditLogger,
             shutdownHook,
             authenticationManager,
-            dangerousConfirm
+            dangerousConfirm,
+            jobManager,
+            vmToolSessionRegistry,
+            performanceOptimizer
         ));
 
         if (config.isPluginsServiceLoaderEnabled()) {

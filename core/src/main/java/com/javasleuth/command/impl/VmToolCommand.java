@@ -38,22 +38,26 @@ public class VmToolCommand implements Command {
     private final SleuthClassFileTransformer transformer;
     private final ConfigView config;
     private final DangerousCommandConfirmationManager dangerousConfirm;
-    private final VmToolSessionRegistry registry = VmToolSessionRegistry.getInstance();
-
-    public VmToolCommand(Instrumentation instrumentation, SleuthClassFileTransformer transformer, ConfigView config) {
-        this(instrumentation, transformer, config, DangerousCommandConfirmationManager.getInstance());
-    }
+    private final VmToolSessionRegistry registry;
 
     public VmToolCommand(
         Instrumentation instrumentation,
         SleuthClassFileTransformer transformer,
         ConfigView config,
-        DangerousCommandConfirmationManager dangerousConfirm
+        DangerousCommandConfirmationManager dangerousConfirm,
+        VmToolSessionRegistry registry
     ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.config = config;
-        this.dangerousConfirm = dangerousConfirm != null ? dangerousConfirm : DangerousCommandConfirmationManager.getInstance();
+        if (dangerousConfirm == null) {
+            throw new IllegalArgumentException("dangerousConfirm");
+        }
+        if (registry == null) {
+            throw new IllegalArgumentException("registry");
+        }
+        this.dangerousConfirm = dangerousConfirm;
+        this.registry = registry;
     }
 
     @Override

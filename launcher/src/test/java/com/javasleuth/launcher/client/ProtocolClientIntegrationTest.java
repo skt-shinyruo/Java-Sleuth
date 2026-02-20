@@ -26,7 +26,7 @@ public class ProtocolClientIntegrationTest {
             config.setRuntimeConfig("protocol.mode", "framed");
             config.setRuntimeConfig("protocol.streaming.enabled", "true");
 
-            CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer());
+            CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(config));
             Thread serverThread = new Thread(processor::start, "test-cp-start");
             serverThread.setDaemon(true);
             serverThread.start();
@@ -66,7 +66,7 @@ public class ProtocolClientIntegrationTest {
             config.setRuntimeConfig("protocol.mode", "framed");
             config.setRuntimeConfig("protocol.streaming.enabled", "false");
 
-            CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer());
+            CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(config));
             Thread serverThread = new Thread(processor::start, "test-cp-start-streaming-disabled");
             serverThread.setDaemon(true);
             serverThread.start();
@@ -111,7 +111,7 @@ public class ProtocolClientIntegrationTest {
             config.setRuntimeConfig("protocol.mode", "framed");
             config.setRuntimeConfig("protocol.streaming.enabled", "true");
 
-            CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer());
+            CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(config));
 
             Thread serverThread = new Thread(() -> {
                 try {

@@ -21,12 +21,23 @@ public class StatusCommand implements Command {
     private final MetricsCollector metricsCollector;
     private final SleuthClassFileTransformer transformer;
     private final ConfigView config;
+    private final PerformanceOptimizer performanceOptimizer;
 
-    public StatusCommand(Instrumentation instrumentation, MetricsCollector metricsCollector, SleuthClassFileTransformer transformer, ConfigView config) {
+    public StatusCommand(
+        Instrumentation instrumentation,
+        MetricsCollector metricsCollector,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        PerformanceOptimizer performanceOptimizer
+    ) {
         this.instrumentation = instrumentation;
         this.metricsCollector = metricsCollector;
         this.transformer = transformer;
         this.config = config;
+        if (performanceOptimizer == null) {
+            throw new IllegalArgumentException("performanceOptimizer");
+        }
+        this.performanceOptimizer = performanceOptimizer;
     }
 
     @Override
@@ -78,8 +89,7 @@ public class StatusCommand implements Command {
         status.append("Loaded Classes: ").append(instrumentation.getAllLoadedClasses().length).append("\n");
 
         // Performance metrics
-        PerformanceOptimizer perfOpt = PerformanceOptimizer.getInstance();
-        Map<String, Object> perfMetrics = perfOpt.getPerformanceMetrics();
+        Map<String, Object> perfMetrics = performanceOptimizer.getPerformanceMetrics();
         status.append("\n-- Performance Metrics --\n");
         status.append("Cache Hit Ratio: ").append(perfMetrics.get("cacheHitRatio")).append("%\n");
         status.append("Total Operations: ").append(perfMetrics.get("totalOperations")).append("\n");

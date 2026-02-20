@@ -36,11 +36,12 @@ public class SessionCleanupOnDisconnectTest {
         String clientInfo = "unit-test";
         String sessionId = "test-session-" + UUID.randomUUID();
 
-        ClientSessionRegistry registry = ClientSessionRegistry.getInstance();
+        ClientSessionRegistry registry = new ClientSessionRegistry();
         registry.close(clientId, "test_setup_cleanup");
 
         Instrumentation inst = fakeInstrumentationWithLoadedClasses(DummyTarget.class);
-        SleuthClassFileTransformer transformer = new SleuthClassFileTransformer();
+        SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(ProductionConfig.getInstance());
+        JobManager jobManager = new JobManager();
 
         Thread watchThread = null;
         Thread traceThread = null;
@@ -51,19 +52,22 @@ public class SessionCleanupOnDisconnectTest {
 
             watchThread = startInThreadWithContext(context, () -> {
                 try {
-                    new WatchCommand(inst, transformer, ProductionConfig.getInstance()).execute(new String[]{"watch", DummyTarget.class.getName(), "doWork", "-t", "30"});
+                    new WatchCommand(inst, transformer, ProductionConfig.getInstance(), jobManager)
+                        .execute(new String[]{"watch", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
             });
             traceThread = startInThreadWithContext(context, () -> {
                 try {
-                    new TraceCommand(inst, transformer, ProductionConfig.getInstance()).execute(new String[]{"trace", DummyTarget.class.getName(), "doWork", "-t", "30"});
+                    new TraceCommand(inst, transformer, ProductionConfig.getInstance(), jobManager)
+                        .execute(new String[]{"trace", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
             });
             ttThread = startInThreadWithContext(context, () -> {
                 try {
-                    new TtCommand(inst, transformer, ProductionConfig.getInstance()).execute(new String[]{"tt", DummyTarget.class.getName(), "doWork", "-t", "30"});
+                    new TtCommand(inst, transformer, ProductionConfig.getInstance(), jobManager)
+                        .execute(new String[]{"tt", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
             });

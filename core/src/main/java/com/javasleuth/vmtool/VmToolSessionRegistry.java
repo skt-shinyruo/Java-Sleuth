@@ -114,17 +114,9 @@ public final class VmToolSessionRegistry {
         public String getMessage() { return message; }
     }
 
-    private static VmToolSessionRegistry instance;
     private final ConcurrentHashMap<String, TrackSession> sessions = new ConcurrentHashMap<>();
 
-    private VmToolSessionRegistry() {}
-
-    public static synchronized VmToolSessionRegistry getInstance() {
-        if (instance == null) {
-            instance = new VmToolSessionRegistry();
-        }
-        return instance;
-    }
+    public VmToolSessionRegistry() {}
 
     public Map<String, TrackSession> listSessions() {
         return Collections.unmodifiableMap(sessions);
@@ -329,5 +321,23 @@ public final class VmToolSessionRegistry {
         String why = StringUtils.isBlank(reason) ? "" : (" reason=" + reason.trim());
         return StopResult.ok("vmtool tracks cleared. total=" + total + ", stopped=" + stopped + why);
     }
-}
 
+    /**
+     * Best-effort shutdown hook for detach/re-attach/tests.
+     *
+     * <p>Stops all tracks (attempts to remove enhancers + retransform) and clears local session index.</p>
+     */
+    public void shutdown(Instrumentation instrumentation, SleuthClassFileTransformer transformer, String reason) {
+        try {
+            stopAll(instrumentation, transformer, reason);
+        } catch (Exception ignore) {
+            // best-effort
+        } finally {
+            try {
+                sessions.clear();
+            } catch (Exception ignore) {
+                // best-effort
+            }
+        }
+    }
+}

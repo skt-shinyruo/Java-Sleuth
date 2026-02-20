@@ -20,7 +20,7 @@ public class SessionCommandTest {
         CommandContext ctx = new CommandContext("c1", "test", sessionId, false, false);
         CommandContextHolder.set(ctx);
         try {
-            SessionCommand cmd = new SessionCommand();
+            SessionCommand cmd = new SessionCommand(auth);
 
             String masked = cmd.execute(new String[]{"session"});
             assertNotNull(masked);

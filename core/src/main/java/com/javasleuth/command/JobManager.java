@@ -70,12 +70,6 @@ public final class JobManager {
         public String getError() { return error; }
     }
 
-    private static final JobManager INSTANCE = new JobManager();
-
-    public static JobManager getInstance() {
-        return INSTANCE;
-    }
-
     private final AtomicLong seq = new AtomicLong(1);
     private final ConcurrentHashMap<String, Job> jobs = new ConcurrentHashMap<>();
 
@@ -90,7 +84,7 @@ public final class JobManager {
     private final Object executorLock = new Object();
     private volatile ThreadPoolExecutor executor;
 
-    private JobManager() {}
+    public JobManager() {}
 
     public void configureRetention(int maxJobs, long jobTtlMs, int maxOutputBytesPerJob) {
         if (maxJobs > 0) {

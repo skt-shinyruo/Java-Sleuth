@@ -91,7 +91,7 @@ public final class ProtocolClient implements AutoCloseable {
             streamingEnabledHint,
             maxPayloadBytesHint,
             maxLineBytesHint,
-            RequestSecurityManager.getInstance()
+            RequestSecurityManager.createDefault()
         );
     }
 
@@ -104,6 +104,9 @@ public final class ProtocolClient implements AutoCloseable {
         int maxLineBytesHint,
         RequestSecurityManager securityManager
     ) throws IOException {
+        if (securityManager == null) {
+            throw new IllegalArgumentException("securityManager is required");
+        }
         return connect(
             host,
             port,
@@ -111,7 +114,7 @@ public final class ProtocolClient implements AutoCloseable {
             streamingEnabledHint,
             maxPayloadBytesHint,
             maxLineBytesHint,
-            (CommandSigner) (securityManager != null ? securityManager : RequestSecurityManager.getInstance())
+            (CommandSigner) securityManager
         );
     }
 
@@ -330,7 +333,7 @@ public final class ProtocolClient implements AutoCloseable {
                         streamingEnabledHint,
                         maxPayloadBytesHint,
                         maxLineBytesHint,
-                        RequestSecurityManager.getInstance(),
+                        RequestSecurityManager.createDefault(),
                         attemptHandshakeTimeout
                     );
                 } catch (IOException e) {

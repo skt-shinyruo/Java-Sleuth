@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 import javax.management.*;
 
 public class MetricsCollector implements MetricsCollectorMBean {
-    private final ProductionConfig config = ProductionConfig.getInstance();
+    private final ProductionConfig config;
     private final AtomicLong totalCommands = new AtomicLong(0);
     private final AtomicLong totalSessions = new AtomicLong(0);
     private final AtomicLong totalErrors = new AtomicLong(0);
@@ -77,7 +77,11 @@ public class MetricsCollector implements MetricsCollectorMBean {
         }
     }
 
-    public MetricsCollector() {
+    public MetricsCollector(ProductionConfig config) {
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
+        }
+        this.config = config;
         // Initialize metrics collection scheduler
         this.metricsExecutor = Executors.newScheduledThreadPool(
             1,

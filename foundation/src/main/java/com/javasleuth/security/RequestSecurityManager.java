@@ -55,7 +55,6 @@ public class RequestSecurityManager implements CommandSigner {
         }
     }
 
-    private static RequestSecurityManager instance;
     private final ProductionConfig config;
     private final AuditLogger auditLogger;
 
@@ -63,20 +62,27 @@ public class RequestSecurityManager implements CommandSigner {
     // bindingId is per-connection (sid from handshake).
     private final ConcurrentHashMap<String, Long> seenNonces = new ConcurrentHashMap<>();
 
+    /**
+     * 构造注入路径（推荐）。
+     *
+     * <p>注意：该构造器不再对 null 依赖做隐式单例回退，以避免“看似可注入、实际全局获取”的不透明依赖来源。</p>
+     */
     public RequestSecurityManager(ProductionConfig config, AuditLogger auditLogger) {
-        this.config = config != null ? config : ProductionConfig.getInstance();
-        this.auditLogger = auditLogger != null ? auditLogger : AuditLogger.getInstance();
-    }
-
-    private RequestSecurityManager() {
-        this(null, null);
-    }
-
-    public static synchronized RequestSecurityManager getInstance() {
-        if (instance == null) {
-            instance = new RequestSecurityManager();
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
         }
-        return instance;
+        if (auditLogger == null) {
+            throw new IllegalArgumentException("auditLogger is required");
+        }
+        this.config = config;
+        this.auditLogger = auditLogger;
+    }
+
+    /**
+     * 默认装配（显式列出依赖来源，避免构造器内部隐式 getInstance 回退）。
+     */
+    public static RequestSecurityManager createDefault() {
+        return new RequestSecurityManager(ProductionConfig.getInstance(), AuditLogger.getInstance());
     }
 
     public void shutdown() {
@@ -84,20 +90,6 @@ public class RequestSecurityManager implements CommandSigner {
             seenNonces.clear();
         } catch (Exception ignore) {
             // ignore
-        }
-    }
-
-    public static synchronized void shutdownInstance() {
-        RequestSecurityManager inst = instance;
-        if (inst == null) {
-            return;
-        }
-        try {
-            inst.shutdown();
-        } catch (Exception ignore) {
-            // ignore
-        } finally {
-            instance = null;
         }
     }
 

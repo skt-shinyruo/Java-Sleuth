@@ -49,17 +49,17 @@ public final class ServerBootstrapper {
         }
     }
 
-    public void configureJobManager(ProductionConfig config) {
-        if (config == null) {
+    public void configureJobManager(JobManager jobManager, ProductionConfig config) {
+        if (jobManager == null || config == null) {
             return;
         }
         try {
-            JobManager.getInstance().configureRetention(
+            jobManager.configureRetention(
                 config.getJobsMax(),
                 config.getJobsTtlMs(),
                 config.getJobsOutputMaxBytes()
             );
-            JobManager.getInstance().configureExecution(
+            jobManager.configureExecution(
                 config.getJobsMaxRunning(),
                 config.getJobsQueueCapacity()
             );
@@ -161,4 +161,3 @@ public final class ServerBootstrapper {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
     }
 }
-

@@ -27,6 +27,8 @@ Java-Sleuth 的主链路可以抽象为：
 - `core`（Agent Core）
   - Java Agent Core 入口：`com.javasleuth.agent.core.SleuthAgentCore`
   - 目标：在目标 JVM 内提供诊断能力与命令服务端
+  - 生命周期收口：运行时状态集中在 `com.javasleuth.agent.runtime.SleuthAgentRuntime`（per attach），`close()` 作为统一 shutdown 编排入口（避免 static 可变状态蔓延）
+  - 全局清理收口：bootstrap interceptor 的静态注册表清理由 `com.javasleuth.agent.runtime.AgentGlobalState` 统一封装（bridge-only、best-effort）
 - `launcher`
   - 本机启动器入口：`com.javasleuth.launcher.SleuthLauncher`
   - 目标：进程选择、Attach、协议客户端、交互 UI（可插拔运行模式）

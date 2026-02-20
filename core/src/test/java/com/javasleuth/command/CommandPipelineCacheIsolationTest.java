@@ -1,8 +1,11 @@
 package com.javasleuth.command;
 
 import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.security.AuditLogger;
+import com.javasleuth.security.AuthenticationManager;
 import com.javasleuth.security.AuthorizationManager;
 import com.javasleuth.security.CommandMeta;
+import com.javasleuth.security.DangerousCommandConfirmationManager;
 import com.javasleuth.security.InputValidator;
 import com.javasleuth.util.PerformanceOptimizer;
 import org.junit.Test;
@@ -25,7 +28,12 @@ public class CommandPipelineCacheIsolationTest {
             PerformanceOptimizer.clearCache();
 
             ProductionConfig config = ProductionConfig.getInstance();
-            CommandPipeline pipeline = new CommandPipeline(new InputValidator(), AuthorizationManager.getInstance(), config);
+            AuditLogger auditLogger = AuditLogger.getInstance();
+            AuthenticationManager authn = AuthenticationManager.getInstance();
+            AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
+            DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
+            InputValidator validator = new InputValidator(config, auditLogger);
+            CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
 
             AtomicInteger seq = new AtomicInteger(0);
             Command cmd = new Command() {
@@ -72,7 +80,12 @@ public class CommandPipelineCacheIsolationTest {
             PerformanceOptimizer.clearCache();
 
             ProductionConfig config = ProductionConfig.getInstance();
-            CommandPipeline pipeline = new CommandPipeline(new InputValidator(), AuthorizationManager.getInstance(), config);
+            AuditLogger auditLogger = AuditLogger.getInstance();
+            AuthenticationManager authn = AuthenticationManager.getInstance();
+            AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
+            DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
+            InputValidator validator = new InputValidator(config, auditLogger);
+            CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
 
             AtomicInteger seq = new AtomicInteger(0);
             Command cmd = new Command() {
