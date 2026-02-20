@@ -40,6 +40,8 @@
 - 202602132323_arch_boundary_lifecycle_singletons
 - 202602132355_typed_config_models
 - 202602132357_di_signer_interface
+- 202602141515_streaming_negotiation_ssot
+- 202602200937_watch_no_params_no_return_semantics
 
 ## 2026-01
 - 202601281207_sleuth_plugin_stream

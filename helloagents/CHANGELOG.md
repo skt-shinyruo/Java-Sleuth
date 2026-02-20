@@ -86,6 +86,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - Config/Sysprop 等命令输出对敏感值自动脱敏（避免控制台/日志泄露 secret）
 - 配置治理：引入强类型配置模型 `SleuthConfig`/`ServerConfig`/`ProtocolConfig`/`SecurityConfig` 与集中解析器 `SleuthConfigParser`；连接/会话边界（CommandClientHandler/HandshakeNegotiator/Launcher）统一解析默认与派生上限，`DefaultConfigFallback` 默认值收敛为 `SleuthDefaults`；补齐默认一致性与派生默认回归测试，降低“字符串 key + 多处默认值”漂移风险
 - Watch/Trace/Monitor/TT 方法匹配支持 `*` 通配符（例如 `execute*`），并修复异常路径退出事件捕获
+- watch 语义对齐：`--no-params/--no-return` 仅禁用值采集，不再抑制 METHOD_ENTRY/METHOD_EXIT 事件；未采集时输出 `<not captured>` 占位并通过 captured flags 区分“未采集”与真实 null
 - WatchResult 输出改为使用安全格式化（SleuthValueFormatter：限深/限长/脱敏）
 - Monitor/VmOption 命令接口调整为更贴近 Arthas 的简化子命令模型
 - 默认 trace 采样率调整为更保守值（`monitoring.trace.sample.rate=0.1`），降低高 QPS 场景误用风险
@@ -108,6 +109,8 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - PerformanceOptimizer/MemoryOptimizer 编译问题修复（静态 API/缓存清理/ MBean 接口）
 - Launcher 进程列表过滤后序号不一致导致的误选问题
 - Launcher 连接地址不再写死 localhost（按 bind 地址/协商信息解析，0.0.0.0/:: 回退 loopback）
+- Launcher/Attach 网络健壮性：移除注入后/连接前固定 sleep；ProtocolClient 增加 connect/握手 read 超时，并提供 `connectWithRetry`（有界重试 + 退避）避免“偶现连不上/卡住”
+- streaming 协商一致性：`ProtocolClient` 不再使用“只增不减”的 streaming 协商逻辑；当服务端 `CONFIG streaming=false` 时客户端强制关闭 streaming，避免 `STREAM ...` 期望与服务端退化执行不一致
 - 传输层消除 BufferedReader/PrintWriter 与 Data*Stream 混用导致的升级不稳定风险
 - detach→re-attach 残留治理补齐：Agent shutdown 路径显式清理 vmtool track sessions 与 bootstrap interceptor 缓存；Profiler 命令支持 close 并避免定时线程在 shutdown 后残留
 - AuthenticationManager 锁定窗口与客户端标识解析修复（支持 /ip:port、IPv6、unknown）
