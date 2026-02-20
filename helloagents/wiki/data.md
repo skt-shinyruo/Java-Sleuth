@@ -17,8 +17,10 @@
 | className | String | - | 类名 |
 | methodName | String | - | 方法名 |
 | methodDescriptor | String | - | 方法签名 |
-| parameters | Object[] | Nullable | 入口参数 |
-| returnValue | Object | Nullable | 返回值 |
+| parameters | Object[] | Nullable | 入口参数（未采集时可能为 null） |
+| parametersCaptured | boolean | default true | 是否采集了入口参数（用于区分“未采集”与真实 null/空） |
+| returnValue | Object | Nullable | 返回值（未采集时可能为 null） |
+| returnCaptured | boolean | default true | 是否采集了返回值（用于区分“未采集”与真实 null） |
 | exception | Throwable | Nullable | 异常 |
 | startTime | long | - | 纳秒时间 |
 | duration | long | - | 执行耗时 |

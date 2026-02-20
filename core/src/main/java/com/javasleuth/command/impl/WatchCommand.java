@@ -389,11 +389,19 @@ public class WatchCommand implements StreamCommand {
             sb.append(result.getClassName()).append(".").append(result.getMethodName());
         }
 
-        if (keys.contains("params") && result.getParameters() != null && result.getEventType() == WatchResult.EventType.METHOD_ENTRY) {
-            sb.append(" params=").append(SleuthValueFormatter.format(result.getParameters(), opt));
+        if (keys.contains("params") && result.getEventType() == WatchResult.EventType.METHOD_ENTRY) {
+            if (!result.isParametersCaptured()) {
+                sb.append(" params=<not captured>");
+            } else {
+                sb.append(" params=").append(SleuthValueFormatter.format(result.getParameters(), opt));
+            }
         }
         if (keys.contains("return") && result.getEventType() == WatchResult.EventType.METHOD_EXIT) {
-            sb.append(" return=").append(SleuthValueFormatter.format(result.getReturnValue(), opt));
+            if (!result.isReturnCaptured()) {
+                sb.append(" return=<not captured>");
+            } else {
+                sb.append(" return=").append(SleuthValueFormatter.format(result.getReturnValue(), opt));
+            }
         }
         if ((keys.contains("throw") || keys.contains("exception")) && result.getEventType() == WatchResult.EventType.METHOD_EXCEPTION) {
             sb.append(" throw=").append(SleuthValueFormatter.format(result.getException(), opt));

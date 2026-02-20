@@ -5,6 +5,7 @@ import com.javasleuth.util.SleuthValueFormatter;
 
 public class WatchResult implements Serializable {
     private static final long serialVersionUID = 1L;
+    private static final String NOT_CAPTURED = "<not captured>";
     private static final SleuthValueFormatter.Options FORMAT_OPTIONS =
         new SleuthValueFormatter.Options()
             .withMaxDepth(2)
@@ -21,7 +22,11 @@ public class WatchResult implements Serializable {
     private String methodName;
     private String methodDescriptor;
     private Object[] parameters;
+    // Default to true for backward-compatibility: old producers didn't set these flags.
+    private boolean parametersCaptured = true;
     private Object returnValue;
+    // Default to true for backward-compatibility: old producers didn't set these flags.
+    private boolean returnCaptured = true;
     private Object exception;
     private long startTime;
     private long duration;
@@ -45,8 +50,14 @@ public class WatchResult implements Serializable {
     public Object[] getParameters() { return parameters; }
     public void setParameters(Object[] parameters) { this.parameters = parameters; }
 
+    public boolean isParametersCaptured() { return parametersCaptured; }
+    public void setParametersCaptured(boolean parametersCaptured) { this.parametersCaptured = parametersCaptured; }
+
     public Object getReturnValue() { return returnValue; }
     public void setReturnValue(Object returnValue) { this.returnValue = returnValue; }
+
+    public boolean isReturnCaptured() { return returnCaptured; }
+    public void setReturnCaptured(boolean returnCaptured) { this.returnCaptured = returnCaptured; }
 
     public Object getException() { return exception; }
     public void setException(Object exception) { this.exception = exception; }
@@ -79,6 +90,9 @@ public class WatchResult implements Serializable {
     }
 
     public String formatParameters() {
+        if (!parametersCaptured) {
+            return "(" + NOT_CAPTURED + ")";
+        }
         if (parameters == null || parameters.length == 0) {
             return "()";
         }
@@ -93,6 +107,9 @@ public class WatchResult implements Serializable {
     }
 
     public String formatReturnValue() {
+        if (!returnCaptured) {
+            return NOT_CAPTURED;
+        }
         return formatObject(returnValue);
     }
 

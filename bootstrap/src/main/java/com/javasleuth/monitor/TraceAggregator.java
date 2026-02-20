@@ -101,6 +101,9 @@ public final class TraceAggregator {
     private final Options options;
     private final Map<Long, Deque<Node>> stacksByThread = new HashMap<>();
     private final Map<Long, Integer> nodeCountByThread = new HashMap<>();
+    // When we hit maxNodes we stop allocating new nodes, but we still need to keep entry/exit balanced
+    // so that subsequent exits don't pop real nodes from the stack.
+    private final Map<Long, Integer> droppedDepthByThread = new HashMap<>();
     private final List<Invocation> completed = new ArrayList<>();
 
     public TraceAggregator() {
@@ -148,6 +151,7 @@ public final class TraceAggregator {
         int currentNodes = nodeCountByThread.getOrDefault(tid, 0);
         if (currentNodes >= options.getMaxNodes()) {
             // Drop further nodes for this thread/invocation to avoid unbounded memory.
+            droppedDepthByThread.put(tid, droppedDepthByThread.getOrDefault(tid, 0) + 1);
             return;
         }
         Node node = new Node(e.getClassName(), e.getMethodName(), e.getMethodDescriptor(), e.getStartTime());
@@ -157,6 +161,20 @@ public final class TraceAggregator {
 
     private void onExit(long tid, TraceResult e, boolean exception) {
         Deque<Node> stack = stacksByThread.get(tid);
+        int droppedDepth = droppedDepthByThread.getOrDefault(tid, 0);
+        if (droppedDepth > 0) {
+            if (droppedDepth == 1) {
+                droppedDepthByThread.remove(tid);
+                // If we only have dropped frames and no tracked stack, clear state to avoid leaks.
+                if (stack == null || stack.isEmpty()) {
+                    stacksByThread.remove(tid);
+                    nodeCountByThread.remove(tid);
+                }
+            } else {
+                droppedDepthByThread.put(tid, droppedDepth - 1);
+            }
+            return;
+        }
         if (stack == null || stack.isEmpty()) {
             return;
         }
@@ -172,6 +190,7 @@ public final class TraceAggregator {
             completed.add(new Invocation(e.getTraceId(), tid, e.getThreadName(), node));
             stacksByThread.remove(tid);
             nodeCountByThread.remove(tid);
+            droppedDepthByThread.remove(tid);
         }
     }
 
@@ -196,4 +215,3 @@ public final class TraceAggregator {
         nodeCountByThread.put(tid, currentNodes + 1);
     }
 }
-

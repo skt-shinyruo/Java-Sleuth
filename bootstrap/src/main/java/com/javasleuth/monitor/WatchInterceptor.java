@@ -38,6 +38,11 @@ public class WatchInterceptor {
 
     public static void onMethodEntry(String watchId, String className, String methodName,
                                    String methodDesc, Object[] parameters, long startTime) {
+        onMethodEntry(watchId, className, methodName, methodDesc, parameters, startTime, true);
+    }
+
+    public static void onMethodEntry(String watchId, String className, String methodName,
+                                   String methodDesc, Object[] parameters, long startTime, boolean parametersCaptured) {
         if (!enabled) return;
 
         BlockingQueue<WatchResult> queue = watchQueues.get(watchId);
@@ -53,7 +58,12 @@ public class WatchInterceptor {
             result.setClassName(className);
             result.setMethodName(methodName);
             result.setMethodDescriptor(methodDesc);
-            result.setParameters(SleuthValueSnapshotter.snapshotParameters(parameters, SNAPSHOT_OPTIONS));
+            result.setParametersCaptured(parametersCaptured);
+            if (parametersCaptured) {
+                result.setParameters(SleuthValueSnapshotter.snapshotParameters(parameters, SNAPSHOT_OPTIONS));
+            } else {
+                result.setParameters(null);
+            }
             result.setStartTime(startTime);
             result.setEventType(WatchResult.EventType.METHOD_ENTRY);
             result.setThreadName(Thread.currentThread().getName());
@@ -67,6 +77,11 @@ public class WatchInterceptor {
 
     public static void onMethodExit(String watchId, String className, String methodName,
                                   String methodDesc, Object returnValue, long startTime, long duration) {
+        onMethodExit(watchId, className, methodName, methodDesc, returnValue, startTime, duration, true);
+    }
+
+    public static void onMethodExit(String watchId, String className, String methodName,
+                                  String methodDesc, Object returnValue, long startTime, long duration, boolean returnCaptured) {
         if (!enabled) return;
 
         BlockingQueue<WatchResult> queue = watchQueues.get(watchId);
@@ -82,7 +97,12 @@ public class WatchInterceptor {
             result.setClassName(className);
             result.setMethodName(methodName);
             result.setMethodDescriptor(methodDesc);
-            result.setReturnValue(SleuthValueSnapshotter.snapshotValue(returnValue, SNAPSHOT_OPTIONS));
+            result.setReturnCaptured(returnCaptured);
+            if (returnCaptured) {
+                result.setReturnValue(SleuthValueSnapshotter.snapshotValue(returnValue, SNAPSHOT_OPTIONS));
+            } else {
+                result.setReturnValue(null);
+            }
             result.setStartTime(startTime);
             result.setDuration(duration);
             result.setEventType(WatchResult.EventType.METHOD_EXIT);

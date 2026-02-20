@@ -95,26 +95,28 @@ public class WatchEnhancer implements ClassEnhancer {
             mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
             mv.visitVarInsn(LSTORE, startTimeVar);
 
-            if (captureParameters) {
-                // Call interceptor for method entry
-                generateMethodEntryCall();
-            }
+            // Always emit METHOD_ENTRY; captureParameters only controls whether we collect parameter values.
+            boolean parametersCaptured = captureParameters || Type.getArgumentTypes(methodDesc).length == 0;
+            generateMethodEntryCall(parametersCaptured);
         }
 
         @Override
         protected void onMethodExit(int opcode) {
             if (opcode != ATHROW) {
-                if (captureReturn) {
-                    Type returnType = Type.getReturnType(methodDesc);
-                    returnVar = -1;
-                    if (returnType.getSort() != Type.VOID) {
-                        returnVar = newLocal(returnType);
-                        mv.visitVarInsn(returnType.getOpcode(ISTORE), returnVar);
-                    }
-                    generateMethodExitCall(false, returnType, returnVar);
-                    if (returnType.getSort() != Type.VOID) {
-                        mv.visitVarInsn(returnType.getOpcode(ILOAD), returnVar);
-                    }
+                // Always emit METHOD_EXIT for normal returns; captureReturn only controls whether we collect return value.
+                Type returnType = Type.getReturnType(methodDesc);
+                boolean returnCaptured = captureReturn || returnType.getSort() == Type.VOID;
+
+                returnVar = -1;
+                if (returnType.getSort() != Type.VOID) {
+                    returnVar = newLocal(returnType);
+                    mv.visitVarInsn(returnType.getOpcode(ISTORE), returnVar);
+                }
+
+                generateMethodExitCall(false, returnType, returnVar, returnCaptured);
+
+                if (returnType.getSort() != Type.VOID) {
+                    mv.visitVarInsn(returnType.getOpcode(ILOAD), returnVar);
                 }
             }
         }
@@ -139,7 +141,7 @@ public class WatchEnhancer implements ClassEnhancer {
             }
         }
 
-        private void generateMethodEntryCall() {
+        private void generateMethodEntryCall(boolean parametersCaptured) {
             // Push watch ID
             mv.visitLdcInsn(watchId);
 
@@ -152,22 +154,29 @@ public class WatchEnhancer implements ClassEnhancer {
             // Push method descriptor
             mv.visitLdcInsn(methodDesc);
 
-            // Push parameters array
-            generateParametersArray();
+            // Push parameters array (or null if not captured)
+            if (parametersCaptured) {
+                generateParametersArray();
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
 
             // Push start time
             mv.visitVarInsn(LLOAD, startTimeVar);
 
+            // Push capture flag
+            push(parametersCaptured);
+
             // Call WatchInterceptor.onMethodEntry
             mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/monitor/WatchInterceptor",
-                "onMethodEntry", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/Object;J)V", false);
+                "onMethodEntry", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/Object;JZ)V", false);
         }
 
         private void generateMethodExitCall(boolean isException) {
-            generateMethodExitCall(isException, null, -1);
+            generateMethodExitCall(isException, null, -1, true);
         }
 
-        private void generateMethodExitCall(boolean isException, Type returnType, int returnVar) {
+        private void generateMethodExitCall(boolean isException, Type returnType, int returnVar, boolean returnCaptured) {
             // Push watch ID
             mv.visitLdcInsn(watchId);
 
@@ -184,15 +193,20 @@ public class WatchEnhancer implements ClassEnhancer {
                 // Push exception
                 mv.visitVarInsn(ALOAD, exceptionVar);
             } else {
-                // Push return value (boxed) without breaking original stack semantics.
-                if (returnType == null) {
-                    returnType = Type.getReturnType(methodDesc);
-                }
-                if (returnType.getSort() == Type.VOID || returnVar < 0) {
+                // Push return value (boxed) without breaking original stack semantics,
+                // or null if return capture is disabled.
+                if (!returnCaptured) {
                     mv.visitInsn(ACONST_NULL);
                 } else {
-                    mv.visitVarInsn(returnType.getOpcode(ILOAD), returnVar);
-                    generateReturnValueBoxing(returnType);
+                    if (returnType == null) {
+                        returnType = Type.getReturnType(methodDesc);
+                    }
+                    if (returnType.getSort() == Type.VOID || returnVar < 0) {
+                        mv.visitInsn(ACONST_NULL);
+                    } else {
+                        mv.visitVarInsn(returnType.getOpcode(ILOAD), returnVar);
+                        generateReturnValueBoxing(returnType);
+                    }
                 }
             }
 
@@ -209,9 +223,11 @@ public class WatchEnhancer implements ClassEnhancer {
                 mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/monitor/WatchInterceptor",
                     "onMethodException", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;JJ)V", false);
             } else {
+                // Push capture flag
+                push(returnCaptured);
                 // Call WatchInterceptor.onMethodExit
                 mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/monitor/WatchInterceptor",
-                    "onMethodExit", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;JJ)V", false);
+                    "onMethodExit", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;JJZ)V", false);
             }
         }
 
