@@ -1,8 +1,8 @@
-package com.javasleuth.enhancement;
+package com.javasleuth.core.enhancement;
 
-import com.javasleuth.compiler.MemoryJavaCompiler;
-import com.javasleuth.data.WatchResult;
-import com.javasleuth.monitor.WatchInterceptor;
+import com.javasleuth.bootstrap.data.WatchResult;
+import com.javasleuth.bootstrap.monitor.WatchInterceptor;
+import com.javasleuth.core.compiler.MemoryJavaCompiler;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
@@ -131,4 +131,3 @@ public class WatchEnhancerCaptureFlagsTest {
         }
     }
 }
-

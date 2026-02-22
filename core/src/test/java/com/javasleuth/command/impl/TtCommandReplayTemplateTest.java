@@ -1,10 +1,10 @@
-package com.javasleuth.command.impl;
+package com.javasleuth.core.command.impl;
 
-import com.javasleuth.command.JobManager;
-import com.javasleuth.data.TtRecord;
-import com.javasleuth.config.ProductionConfig;
-import com.javasleuth.enhancement.SleuthClassFileTransformer;
-import com.javasleuth.monitor.TtInterceptor;
+import com.javasleuth.core.command.JobManager;
+import com.javasleuth.bootstrap.data.TtRecord;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.bootstrap.monitor.TtInterceptor;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;

@@ -1,4 +1,4 @@
-package com.javasleuth.util;
+package com.javasleuth.core.util;
 
 import org.junit.Test;
 
@@ -31,4 +31,3 @@ public class SleuthObjectInspectorTest {
         assertTrue(out.contains("baseField"));
     }
 }
-

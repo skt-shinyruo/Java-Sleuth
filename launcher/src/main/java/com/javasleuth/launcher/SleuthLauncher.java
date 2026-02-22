@@ -6,9 +6,10 @@ package com.javasleuth.launcher;
  * <p>负责参数解析、组件装配与流程编排：JVM 发现/选择 → Attach 注入 → 交互/脚本协议会话。</p>
  */
 import com.sun.tools.attach.VirtualMachineDescriptor;
-import com.javasleuth.config.ProductionConfig;
-import com.javasleuth.config.model.SleuthConfig;
-import com.javasleuth.config.model.SleuthConfigParser;
+import com.javasleuth.bootstrap.util.JarLocator;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.config.model.SleuthConfig;
+import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.launcher.attach.AgentArgsBuilder;
 import com.javasleuth.launcher.attach.AgentAttacher;
 import com.javasleuth.launcher.attach.ToolsAttachApi;
@@ -25,8 +26,7 @@ import com.javasleuth.launcher.jvm.JvmSelector;
 import com.javasleuth.launcher.shell.DefaultStreamPolicy;
 import com.javasleuth.launcher.shell.HeadlessRunner;
 import com.javasleuth.launcher.shell.InteractiveShell;
-import com.javasleuth.util.JarLocator;
-import com.javasleuth.util.SleuthLogger;
+import com.javasleuth.foundation.util.SleuthLogger;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -79,9 +79,9 @@ public class SleuthLauncher {
             return 1;
         }
 
-        File coreJar = JarLocator.locateAgentCoreJar(SleuthLauncher.class);
-        if (coreJar == null && JarLocator.isBootstrapAgentJar(agentJar)) {
-            reportMissingCoreJar();
+        File containerJar = JarLocator.locateAgentContainerJar(SleuthLauncher.class);
+        if (containerJar == null && JarLocator.isBootstrapAgentJar(agentJar)) {
+            reportMissingContainerJar();
             return 1;
         }
 
@@ -106,7 +106,7 @@ public class SleuthLauncher {
             selectedVm.id(),
             selectedVm.displayName(),
             agentJar,
-            coreJar,
+            containerJar,
             insecureMode
         );
         if (!attached) {
@@ -135,18 +135,18 @@ public class SleuthLauncher {
         System.err.println("Or set -D" + JarLocator.AGENT_JAR_OVERRIDE_PROPERTY + "=<path> (or env " + JarLocator.AGENT_JAR_OVERRIDE_ENV + ")");
     }
 
-    private static void reportMissingCoreJar() {
-        String override = System.getProperty(JarLocator.AGENT_CORE_JAR_OVERRIDE_PROPERTY);
+    private static void reportMissingContainerJar() {
+        String override = System.getProperty(JarLocator.AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY);
         if (override == null || override.trim().isEmpty()) {
-            override = System.getenv(JarLocator.AGENT_CORE_JAR_OVERRIDE_ENV);
+            override = System.getenv(JarLocator.AGENT_CONTAINER_JAR_OVERRIDE_ENV);
         }
         if (override != null && !override.trim().isEmpty()) {
-            System.err.println("Agent CORE JAR not found at override path: " + override.trim());
+            System.err.println("Agent CONTAINER JAR not found at override path: " + override.trim());
         } else {
-            System.err.println("Agent CORE JAR not found on classpath/CodeSource/(core/target|target|lib)/.");
+            System.err.println("Agent CONTAINER JAR not found on classpath/CodeSource/(container/target|target|lib)/.");
         }
         System.err.println("Please build the project first with: mvn clean package");
-        System.err.println("Or set -D" + JarLocator.AGENT_CORE_JAR_OVERRIDE_PROPERTY + "=<path> (or env " + JarLocator.AGENT_CORE_JAR_OVERRIDE_ENV + ")");
+        System.err.println("Or set -D" + JarLocator.AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY + "=<path> (or env " + JarLocator.AGENT_CONTAINER_JAR_OVERRIDE_ENV + ")");
     }
 
     private VirtualMachineDescriptor selectTargetJvm(LauncherArgs args, JvmDiscovery discovery, JvmSelector selector) throws IOException {

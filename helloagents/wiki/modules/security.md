@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** InputValidator/AuditLogger/Auth/AuthZ/SecurityValidator
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-20
+- **Last Updated:** 2026-02-21
 - **Build Module:** foundation（低层基础模块）
 
 ## Specifications
@@ -29,6 +29,8 @@
 #### Scenario: 默认禁用插件时不加载 classpath provider
 前置：`plugins.enabled=false`  
 - 默认不加载目标进程 classpath 上的 `ServiceLoader` provider（需显式开启 `plugins.serviceloader.enabled=true`）
+补充：
+- provider 发现与插件供应链校验由 `com.javasleuth.core.command.plugin.CommandProviderLoader` 收口（allowlist+sha256），避免在 `CommandRegistry` 内混杂装配/校验/注册职责
 
 #### Scenario: 文件读取写入统一走 SecurityValidator
 前置：命令需要访问文件  
@@ -44,7 +46,8 @@
 #### Scenario: detach 时清理安全缓存（避免状态残留）
 前置：同一 JVM 内发生 detach → re-attach  
 - shutdown 编排会对注入的 `AuthorizationManager` / `RequestSecurityManager` / `DangerousCommandConfirmationManager` 执行 instance `shutdown()`（幂等 best-effort）
-- 对仍保留全局单例的组件（例如 `AuthenticationManager`、`DangerousCommandConfirmationManager` 等）再 best-effort 执行 `shutdownInstance()`，以支持同 JVM detach→re-attach
+- attach 生命周期边界以隔离 `URLClassLoader` 为准：shutdown 后由 `CoreClassLoaderRegistry.onCoreShutdown(...)` best-effort 释放/关闭并清引用 ClassLoader，使 core/foundation 的 static/singleton 随 ClassLoader 自然消亡（减少对 `shutdownInstance()` 的依赖）
+- `shutdownInstance()` 仅作为测试隔离或极端降级路径的 best-effort 工具（不再作为核心关闭语义）
 - 避免 rate limit/nonce/pending confirm 等状态跨 attach 残留，降低误判与不可预期行为
 - 约束补充：`AuthorizationManager` / `RequestSecurityManager` 的构造注入路径为 **strict non-null**（不再在构造器内对 null 依赖隐式回退到 `getInstance()`）；不提供 `getInstance()` 兼容入口，依赖来源必须显式装配（composition root 或 `createDefault()`）
 
@@ -142,7 +145,7 @@
 前置：命令被注册到 CommandRegistry  
 - `command` 层在注册命令时必须提供对应 `CommandMeta`（内置命令内置 meta；插件命令不提供 meta 则拒绝注册）
 - `AuthorizationManager` / `DangerousCommandConfirmationManager` 仅依赖 `CommandMeta` 入参完成校验与挑战/确认流程
-- `CommandMeta` 位于低层（`com.javasleuth.security.CommandMeta`），以编译期边界避免 `security -> command` 反向依赖
+- `CommandMeta` 位于低层（`com.javasleuth.foundation.security.CommandMeta`），以编译期边界避免 `security -> command` 反向依赖
 
 ### Requirement: 安全默认边界
 **Module:** security

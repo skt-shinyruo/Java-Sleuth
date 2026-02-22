@@ -1,8 +1,8 @@
-package com.javasleuth.command;
+package com.javasleuth.core.command;
 
-import com.javasleuth.command.protocol.Utf8LineCodec;
-import com.javasleuth.config.ProductionConfig;
-import com.javasleuth.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.foundation.command.protocol.Utf8LineCodec;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import java.io.BufferedInputStream;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;

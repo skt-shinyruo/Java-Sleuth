@@ -1,8 +1,8 @@
 package com.javasleuth.launcher.client;
 
-import com.javasleuth.command.CommandProcessor;
-import com.javasleuth.config.ProductionConfig;
-import com.javasleuth.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.command.CommandProcessor;
+import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.foundation.config.ProductionConfig;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;

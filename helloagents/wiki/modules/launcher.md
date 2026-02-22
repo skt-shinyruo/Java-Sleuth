@@ -39,6 +39,8 @@
 - `AttachApi`：Attach 能力抽象
 - `ToolsAttachApi`：基于 `com.sun.tools.attach` 的实现
 - `AgentArgsBuilder`：构造 agent 参数（避免散落的字符串拼接）
+  - 产物定位：通过 `JarLocator` 定位 bootstrap agent jar 与隔离域 container fat-jar
+  - 注入参数：默认使用 `containerJar=/path/to/java-sleuth-container-*-jar-with-dependencies.jar`
 - `AgentAttacher`：执行 attach + loadAgent
 
 ### 3.4 `client`

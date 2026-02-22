@@ -47,6 +47,12 @@
 - 202602201353_compress_global_state_v3
 - 202602201418_compress_global_state_v4
 - 202602201447_remove_legacy_compat_v5
+- 202602211821_module_package_prefixization
+- 202602211827_config_ssot_schema_codegen
+- 202602211832_container_modularization
+- 202602211835_reattach_bootstrap_gate_reset
+- 202602211837_arthas_classloader_lifecycle
+- 202602221036_remove_productionconfig_domain_getters
 
 ## 2026-01
 - 202601281207_sleuth_plugin_stream

@@ -1,7 +1,7 @@
-package com.javasleuth.command;
+package com.javasleuth.core.command;
 
-import com.javasleuth.security.AuthenticationManager.UserRole;
-import com.javasleuth.security.CommandMeta;
+import com.javasleuth.foundation.security.AuthenticationManager.UserRole;
+import com.javasleuth.foundation.security.CommandMeta;
 import java.util.Locale;
 import org.junit.Assert;
 import org.junit.Test;

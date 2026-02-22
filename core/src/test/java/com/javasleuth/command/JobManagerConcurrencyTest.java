@@ -1,4 +1,4 @@
-package com.javasleuth.command;
+package com.javasleuth.core.command;
 
 import org.junit.Test;
 

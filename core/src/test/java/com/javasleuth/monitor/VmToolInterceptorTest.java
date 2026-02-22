@@ -1,4 +1,4 @@
-package com.javasleuth.monitor;
+package com.javasleuth.bootstrap.monitor;
 
 import org.junit.Test;
 
@@ -39,4 +39,3 @@ public class VmToolInterceptorTest {
         assertTrue(VmToolInterceptor.listInstances(id, 10, false).isEmpty());
     }
 }
-

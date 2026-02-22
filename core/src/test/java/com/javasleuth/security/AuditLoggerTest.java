@@ -1,4 +1,4 @@
-package com.javasleuth.security;
+package com.javasleuth.foundation.security;
 
 import org.junit.Test;
 
@@ -72,7 +72,7 @@ public class AuditLoggerTest {
 
             AuditLogger logger = AuditLogger.getInstance();
 
-            Class<?> eventClass = Class.forName("com.javasleuth.security.AuditLogger$AuditEvent");
+            Class<?> eventClass = Class.forName("com.javasleuth.foundation.security.AuditLogger$AuditEvent");
             Constructor<?> ctor = eventClass.getDeclaredConstructor(
                 String.class,
                 String.class,

@@ -1,6 +1,6 @@
-package com.javasleuth.enhancement;
+package com.javasleuth.core.enhancement;
 
-import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.foundation.config.ProductionConfig;
 import org.junit.Test;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;

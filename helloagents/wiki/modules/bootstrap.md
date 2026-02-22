@@ -4,9 +4,9 @@
 承载 **必须 bootstrap 可见** 的 spy/bridge 类（JDK-only），供增强代码在业务线程中直接调用。
 
 ## Module Overview
-- **Responsibility:** monitor 拦截器、共享数据模型、轻量共享工具（值快照/环形缓冲/产物定位/agentArgs 落地）
+- **Responsibility:** monitor 拦截器、共享数据模型、轻量共享工具（值快照/环形缓冲/产物定位/agentArgs 落地、attach gate/隔离 ClassLoader 生命周期桥接）
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-13
+- **Last Updated:** 2026-02-21
 - **Build Module:** bootstrap（`java-sleuth-bootstrap`）
 
 ## Specifications
@@ -17,8 +17,8 @@
 
 #### Scenario: 仅桥接类可见
 前置：attach 注入成功  
-- 业务代码可见 `com.javasleuth.monitor/*`、`com.javasleuth.data/*` 等桥接类型
-- 业务代码不可见 `foundation` 下的 config/security/command-protocol 等实现细节
+- 业务代码可见 `com.javasleuth.bootstrap.monitor.*`、`com.javasleuth.bootstrap.data.*` 等桥接类型
+- 业务代码不可见 `com.javasleuth.foundation.config.*` / `com.javasleuth.foundation.security.*` / `com.javasleuth.foundation.command.protocol.*` 等实现细节
 
 ### Requirement: 规则 SSOT（避免漂移）
 **Module:** bootstrap
@@ -26,8 +26,9 @@ jar 定位与 agentArgs 落地规则统一，供 launcher/agent/core 复用。
 
 #### Scenario: 产物定位与参数落地一致
 前置：发布包 / IDE / 任意 cwd  
-- `JarLocator` 以 Manifest marker 定位 `agent`/`core` 产物，并支持 sysprop/env 覆盖
-- `AgentArgsApplier` 统一 `agentArgs` 解析并写入 `sleuth.*` sysprop（bootstrap/core 共用）
+- `com.javasleuth.bootstrap.util.JarLocator` 以 Manifest marker 定位 `agent`/`container` 产物，并支持 sysprop/env 覆盖
+- `com.javasleuth.bootstrap.util.AgentArgsApplier` 统一 `agentArgs` 解析并写入 `sleuth.*` sysprop（bootstrap/container/core 共用）
+- `com.javasleuth.bootstrap.agent.CoreClassLoaderRegistry` 作为 attach gate SSOT：登记隔离 `URLClassLoader`，并在 shutdown 后 best-effort 关闭/清引用，支持 detach→re-attach
 
 ## API Interfaces
 N/A

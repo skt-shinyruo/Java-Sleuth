@@ -1,6 +1,6 @@
-package com.javasleuth.enhancement;
+package com.javasleuth.core.enhancement;
 
-import com.javasleuth.compiler.MemoryJavaCompiler;
+import com.javasleuth.core.compiler.MemoryJavaCompiler;
 import java.lang.reflect.Method;
 import java.util.Map;
 import org.junit.Assert;
@@ -117,4 +117,3 @@ public class EnhancerSemanticsTest {
         }
     }
 }
-

@@ -6,7 +6,8 @@
 ## Module Overview
 - **Responsibility:** 默认配置、外部配置、系统属性覆盖
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-10
+- **Last Updated:** 2026-02-21
+- **Build Module:** foundation（低层基础模块）
 
 ## Specifications
 
@@ -26,18 +27,35 @@
 - 读取 /sleuth-default.properties
 - 读取 sleuth.properties（若存在，或通过 `-Dsleuth.config.file=/path/to/sleuth.properties` 指定）
 - 读取 -Dsleuth.* 覆盖
+补充（attach 入口参数）：
+- Launcher/脚本可通过 agentArgs `containerJar=/path/to/java-sleuth-container-*-jar-with-dependencies.jar` 显式指定隔离域容器产物
+- 或通过 override：`-Dsleuth.agent.container.jar=...` / `SLEUTH_AGENT_CONTAINER_JAR=...`（由 `JarLocator` 解析）
 
 #### Scenario: 优先级可解释（含运行时覆盖）
 前置：同一 key 同时存在多来源  
 - 读取优先级：`runtime overrides > system properties > file > default`
 - `config get <key>` 会返回 masked value + origin（便于定位“为什么变了”）
 
+### Requirement: Schema 作为 SSOT（SleuthConfigSchema）
+**Module:** config
+为把“key 列表 / 类型 / 默认值 / 敏感标记 / 失败策略 / 派生默认”收敛到单一事实源，并避免 properties / fallback / typed 三处漂移，引入 Schema：
+- `com.javasleuth.foundation.config.schema.ConfigKey`：描述单个配置项（type/default/sensitive/failurePolicy/range/allowed/derivedDefault）
+- `com.javasleuth.foundation.config.schema.SleuthConfigSchema`：注册全部配置 key（与 `/sleuth-default.properties` 对齐）
+- `com.javasleuth.foundation.config.schema.ConfigSchemaValidator`：仅校验 Schema 自身完整性（key 唯一性、默认值、敏感标记、关键边界 FAIL_FAST 等）
+- `com.javasleuth.foundation.config.schema.SleuthSchemaVerifierMain`：构建期强一致性校验（Schema ↔ `/sleuth-default.properties` ↔ `SleuthDefaults`）
+
+#### Scenario: 构建期强一致性校验（防默认漂移）
+前置：CI/本地构建执行 `verify` 阶段  
+- `foundation/pom.xml` 在 `verify` 阶段执行 `SleuthSchemaVerifierMain`
+- 若发现 keys/默认值/敏感标记漂移，会 fail-fast 终止构建
+- 本地复现命令：`mvn -pl foundation -DskipTests=true verify`
+
 ### Requirement: 强类型配置模型（Typed Config Models）
 **Module:** config
 为降低“字符串 key + 多处默认值”导致的漂移风险，引入强类型配置模型，并建议在连接/会话等边界处一次性解析校验：
 
-- `com.javasleuth.config.model.SleuthConfig`：聚合 `ServerConfig` / `ProtocolConfig` / `SecurityConfig`
-- `com.javasleuth.config.model.SleuthConfigParser`：从 `ConfigView`（建议 `ConfigSnapshot`）解析强类型配置，集中处理默认值/校验/归一化规则
+- `com.javasleuth.foundation.config.model.SleuthConfig`：聚合 `ServerConfig` / `ProtocolConfig` / `SecurityConfig`
+- `com.javasleuth.foundation.config.model.SleuthConfigParser`：从 `ConfigView`（建议 `ConfigSnapshot`）解析强类型配置，集中处理默认值/校验/归一化规则
 
 #### Scenario: server/launcher 统一协议上限默认（派生默认）
 前置：用户仅覆盖 `protocol.frame.max.payload`，未显式覆盖 `protocol.text.max.line.bytes`  
@@ -47,8 +65,17 @@
 
 #### Scenario: 默认值一致性可回归验证
 前置：CI/本地单测执行  
-- `SleuthDefaults` 作为“资源缺失时的 fallback 默认集合”，`DefaultConfigFallback` 仅委托调用，避免手写默认散落  
-- 单测确保 `/sleuth-default.properties` 与 fallback 默认一致（防止默认值漂移回归）
+- `SleuthConfigSchema` 作为默认值/策略的 SSOT，`SleuthDefaults` 作为“资源缺失时的 fallback 默认集合”由 Schema 驱动生成（避免手写默认散落）  
+- 单测与构建期校验同时覆盖：
+  - 单测确保 `/sleuth-default.properties` ↔ Schema ↔ `SleuthDefaults` 一致（快速回归）
+  - `verify` 阶段执行 `SleuthSchemaVerifierMain` 做强一致性校验（构建期 fail-fast）
+
+### Requirement: ProductionConfig domain getters 退场护栏
+**Module:** config
+`ProductionConfig` 仍作为加载/覆写/持久化的 Facade，但 **不再暴露** `getXxx()/isXxx()/areXxx()` 这类内置默认/校验的 domain getters（legacy 读取方式已移除）：
+- 新代码优先使用 `ConfigSnapshot/ConfigView -> SleuthConfigParser -> typed config`
+- 低层/工具类若需要直接读单个 key，使用 `SleuthConfigSchema.<KEY>.read(ConfigView)` 保证一致的默认/校验/派生策略
+- 编译期约束：domain getters 已从 `ProductionConfig` 移除，任何残留调用点会直接编译失败，避免旧逻辑回流
 
 ### Requirement: 安全/协议新增配置项
 **Module:** config
@@ -105,9 +132,9 @@
 - `config save --include-runtime`：合并保存 runtime overrides（覆盖同名 key），便于“调试 -> 固化 -> 重启验证”
 
 ## API Interfaces
-- `com.javasleuth.config.ConfigView`：只读配置访问（建议核心链路依赖该窄接口）
-- `com.javasleuth.config.MutableConfig`：运行时覆写写入入口（带 source）
-- `com.javasleuth.config.RuntimeConfigStore` / `ConfigChange`：运行时覆写存储与审计记录
+- `com.javasleuth.foundation.config.ConfigView`：只读配置访问（建议核心链路依赖该窄接口）
+- `com.javasleuth.foundation.config.MutableConfig`：运行时覆写写入入口（带 source）
+- `com.javasleuth.foundation.config.RuntimeConfigStore` / `ConfigChange`：运行时覆写存储与审计记录
 
 ## Notes
 - 禁用配置键校验（legacy 协议遗留键）默认严格拒绝：`protocol.handshake.enabled`、`protocol.text.end.marker.enabled`

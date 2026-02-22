@@ -1,15 +1,15 @@
-package com.javasleuth.command;
+package com.javasleuth.core.command;
 
-import com.javasleuth.command.impl.TraceCommand;
-import com.javasleuth.command.impl.TtCommand;
-import com.javasleuth.command.impl.WatchCommand;
-import com.javasleuth.command.session.ClientSessionRegistry;
-import com.javasleuth.command.session.ClientSession;
-import com.javasleuth.config.ProductionConfig;
-import com.javasleuth.enhancement.SleuthClassFileTransformer;
-import com.javasleuth.monitor.TraceInterceptor;
-import com.javasleuth.monitor.TtInterceptor;
-import com.javasleuth.monitor.WatchInterceptor;
+import com.javasleuth.core.command.impl.TraceCommand;
+import com.javasleuth.core.command.impl.TtCommand;
+import com.javasleuth.core.command.impl.WatchCommand;
+import com.javasleuth.core.command.session.ClientSessionRegistry;
+import com.javasleuth.core.command.session.ClientSession;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.bootstrap.monitor.TraceInterceptor;
+import com.javasleuth.bootstrap.monitor.TtInterceptor;
+import com.javasleuth.bootstrap.monitor.WatchInterceptor;
 import org.junit.Assert;
 import org.junit.Test;
 

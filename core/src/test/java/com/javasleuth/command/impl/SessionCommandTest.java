@@ -1,8 +1,8 @@
-package com.javasleuth.command.impl;
+package com.javasleuth.core.command.impl;
 
-import com.javasleuth.command.CommandContext;
-import com.javasleuth.command.CommandContextHolder;
-import com.javasleuth.security.AuthenticationManager;
+import com.javasleuth.core.command.CommandContext;
+import com.javasleuth.core.command.CommandContextHolder;
+import com.javasleuth.foundation.security.AuthenticationManager;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

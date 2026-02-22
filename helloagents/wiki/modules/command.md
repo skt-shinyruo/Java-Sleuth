@@ -2,7 +2,7 @@
 
 ## 1. 模块职责（目标 JVM 内）
 
-`command` 相关代码主要位于 `core/src/main/java/com/javasleuth/command/*`，运行在 **目标 JVM（agent-core）** 内，承担：
+`command` 相关代码主要位于 `core/src/main/java/com/javasleuth/core/command/*`，运行在 **目标 JVM（agent-core）** 内，承担：
 
 - 命令注册、解析与分发（registry/parser/provider）
 - 命令执行管线（pipeline/job manager）
@@ -17,11 +17,13 @@
 - `CommandArgs`：参数解析后的结构化对象
 - `CommandContext`：一次请求的上下文（身份/权限/连接信息等）
 - `CommandRegistry` / `CommandProvider`：命令注册与聚合
-  - 允许在装配链路中向 builtin provider 传递关键依赖（如 auth/session/confirm manager），减少命令实现内部的 `getInstance()` 隐式依赖
-  - 注入优先：`CommandRegistry` / `BuiltinCommandProvider` 的构造器为 strict non-null（不再在构造器内对 null 依赖隐式回退到 `getInstance()`）；不提供 legacy/简化构造器，依赖必须在装配层显式提供
-  - 装配收口：`JobManager` / `VmToolSessionRegistry` 由 `SleuthAgentRuntime`（per attach）持有，并在 `CommandProcessorFactory` 装配阶段注入到 `CommandRegistry`/`BuiltinCommandProvider`；命令实现仅接收注入对象，不再在执行路径内散落 `getInstance()` 获取
-    - `PerformanceOptimizer` 仍为全局组件（MBean/维护线程等），但其获取点收口到装配层，避免 provider/命令实现内部隐式取单例
-  - shutdown 路径会 best-effort 关闭实现了 `AutoCloseable` 的命令（例如带自建调度器/后台线程的命令），避免 detach 后残留后台任务
+  - Registry 职责收敛：`CommandRegistry` 仅负责“聚合注册 + 冲突策略 + 关闭编排”
+    - 冲突策略显式类型化：`CommandConflictStrategy`（prefer-builtin/prefer-plugin/fail）
+    - shutdown 会 best-effort 关闭实现了 `AutoCloseable` 的命令，并在最后关闭插件 classloader（若存在）
+  - Provider 发现与插件供应链校验剥离：
+    - provider 发现（ServiceLoader/插件目录）与 allowlist+sha256 校验由 `com.javasleuth.core.command.plugin.CommandProviderLoader` 负责
+    - composition root（当前为 `CommandProcessorFactory` / container 入口）负责构建 provider 列表并交给 registry 注册
+  - 约束：插件命令必须提供 `CommandMeta`（不提供则拒绝注册），避免安全层与命令层的 SSOT 漂移
 
 ### 2.2 服务端生命周期拆分（去 God class）
 
@@ -49,7 +51,7 @@
 
 ### 2.3 协议集成（server side）
 
-`core/src/main/java/com/javasleuth/command/server/protocol/*`：
+`core/src/main/java/com/javasleuth/core/command/server/protocol/*`：
 
 - `HandshakeNegotiator`：握手/协商（含安全相关协商点）
 - `FramedClientCommandHandler`：framed 请求处理（协议状态机与执行边界）
@@ -61,7 +63,7 @@
 
 - `ClientSessionIndex`：封装 `clientId -> sessionId` 映射，替代在多个组件间直接共享 `ConcurrentHashMap`，显式化会话索引边界并降低状态穿透
 
-补充（SSOT）：`HELLO/CONFIG/SIG` 这类行级 `k=v` 解析统一由 `foundation/src/main/java/com/javasleuth/command/protocol/KvLineCodec.java` 提供（key 归一化使用 `toLowerCase(Locale.ROOT)`，并由 `KvLineCodecTest` 覆盖关键边界），避免 launcher/server/security 各自维护解析规则导致漂移。
+补充（SSOT）：`HELLO/CONFIG/SIG` 这类行级 `k=v` 解析统一由 `foundation/src/main/java/com/javasleuth/foundation/command/protocol/KvLineCodec.java` 提供（key 归一化使用 `toLowerCase(Locale.ROOT)`，并由 `KvLineCodecTest` 覆盖关键边界），避免 launcher/server/security 各自维护解析规则导致漂移。
 
 ## 3. 约束与注意事项
 
@@ -69,4 +71,5 @@
 - **资源治理**：accept 循环需要显式限流/拒绝策略，避免目标 JVM 被诊断流量拖垮
 - **detach/reattach 语义**：shutdown 编排需要覆盖“网络/线程池/安全缓存/插件 classloader”等关键资源，避免同 JVM 二次 attach 时状态残留
   - 补充：包含命令级后台资源（如 profiler scheduler）与 vmtool track 这类“跨调用会话状态”（session registry + bootstrap interceptor cache）
+  - 补充：隔离 `URLClassLoader` 作为一次 attach 的生命周期边界；shutdown 后由 `CoreClassLoaderRegistry.onCoreShutdown(...)` best-effort 释放/关闭该 ClassLoader，降低 JAR 锁与 static 状态残留风险
 - **可测试性优先**：尽量把“线程/IO/生命周期”与“纯逻辑”分离，降低 flaky 风险

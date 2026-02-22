@@ -1,12 +1,12 @@
 package com.javasleuth.launcher.client;
 
-import com.javasleuth.command.protocol.BinaryFrame;
-import com.javasleuth.command.protocol.BinaryFrameCodec;
-import com.javasleuth.command.protocol.Frame;
-import com.javasleuth.command.protocol.FrameCodec;
-import com.javasleuth.command.protocol.Utf8LineCodec;
-import com.javasleuth.security.CommandSigner;
-import com.javasleuth.security.RequestSecurityManager;
+import com.javasleuth.foundation.command.protocol.BinaryFrame;
+import com.javasleuth.foundation.command.protocol.BinaryFrameCodec;
+import com.javasleuth.foundation.command.protocol.Frame;
+import com.javasleuth.foundation.command.protocol.FrameCodec;
+import com.javasleuth.foundation.command.protocol.Utf8LineCodec;
+import com.javasleuth.foundation.security.CommandSigner;
+import com.javasleuth.foundation.security.RequestSecurityManager;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;

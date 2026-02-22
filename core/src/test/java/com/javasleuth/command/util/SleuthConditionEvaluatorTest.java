@@ -1,6 +1,6 @@
-package com.javasleuth.command.util;
+package com.javasleuth.core.command.util;
 
-import com.javasleuth.data.WatchResult;
+import com.javasleuth.bootstrap.data.WatchResult;
 import org.junit.Test;
 
 import java.util.Arrays;

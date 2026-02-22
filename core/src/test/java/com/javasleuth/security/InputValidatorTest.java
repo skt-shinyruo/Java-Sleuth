@@ -1,6 +1,6 @@
-package com.javasleuth.security;
+package com.javasleuth.foundation.security;
 
-import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.foundation.config.ProductionConfig;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

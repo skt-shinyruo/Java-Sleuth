@@ -1,4 +1,4 @@
-package com.javasleuth.util;
+package com.javasleuth.foundation.util;
 
 import org.junit.Test;
 
@@ -15,4 +15,3 @@ public class WildcardMatcherTest {
         assertTrue(WildcardMatcher.matches("Foo", "Foo"));
     }
 }
-

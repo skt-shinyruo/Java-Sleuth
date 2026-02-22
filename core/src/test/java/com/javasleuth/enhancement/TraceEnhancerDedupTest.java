@@ -1,6 +1,6 @@
-package com.javasleuth.enhancement;
+package com.javasleuth.core.enhancement;
 
-import com.javasleuth.compiler.MemoryJavaCompiler;
+import com.javasleuth.core.compiler.MemoryJavaCompiler;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Assert;
@@ -42,7 +42,7 @@ public class TraceEnhancerDedupTest {
                 return new MethodVisitor(Opcodes.ASM9, mv) {
                     @Override
                     public void visitMethodInsn(int opcode, String owner, String methodName, String desc, boolean itf) {
-                        if ("com/javasleuth/monitor/TraceInterceptor".equals(owner) && "onSubMethodCall".equals(methodName)) {
+                        if ("com/javasleuth/bootstrap/monitor/TraceInterceptor".equals(owner) && "onSubMethodCall".equals(methodName)) {
                             subCallCountInA.incrementAndGet();
                         }
                         super.visitMethodInsn(opcode, owner, methodName, desc, itf);
@@ -73,4 +73,3 @@ public class TraceEnhancerDedupTest {
         return cw.toByteArray();
     }
 }
-

@@ -14,56 +14,56 @@ public final class SleuthTestState {
 
         // Bootstrap-side registries (spy/bridge layer)
         try {
-            com.javasleuth.monitor.VmToolInterceptor.clearAll();
+            com.javasleuth.bootstrap.monitor.VmToolInterceptor.clearAll();
         } catch (Exception ignore) {
             // ignore
         }
         try {
-            com.javasleuth.monitor.WatchInterceptor.unregisterAllWatches();
+            com.javasleuth.bootstrap.monitor.WatchInterceptor.unregisterAllWatches();
         } catch (Exception ignore) {
             // ignore
         }
         try {
-            com.javasleuth.monitor.TraceInterceptor.unregisterAllTraces();
+            com.javasleuth.bootstrap.monitor.TraceInterceptor.unregisterAllTraces();
         } catch (Exception ignore) {
             // ignore
         }
         try {
-            com.javasleuth.monitor.MonitorInterceptor.unregisterAllMonitors();
+            com.javasleuth.bootstrap.monitor.MonitorInterceptor.unregisterAllMonitors();
         } catch (Exception ignore) {
             // ignore
         }
         try {
-            com.javasleuth.monitor.TtInterceptor.unregisterAll();
+            com.javasleuth.bootstrap.monitor.TtInterceptor.unregisterAll();
         } catch (Exception ignore) {
             // ignore
         }
         try {
-            com.javasleuth.monitor.StackInterceptor.unregisterAll();
+            com.javasleuth.bootstrap.monitor.StackInterceptor.unregisterAll();
         } catch (Exception ignore) {
             // ignore
         }
 
         // Security-related singletons
         try {
-            com.javasleuth.security.AuthenticationManager.shutdownInstance();
+            com.javasleuth.foundation.security.AuthenticationManager.shutdownInstance();
         } catch (Exception ignore) {
             // ignore
         }
         try {
-            com.javasleuth.security.DangerousCommandConfirmationManager.shutdownInstance();
+            com.javasleuth.foundation.security.DangerousCommandConfirmationManager.shutdownInstance();
         } catch (Exception ignore) {
             // ignore
         }
 
         // Runtime optimizers (MBeans / caches)
         try {
-            com.javasleuth.util.PerformanceOptimizer.shutdown();
+            com.javasleuth.foundation.util.PerformanceOptimizer.shutdown();
         } catch (Exception ignore) {
             // ignore
         }
         try {
-            com.javasleuth.util.MemoryOptimizer.shutdownInstance();
+            com.javasleuth.foundation.util.MemoryOptimizer.shutdownInstance();
         } catch (Exception ignore) {
             // ignore
         }

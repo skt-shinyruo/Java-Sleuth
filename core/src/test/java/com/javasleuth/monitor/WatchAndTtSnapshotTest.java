@@ -1,8 +1,8 @@
-package com.javasleuth.monitor;
+package com.javasleuth.bootstrap.monitor;
 
-import com.javasleuth.data.TtRecord;
-import com.javasleuth.data.WatchResult;
-import com.javasleuth.util.SleuthSnapshotValue;
+import com.javasleuth.bootstrap.data.TtRecord;
+import com.javasleuth.bootstrap.data.WatchResult;
+import com.javasleuth.bootstrap.util.SleuthSnapshotValue;
 import org.junit.Test;
 
 import java.util.concurrent.BlockingQueue;
@@ -52,4 +52,3 @@ public class WatchAndTtSnapshotTest {
         }
     }
 }
-

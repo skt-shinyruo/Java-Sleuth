@@ -1,4 +1,4 @@
-package com.javasleuth.util;
+package com.javasleuth.bootstrap.util;
 
 import org.junit.Test;
 
@@ -58,6 +58,30 @@ public class JarLocatorTest {
                 System.clearProperty(JarLocator.AGENT_CORE_JAR_OVERRIDE_PROPERTY);
             } else {
                 System.setProperty(JarLocator.AGENT_CORE_JAR_OVERRIDE_PROPERTY, old);
+            }
+        }
+    }
+
+    @Test
+    public void testLocateAgentContainerJarByOverrideProperty() throws Exception {
+        String old = System.getProperty(JarLocator.AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY);
+        File tmp = File.createTempFile("sleuth-agent-container-", ".jar");
+        tmp.deleteOnExit();
+
+        try {
+            Map<String, String> mf = new HashMap<>();
+            mf.put(JarLocator.MANIFEST_MARKER_CONTAINER, "true");
+            writeJarWithManifest(tmp, mf);
+
+            System.setProperty(JarLocator.AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY, tmp.getAbsolutePath());
+            File located = JarLocator.locateAgentContainerJar(JarLocatorTest.class);
+            assertNotNull(located);
+            assertEquals(tmp.getAbsolutePath(), located.getAbsolutePath());
+        } finally {
+            if (old == null) {
+                System.clearProperty(JarLocator.AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY);
+            } else {
+                System.setProperty(JarLocator.AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY, old);
             }
         }
     }

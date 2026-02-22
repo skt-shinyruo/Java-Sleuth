@@ -1,7 +1,7 @@
-package com.javasleuth.command;
+package com.javasleuth.core.command;
 
-import com.javasleuth.config.ProductionConfig;
-import com.javasleuth.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import org.junit.Assert;
 import org.junit.Test;
 

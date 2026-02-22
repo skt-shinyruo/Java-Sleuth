@@ -1,4 +1,4 @@
-package com.javasleuth.util;
+package com.javasleuth.foundation.util;
 
 import org.junit.Test;
 import org.objectweb.asm.ClassWriter;
@@ -118,4 +118,3 @@ public class LoadedClassResolverTest {
         return cw.toByteArray();
     }
 }
-

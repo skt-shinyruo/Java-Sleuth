@@ -17,18 +17,25 @@ Java-Sleuth 的主链路可以抽象为：
 
 - `bootstrap`
   - **Bootstrap 可见桥接层（spy/bridge，JDK-only）**
-  - 承载增强代码直接调用的拦截器与共享模型：`com.javasleuth.monitor/*`、`com.javasleuth.data/*`
-  - 承载轻量共享工具（值快照/环形缓冲/产物定位/agentArgs 解析）：`com.javasleuth.util/*`
+  - 承载增强代码直接调用的拦截器与共享模型：`com.javasleuth.bootstrap.monitor.*`、`com.javasleuth.bootstrap.data.*`
+  - 承载轻量共享工具（值快照/环形缓冲/产物定位/agentArgs 解析）：`com.javasleuth.bootstrap.util.*`
+  - attach 生命周期 SSOT：`com.javasleuth.bootstrap.agent.CoreClassLoaderRegistry`
+    - bootstrap 侧登记本次 attach 创建的隔离 `URLClassLoader`
+    - shutdown 后释放/关闭并清引用（best-effort），支持 detach→re-attach，并降低 Windows 下 JAR 锁风险
 - `foundation`
-  - 非 bootstrap 可见的低层基础能力（JDK-only）：config/security/protocol 等
+  - 非 bootstrap 可见的低层基础能力（JDK-only）：`com.javasleuth.foundation.config.*` / `com.javasleuth.foundation.security.*` / `com.javasleuth.foundation.command.protocol.*` / `com.javasleuth.foundation.util.*`
 - `agent`（Bootstrap）
   - Java Agent 入口：`com.javasleuth.agent.SleuthAgent`
   - 目标：**尽量少依赖，仅负责把 core 隔离加载并转发执行**
+- `container`（Isolated ClassLoader）
+  - Java Agent Container 入口：`com.javasleuth.container.SleuthAgentContainerEntrypoint`
+  - 目标：作为隔离类加载域内的 composition root，负责装配并启动 per-attach runtime，并在 shutdown 时收口资源回收与闩锁 reset（detach→re-attach）
+  - shutdown 收口点：在 runtime close 完成后回调 `CoreClassLoaderRegistry.onCoreShutdown(...)` 释放隔离 ClassLoader（best-effort）
 - `core`（Agent Core）
-  - Java Agent Core 入口：`com.javasleuth.agent.core.SleuthAgentCore`
+  - Java Agent Core 入口（legacy/测试入口）：`com.javasleuth.core.agent.core.SleuthAgentCore`
   - 目标：在目标 JVM 内提供诊断能力与命令服务端
-  - 生命周期收口：运行时状态集中在 `com.javasleuth.agent.runtime.SleuthAgentRuntime`（per attach），`close()` 作为统一 shutdown 编排入口（避免 static 可变状态蔓延）
-  - 全局清理收口：bootstrap interceptor 的静态注册表清理由 `com.javasleuth.agent.runtime.AgentGlobalState` 统一封装（bridge-only、best-effort）
+  - 生命周期收口：运行时状态集中在 `com.javasleuth.core.agent.runtime.SleuthAgentRuntime`（per attach），`close()` 作为统一 shutdown 编排入口（避免 static 可变状态蔓延）
+  - 全局清理收口：bootstrap interceptor 的静态注册表清理由 `com.javasleuth.core.agent.runtime.AgentGlobalState` 统一封装（bridge-only、best-effort）
 - `launcher`
   - 本机启动器入口：`com.javasleuth.launcher.SleuthLauncher`
   - 目标：进程选择、Attach、协议客户端、交互 UI（可插拔运行模式）

@@ -1,4 +1,4 @@
-package com.javasleuth.config;
+package com.javasleuth.foundation.config;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -150,4 +150,3 @@ public class ConfigSemanticsTest {
         }
     }
 }
-

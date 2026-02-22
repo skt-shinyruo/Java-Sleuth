@@ -1,6 +1,6 @@
 package com.javasleuth.launcher.client;
 
-import com.javasleuth.command.protocol.KvLineCodec;
+import com.javasleuth.foundation.command.protocol.KvLineCodec;
 import java.util.Map;
 import org.junit.Assert;
 import org.junit.Test;
@@ -33,4 +33,3 @@ public class HandshakeClientTest {
         Assert.assertEquals("xyz", cfg.getConnId());
     }
 }
-

@@ -1,12 +1,12 @@
-package com.javasleuth.command;
+package com.javasleuth.core.command;
 
-import com.javasleuth.config.ProductionConfig;
-import com.javasleuth.security.AuditLogger;
-import com.javasleuth.security.AuthenticationManager;
-import com.javasleuth.security.AuthorizationManager;
-import com.javasleuth.security.CommandMeta;
-import com.javasleuth.security.DangerousCommandConfirmationManager;
-import com.javasleuth.security.InputValidator;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.security.AuditLogger;
+import com.javasleuth.foundation.security.AuthenticationManager;
+import com.javasleuth.foundation.security.AuthorizationManager;
+import com.javasleuth.foundation.security.CommandMeta;
+import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
+import com.javasleuth.foundation.security.InputValidator;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

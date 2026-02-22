@@ -1,7 +1,8 @@
 package com.javasleuth.launcher.attach;
 
-import com.javasleuth.config.ConfigUpdateSource;
-import com.javasleuth.config.ProductionConfig;
+import com.javasleuth.foundation.config.ConfigUpdateSource;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import java.io.File;
 import java.security.SecureRandom;
 import java.util.Base64;
@@ -46,25 +47,25 @@ public final class AgentArgsBuilder {
         }
     }
 
-    public BuildResult build(ProductionConfig config, boolean insecureMode, File coreJar) {
+    public BuildResult build(ProductionConfig config, boolean insecureMode, File containerJar) {
         if (config == null) {
             return BuildResult.error("Internal error: ProductionConfig is null");
         }
 
         String configFile = resolveConfigFile();
 
-        String securityMode = config.getSecurityMode();
-        String hmacSecret = config.getSecurityHmacSecret();
-        String hmacSessionRole = config.getHmacSessionRole();
+        String securityMode = SleuthConfigSchema.SECURITY_MODE.read(config);
+        String hmacSecret = SleuthConfigSchema.SECURITY_HMAC_SECRET.read(config);
+        String hmacSessionRole = SleuthConfigSchema.SECURITY_HMAC_SESSION_ROLE.read(config);
 
         if (insecureMode) {
             securityMode = "off";
             config.setRuntimeConfig("security.mode", "off", ConfigUpdateSource.BOOTSTRAP);
         } else if ("hmac".equalsIgnoreCase(securityMode)) {
             // HMAC bootstrap is an optional helper: it should not silently force-enable HMAC.
-            if (config.isHmacBootstrapOnAttachEnabled()) {
+            if (SleuthConfigSchema.SECURITY_BOOTSTRAP_HMAC_ON_ATTACH.read(config)) {
                 if (hmacSecret == null || hmacSecret.trim().isEmpty()) {
-                    int bytes = config.getHmacBootstrapSecretBytes();
+                    int bytes = SleuthConfigSchema.SECURITY_BOOTSTRAP_HMAC_SECRET_BYTES.read(config);
                     hmacSecret = generateHmacSecret(bytes);
                     config.setRuntimeConfig("security.hmac.secret", hmacSecret, ConfigUpdateSource.BOOTSTRAP);
                 }
@@ -80,15 +81,15 @@ public final class AgentArgsBuilder {
         }
 
         StringBuilder agentArgs = new StringBuilder();
-        if (coreJar != null) {
-            agentArgs.append("coreJar=").append(coreJar.getAbsolutePath()).append(";");
+        if (containerJar != null) {
+            agentArgs.append("containerJar=").append(containerJar.getAbsolutePath()).append(";");
         }
         if (configFile != null && !configFile.trim().isEmpty()) {
             agentArgs.append("configFile=").append(configFile).append(";");
         }
-        agentArgs.append("server.port=").append(config.getServerPort()).append(";");
-        agentArgs.append("protocol.mode=").append(config.getProtocolMode()).append(";");
-        agentArgs.append("protocol.streaming.enabled=").append(config.isStreamingEnabled()).append(";");
+        agentArgs.append("server.port=").append(SleuthConfigSchema.SERVER_PORT.read(config)).append(";");
+        agentArgs.append("protocol.mode=").append(SleuthConfigSchema.PROTOCOL_MODE.read(config)).append(";");
+        agentArgs.append("protocol.streaming.enabled=").append(SleuthConfigSchema.PROTOCOL_STREAMING_ENABLED.read(config)).append(";");
         agentArgs.append("security.mode=").append(securityMode).append(";");
         if ("hmac".equalsIgnoreCase(securityMode)) {
             agentArgs.append("security.hmac.secret=").append(hmacSecret).append(";");
@@ -116,4 +117,3 @@ public final class AgentArgsBuilder {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
     }
 }
-

@@ -1,6 +1,6 @@
-package com.javasleuth.monitor;
+package com.javasleuth.bootstrap.monitor;
 
-import com.javasleuth.data.StackTraceResult;
+import com.javasleuth.bootstrap.data.StackTraceResult;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.junit.Assert;
@@ -53,4 +53,3 @@ public class StackInterceptorTest {
         }
     }
 }
-

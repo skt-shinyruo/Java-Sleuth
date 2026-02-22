@@ -1,7 +1,7 @@
-package com.javasleuth.vmtool;
+package com.javasleuth.core.vmtool;
 
-import com.javasleuth.agent.core.SleuthAgentCore;
-import com.javasleuth.monitor.VmToolInterceptor;
+import com.javasleuth.core.agent.core.SleuthAgentCore;
+import com.javasleuth.bootstrap.monitor.VmToolInterceptor;
 import java.util.Map;
 import org.junit.Assert;
 import org.junit.Test;
@@ -23,4 +23,3 @@ public class VmToolShutdownCleanupTest {
         Assert.assertTrue("expected vmtool track stats cleared after shutdown", after.isEmpty());
     }
 }
-

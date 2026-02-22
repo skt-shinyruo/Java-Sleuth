@@ -1,4 +1,4 @@
-package com.javasleuth.vmtool;
+package com.javasleuth.core.vmtool;
 
 import org.junit.Test;
 
@@ -75,4 +75,3 @@ public class VmToolMethodInvokerTest {
         }
     }
 }
-

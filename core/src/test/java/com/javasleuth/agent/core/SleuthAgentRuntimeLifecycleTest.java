@@ -1,6 +1,6 @@
-package com.javasleuth.agent.core;
+package com.javasleuth.core.agent.core;
 
-import com.javasleuth.agent.runtime.SleuthAgentRuntime;
+import com.javasleuth.core.agent.runtime.SleuthAgentRuntime;
 import com.javasleuth.test.SleuthTestState;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Proxy;
@@ -58,4 +58,3 @@ public class SleuthAgentRuntimeLifecycleTest {
         );
     }
 }
-

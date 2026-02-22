@@ -1,6 +1,6 @@
-package com.javasleuth.monitor;
+package com.javasleuth.bootstrap.monitor;
 
-import com.javasleuth.data.TraceResult;
+import com.javasleuth.bootstrap.data.TraceResult;
 import org.junit.Test;
 
 import java.util.concurrent.BlockingQueue;
@@ -43,4 +43,3 @@ public class TraceInterceptorSamplingTest {
         }
     }
 }
-

@@ -38,6 +38,8 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - `tt replay <recordId>`：生成复现代码模板（lite，不在目标 JVM 执行）
 - 插桩健壮性回归：Watch/Tt 增强器的返回值/异常语义与字节码校验（VerifyError）测试
 - `JarLocator`：启动/发布不再依赖硬编码 jar 名称，支持 `-Dsleuth.agent.jar` / `SLEUTH_AGENT_JAR` 覆盖
+- 新增 `container` 模块（runtime container + composition root）：产出 `java-sleuth-container-*-jar-with-dependencies.jar` 作为隔离域 fat-jar，并在 Manifest 标记 `Sleuth-Agent-Container=true`
+- `JarLocator` 新增 container 定位：支持 `-Dsleuth.agent.container.jar` / `SLEUTH_AGENT_CONTAINER_JAR` 覆盖，并支持 agentArgs `containerJar=/path/to/container.jar`
 - 安全自举配置：`security.bootstrap.hmac.*`、`security.hmac.session.role`（当 `security.mode=hmac` 时可选下发/补齐 secret）
 - 口令认证开关与配置：`security.auth.password.enabled` + `security.auth.*.password`（支持 `SLEUTH_AUTH_*_PASSWORD`）
 - 插件加固配置：`plugins.enabled`（默认关闭）+ `plugins.allowlist.sha256`
@@ -55,9 +57,10 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 教学文档补充：命令触发插桩与回滚链路（watch/trace/reset/stop）
 
 ### Changed
-- 关键依赖环拆除：`CommandMeta` 下沉到 `com.javasleuth.security`（SSOT），`security` 不再依赖 `command`；`SleuthLogger` 通过 `SleuthLogContext` 注入上下文，避免 `util -> command`；`stop` 通过注入的 shutdown hook 触发 Agent shutdown，避免 `command -> agent`
+- 关键依赖环拆除：`CommandMeta` 下沉到 `com.javasleuth.foundation.security`（SSOT），`security` 不再依赖 `command`；`SleuthLogger` 通过 `SleuthLogContext` 注入上下文，避免 `util -> command`；`stop` 通过注入的 shutdown hook 触发 Agent shutdown，避免 `command -> agent`
+- split package 治理：`bootstrap/foundation/core` 包根前缀化为 `com.javasleuth.bootstrap.*` / `com.javasleuth.foundation.*` / `com.javasleuth.core.*`，消除 `com.javasleuth.util` 在多模块并存的“分裂包”，并避免 core 复用 bootstrap 可见域的实现细节（例如 RingBuffer）
 - 线程与生命周期治理：`AuthenticationManager` 会话清理任务改为可 shutdown 的调度器并纳入关闭编排；`JobManager` 支持 shutdown 并在后台 job 传播/清理上下文；`AuditLogger`/`PerformanceOptimizer` 支持 detach→re-attach 场景重启
-- 生命周期闭环补齐：`CommandExecutionEngine`/`CommandPipeline` 增加 `shutdown()` 并由 `ShutdownCoordinator` 统一收口；`AuthorizationManager`/`RequestSecurityManager`/`DangerousCommandConfirmationManager` 增加 `shutdownInstance()` 清理缓存，降低同 JVM detach→re-attach 的状态残留风险；关键线程池进一步统一到 `SleuthThreadFactory`
+- 生命周期闭环补齐：`CommandExecutionEngine`/`CommandPipeline` 增加 `shutdown()` 并由 `ShutdownCoordinator` 统一收口；安全组件以 instance `shutdown()` 为主（减少 `shutdownInstance()` 补锅），并配合隔离 ClassLoader 生命周期边界（`CoreClassLoaderRegistry`）降低同 JVM detach→re-attach 的状态残留风险；关键线程池进一步统一到 `SleuthThreadFactory`
 - 全局状态收口：引入 `SleuthAgentRuntime`（per attach）统一持有 instrumentation/transformer/processor 等运行时对象并提供幂等 `close()`；`SleuthAgentCore` 退化为薄的 composition root；`CommandProcessor` 增加 `shutdownForDetach()` 并 best-effort 移除 JVM shutdown hook，避免 detach→re-attach 累积；`ClientSessionRegistry` 改为纯实例对象并提供 `shutdown()`（移除 `getInstance()` 单例入口）
 - 配置依赖进一步收口：`SleuthClassFileTransformer` / `MetricsCollector` 改为显式注入 `ProductionConfig`（由 runtime/装配层提供），避免在业务对象内部直接调用 `ProductionConfig.getInstance()`
 - security 注入优先：`AuthorizationManager` / `RequestSecurityManager` 构造注入路径改为 strict non-null（不再在构造器内对 null 依赖隐式回退到 `getInstance()`）；新增 `createDefault()` 显式装配入口；移除 `getInstance()` 全局单例兼容 API
@@ -65,13 +68,13 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 命令层 getInstance 进一步收口：`JobManager`/`VmToolSessionRegistry` 由 `SleuthAgentRuntime`（per attach）持有，并在 `CommandProcessorFactory` 装配阶段注入 `CommandRegistry`/`BuiltinCommandProvider` 与命令实现（watch/trace/monitor/tt/jobs/reset/vmtool/health/status），移除 provider/factory/runtime 内对 `getInstance()` 的依赖，并删除 `JobManager.getInstance()` / `VmToolSessionRegistry.getInstance()` 单例 API；`PerformanceOptimizer` 仍为全局组件但获取点收口到装配层；新增 `AgentGlobalState` 统一封装 interceptor 静态注册表清理（bridge-only、best-effort）；`ServerBootstrapper.configureJobManager` 改为注入 `JobManager`
 - 去除 legacy 兼容入口（破坏性变更）：删除 command/impl 的 legacy 构造器与隐式回退；移除 `CommandRegistry`/`CommandPipeline`/`InputValidator` 的 legacy 构造器；移除 `AuthorizationManager`/`RequestSecurityManager` 的 `getInstance()`/`shutdownInstance()` 全局单例 API；`ProtocolClient` 默认改用 `RequestSecurityManager.createDefault()` 并对注入重载参数做 non-null 约束
 - 命令/客户端边界进一步显式化：`ProtocolClient` 支持注入 `RequestSecurityManager`（默认行为保持不变），`CommandRegistry.shutdown()` best-effort 关闭实现了 `AutoCloseable` 的命令（用于治理命令级后台线程/资源）
-- 安全组件可注入与实例级 shutdown：`AuthorizationManager`/`RequestSecurityManager`/`DangerousCommandConfirmationManager` 提供 instance `shutdown()`；`ShutdownCoordinator` 优先 shutdown 注入实例，并对仍保留单例的组件 best-effort `shutdownInstance()`；`vmtool/auth/session` 命令强制依赖注入（移除默认构造兼容）
+- 安全组件可注入与实例级 shutdown：`AuthorizationManager`/`RequestSecurityManager`/`DangerousCommandConfirmationManager` 提供 instance `shutdown()`；`ShutdownCoordinator` 优先 shutdown 注入实例（不再把 `shutdownInstance()` 作为核心关闭语义）；`vmtool/auth/session` 命令强制依赖注入（移除默认构造兼容）
 - Bootstrap 边界收敛：新增 `bootstrap` Maven 模块（`java-sleuth-bootstrap`）承载 spy/bridge（`monitor`/`data`/值快照工具/JarLocator/AgentArgsApplier），`agent` 仅依赖该模块并 append 到 bootstrap；`foundation` 的 config/security/protocol 等能力不再被提升为 bootstrap 可见；jar 定位与 agentArgs 落地规则统一为 SSOT
 - 移除 ArchUnit 架构守护测试与依赖（按团队偏好，避免测试代码承载分层守护逻辑）
 - 配置层去中心化：引入 `ConfigView`/`MutableConfig`/`ConfigOrigin` 与 `RuntimeConfigStore`（运行时覆写审计），`ProductionConfig` 拆职责并退化为 Facade；部分命令构造改为注入 `ConfigView`，减少散落的 `ProductionConfig.getInstance()` 调用点
 - 示例/测试应用从 main 源集迁移到 `examples/`，发布 jar/fat-jar 不再包含 `com.javasleuth.test.*`（Docker demo 与脚本改为运行 examples 编译产物）
 - Maven 多模块化：根工程改为 parent/aggregator（`packaging=pom`），主产物迁移到 `core/` 模块，示例应用作为 `examples/` 模块独立构建；脚本/Docker/文档同步更新
-- Launcher/Agent 产物与依赖隔离升级：拆分为 `launcher/`（CLI）+ `agent/`（bootstrap agent，appendToBootstrap，保持 JDK-only）+ `core/`（`java-sleuth-agent-core`，隔离 ClassLoader 加载，包含 ASM/Jackson/CFR/RE2J...）；`JarLocator` 按 Manifest 标记 `Sleuth-Agent-Bootstrap` / `Sleuth-Agent-Core` 自动定位产物；`com.javasleuth.monitor`/`com.javasleuth.data`/值快照工具等桥接类下沉到 `bootstrap` 并保持无第三方依赖（仅 JDK）；`com.javasleuth.command.protocol` 保持在 `foundation`（JDK-only）；脚本/Docker/文档同步更新
+- Launcher/Agent 产物与依赖隔离升级：拆分为 `launcher/`（CLI）+ `agent/`（bootstrap agent，appendToBootstrap，保持 JDK-only）+ `core/`（`java-sleuth-agent-core`，隔离 ClassLoader 加载，包含 ASM/Jackson/CFR/RE2J...）；`JarLocator` 按 Manifest 标记 `Sleuth-Agent-Bootstrap` / `Sleuth-Agent-Core` 自动定位产物；`com.javasleuth.bootstrap.monitor`/`com.javasleuth.bootstrap.data`/值快照工具等桥接类下沉到 `bootstrap` 并保持无第三方依赖（仅 JDK）；`com.javasleuth.foundation.command.protocol` 保持在 `foundation`（JDK-only）；脚本/Docker/文档同步更新
 - CommandProcessor 改为注册表 + 统一执行管线
 - CommandPipeline 执行链路显式化：引入 Step/Interceptor Chain（precheck/sync/stream），降低巨型类耦合并提升可测性
 - CommandProcessor 拆分出 CommandClientHandler（framed/binary 协议处理），CommandProcessor 聚焦监听/生命周期
@@ -99,13 +102,17 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - Launcher/脚本启动方式去版本/目录硬编码：支持任意 cwd 启动与通配符定位 `*-jar-with-dependencies.jar`
 - 审计日志默认不再刷屏控制台（需显式开启 `logging.audit.console.enabled=true`）
 - fat-jar Manifest 补齐 `Main-Class`，支持 `java -jar` 直接启动 Launcher（不破坏 Agent 能力）
+- 打包产物调整（breaking change）：`core` 回归纯库 jar，不再产出 fat-jar；bootstrap agent 默认加载 `container` fat-jar 并反射调用 `SleuthAgentContainerEntrypoint`
+- Launcher attach 参数调整：注入隔离域 jar 的参数从 `coreJar=` 迁移为 `containerJar=`（同时支持 `sleuth.agent.container.jar` override）
+- 模块级硬边界守护：引入 Maven Enforcer，禁止 `foundation`/`bootstrap` 引入任何依赖；禁止 `core` 反向依赖 `container`
 - 默认配置与实现对齐：移除无效 `production.*`，补齐 `jobs.*`/`protocol.frame.max.payload` 等关键默认项并同步文档
+- 配置单一事实源收敛：引入 `SleuthConfigSchema`/`ConfigKey`（Schema SSOT）与构建期 `SleuthSchemaVerifierMain`，强校验 Schema ↔ `/sleuth-default.properties` ↔ `SleuthDefaults` 一致；并移除 `ProductionConfig` legacy domain getters（`get*/is*/are*`）+ 增加回归护栏防止回归引入
 - 连接侧背压与可配置上限：`server.executor.queue.capacity`（连接处理线程池队列有界化，过载时拒绝新连接并返回明确错误）
 - 命令执行侧背压与可配置上限：`performance.command.executor.core/max/queue.capacity`（替代 `Executors.newCachedThreadPool`，避免线程膨胀与无限排队）
 - loopback 自洽启动：当 `security.mode=hmac` 且 `security.hmac.secret` 为空时，回环绑定下可自动生成临时 secret（明文 secret 仅在交互控制台打印，`security.hmac.secret.autogen.*` 控制）
 - 高影响命令治理：`CommandMeta.impact=LOW|MEDIUM|HIGH` + `security.impact.high.*`（二次确认 + 并发限制，默认同一时刻仅允许 1 条高影响命令执行）
 - 流式命令执行链路统一：StreamCommand 走 `CommandPipeline` 的 executor/timeout/输出治理（sanitize/truncate），减少连接线程被长时间业务逻辑占用
-- `stack`/`tt` 实现子模块化：解析/会话/执行/格式化拆分到 `com.javasleuth.command.impl.stack.*` 与 `com.javasleuth.command.impl.tt.*`，降低巨型文件风险
+- `stack`/`tt` 实现子模块化：解析/会话/执行/格式化拆分到 `com.javasleuth.core.command.impl.stack.*` 与 `com.javasleuth.core.command.impl.tt.*`，降低巨型文件风险
 
 ### Fixed
 - watch/trace 队列增加背压与采样
@@ -119,6 +126,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - streaming 协商一致性：`ProtocolClient` 不再使用“只增不减”的 streaming 协商逻辑；当服务端 `CONFIG streaming=false` 时客户端强制关闭 streaming，避免 `STREAM ...` 期望与服务端退化执行不一致
 - 传输层消除 BufferedReader/PrintWriter 与 Data*Stream 混用导致的升级不稳定风险
 - detach→re-attach 残留治理补齐：Agent shutdown 路径显式清理 vmtool track sessions 与 bootstrap interceptor 缓存；Profiler 命令支持 close 并避免定时线程在 shutdown 后残留
+- detach→re-attach 入口闩锁语义修复：bootstrap 侧以 `CoreClassLoaderRegistry` 作为 attach gate SSOT（登记隔离 `URLClassLoader` 并在 shutdown 后关闭/清引用），`BootstrapAttachGate` 作为 registry 不可用时的 legacy fallback；启动失败路径允许重试（缺 core jar/反射失败/入口抛错时回滚 gate）
 - AuthenticationManager 锁定窗口与客户端标识解析修复（支持 /ip:port、IPv6、unknown）
 - 审计日志脱敏加强：auth/config/sysprop 等命令参数与 sessionId 不再以明文写入
 - server.max.connections 与 performance.command.timeout 配置落地生效
@@ -147,6 +155,9 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 插件默认禁用语义一致：默认不加载目标进程 classpath 上的 ServiceLoader provider（需显式开启）
 - 文件/编码治理一致：`mc` 源码读取默认 UTF-8；`redefine` 文件读取统一走 `SecurityValidator.canReadFile` 校验
 - 移除 legacy 文本协议：统一使用 framed/binary，消除逐行回包缺少显式边界导致的多行输出错位风险；输出截断提示不再主动注入换行
+
+### Removed
+- `ProductionConfig` 移除 legacy domain getters（`get*/is*/are*`），消费侧统一使用 `SleuthConfigSchema` / `SleuthConfigParser`（typed config）
 
 ## [1.0.0] - 2026-01-28
 

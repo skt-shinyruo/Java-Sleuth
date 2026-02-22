@@ -1,7 +1,8 @@
-package com.javasleuth.command;
+package com.javasleuth.core.command;
 
-import com.javasleuth.config.ProductionConfig;
-import com.javasleuth.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
+import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.lang.instrument.Instrumentation;
@@ -112,7 +113,7 @@ public class CommandProcessorSecurityBoundaryTest {
 
                 Assert.assertTrue(waitForServerSocketOpen(processor, 2, TimeUnit.SECONDS));
 
-                String secret = config.getSecurityHmacSecret();
+                String secret = SleuthConfigSchema.SECURITY_HMAC_SECRET.read(config);
                 Assert.assertNotNull(secret);
                 Assert.assertFalse(secret.trim().isEmpty());
             } finally {

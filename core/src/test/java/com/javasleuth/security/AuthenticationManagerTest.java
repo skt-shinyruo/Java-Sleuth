@@ -1,4 +1,4 @@
-package com.javasleuth.security;
+package com.javasleuth.foundation.security;
 
 import org.junit.Test;
 

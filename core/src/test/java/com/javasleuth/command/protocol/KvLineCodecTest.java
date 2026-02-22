@@ -1,4 +1,4 @@
-package com.javasleuth.command.protocol;
+package com.javasleuth.foundation.command.protocol;
 
 import java.util.Locale;
 import java.util.Map;

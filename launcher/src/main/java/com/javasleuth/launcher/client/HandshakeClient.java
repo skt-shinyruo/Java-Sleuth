@@ -1,6 +1,6 @@
 package com.javasleuth.launcher.client;
 
-import com.javasleuth.command.protocol.KvLineCodec;
+import com.javasleuth.foundation.command.protocol.KvLineCodec;
 import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -80,4 +80,3 @@ public final class HandshakeClient {
         }
     }
 }
-

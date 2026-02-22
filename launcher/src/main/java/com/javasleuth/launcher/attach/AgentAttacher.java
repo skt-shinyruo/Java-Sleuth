@@ -1,7 +1,7 @@
 package com.javasleuth.launcher.attach;
 
-import com.javasleuth.config.ProductionConfig;
-import com.javasleuth.util.SleuthLogger;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.util.SleuthLogger;
 import java.io.File;
 
 /**
@@ -18,7 +18,7 @@ public final class AgentAttacher {
         this.agentArgsBuilder = agentArgsBuilder;
     }
 
-    public boolean attach(String pid, String displayName, File agentJar, File coreJar, boolean insecureMode) throws Exception {
+    public boolean attach(String pid, String displayName, File agentJar, File containerJar, boolean insecureMode) throws Exception {
         if (pid == null || pid.trim().isEmpty()) {
             System.err.println("Invalid target PID");
             return false;
@@ -45,14 +45,14 @@ public final class AgentAttacher {
 
                 @Override
                 public boolean isLoading() {
-                    return ProductionConfig.isLoading();
+                    return false;
                 }
             });
         } catch (Exception ignore) {
             // 忽略
         }
 
-        AgentArgsBuilder.BuildResult built = agentArgsBuilder.build(config, insecureMode, coreJar);
+        AgentArgsBuilder.BuildResult built = agentArgsBuilder.build(config, insecureMode, containerJar);
         if (!built.isOk()) {
             System.err.println(built.getErrorMessage());
             return false;

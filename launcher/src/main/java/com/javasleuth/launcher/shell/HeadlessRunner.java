@@ -3,7 +3,7 @@ package com.javasleuth.launcher.shell;
 import com.javasleuth.launcher.client.CommandResult;
 import com.javasleuth.launcher.client.ProtocolClient;
 import com.javasleuth.launcher.client.ProtocolOutput;
-import com.javasleuth.security.SecurityValidator;
+import com.javasleuth.foundation.security.SecurityValidator;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -102,4 +102,3 @@ public final class HeadlessRunner {
         return failed == 0 ? 0 : 1;
     }
 }
-

@@ -1,4 +1,4 @@
-package com.javasleuth.compiler;
+package com.javasleuth.core.compiler;
 
 import org.junit.Assume;
 import org.junit.Test;

@@ -6,8 +6,12 @@
 ## Module Overview
 - **Responsibility:** PerformanceOptimizer/MemoryOptimizer/JvmUtils + 诊断辅助工具
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-13
+- **Last Updated:** 2026-02-21
 - **Build Module:** foundation + bootstrap（bootstrap-bridge）+ core（少量 core 专用 util）
+- **Package Roots (SSOT):**
+  - bootstrap util（bootstrap 可见）：`com.javasleuth.bootstrap.util.*`
+  - foundation util（JDK-only）：`com.javasleuth.foundation.util.*`
+  - core util（agent-core 内部）：`com.javasleuth.core.util.*`
 
 ## Specifications
 
@@ -78,18 +82,19 @@ N/A
 - config
 
 ## Utilities Added
-- JarLocator（bootstrap）：Agent/Core/Launcher 产物定位 SSOT（Manifest marker + override + 常见目录扫描 + CodeSource 自身 jar 定位）
-- AgentArgsApplier（bootstrap）：`agentArgs` 解析与 sysprop 落地 SSOT（bootstrap/core 共用）
-- RingBuffer（bootstrap）：jobs/tt 等能力复用的环形缓冲
-- SleuthValueFormatter（bootstrap）：安全可读化（限深/限长/脱敏）
-- SleuthValueSnapshotter / SleuthSnapshotValue（bootstrap）：采集阶段“值快照”（避免 watch/tt 强引用复杂对象图导致内存压力）
-- WildcardMatcher（foundation）：统一 `*` 通配符匹配（避免将用户输入当作正则）
-- LoadedClassResolver（foundation）：已加载类解析/选择（输出候选 + loaderId），用于多 ClassLoader 场景稳定选择目标类并避免回滚错对象
+- JarLocator（bootstrap）：`com.javasleuth.bootstrap.util.JarLocator` - Agent/Container/Core/Launcher 产物定位 SSOT（Manifest marker + override + 常见目录扫描 + CodeSource 自身 jar 定位）
+- AgentArgsApplier（bootstrap）：`com.javasleuth.bootstrap.util.AgentArgsApplier` - `agentArgs` 解析与 sysprop 落地 SSOT（bootstrap/container/core 共用）
+- RingBuffer（bootstrap）：`com.javasleuth.bootstrap.util.RingBuffer` - bridge 侧轻量环形缓冲（jobs/tt 等能力复用）
+- RingBuffer（core）：`com.javasleuth.core.util.RingBuffer` - core 侧自带实现，避免依赖 bootstrap 可见域的实现细节
+- SleuthValueFormatter（bootstrap）：`com.javasleuth.bootstrap.util.SleuthValueFormatter` - 安全可读化（限深/限长/脱敏）
+- SleuthValueSnapshotter / SleuthSnapshotValue（bootstrap）：`com.javasleuth.bootstrap.util.SleuthValueSnapshotter` / `com.javasleuth.bootstrap.util.SleuthSnapshotValue` - 采集阶段“值快照”（避免 watch/tt 强引用复杂对象图导致内存压力）
+- WildcardMatcher（foundation）：`com.javasleuth.foundation.util.WildcardMatcher` - 统一 `*` 通配符匹配（避免将用户输入当作正则）
+- LoadedClassResolver（foundation）：`com.javasleuth.foundation.util.LoadedClassResolver` - 已加载类解析/选择（输出候选 + loaderId），用于多 ClassLoader 场景稳定选择目标类并避免回滚错对象
 - SleuthLogContext（foundation）：ThreadLocal 日志上下文（由上层写入，util 侧只读）
 - StringUtils（foundation）：Java 8 兼容字符串工具（替代 `String.repeat`），并补充 `isBlank`
 - ReflectionUtils（foundation）：Java 8 兼容反射访问判断（替代 `Field.canAccess`）
-- SleuthObjectInspector（core）：对象字段检视（best-effort，仅字段读取，限深/限长/脱敏）
-- CfrDecompiler（core）：CFR 反编译封装（将 `.class` bytecode 可靠喂给 CFR，避免空输出）
+- SleuthObjectInspector（core）：`com.javasleuth.core.util.SleuthObjectInspector` - 对象字段检视（best-effort，仅字段读取，限深/限长/脱敏）
+- CfrDecompiler（core）：`com.javasleuth.core.util.CfrDecompiler` - CFR 反编译封装（将 `.class` bytecode 可靠喂给 CFR，避免空输出）
 
 ## Change History
 - 202601281100_init_kb (planned)

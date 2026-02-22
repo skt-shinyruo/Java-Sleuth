@@ -1,7 +1,7 @@
-package com.javasleuth.config;
+package com.javasleuth.foundation.config;
 
-import com.javasleuth.config.model.SleuthConfig;
-import com.javasleuth.config.model.SleuthConfigParser;
+import com.javasleuth.foundation.config.model.SleuthConfig;
+import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import java.util.HashMap;
 import java.util.Properties;
 import org.junit.Assert;

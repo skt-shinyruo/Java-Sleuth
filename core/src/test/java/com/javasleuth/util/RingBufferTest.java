@@ -1,4 +1,4 @@
-package com.javasleuth.util;
+package com.javasleuth.bootstrap.util;
 
 import org.junit.Test;
 

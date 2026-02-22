@@ -1,4 +1,4 @@
-package com.javasleuth.command.impl;
+package com.javasleuth.core.command.impl;
 
 import java.lang.reflect.Field;
 import org.junit.Assert;
@@ -22,4 +22,3 @@ public class ProfilerCommandCloseTest {
         Assert.assertNull("expected scheduler cleared after close()", ex);
     }
 }
-
