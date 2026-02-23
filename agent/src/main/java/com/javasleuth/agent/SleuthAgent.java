@@ -1,7 +1,7 @@
 package com.javasleuth.agent;
 
-import com.javasleuth.bootstrap.util.AgentArgsApplier;
 import com.javasleuth.bootstrap.util.JarLocator;
+import com.javasleuth.bootstrap.util.SystemPropertyRollbackRegistry;
 import java.io.File;
 import java.lang.instrument.Instrumentation;
 import java.net.URL;
@@ -38,9 +38,8 @@ public final class SleuthAgent {
         boolean registered = false;
         boolean registryAvailable = false;
         boolean legacyGateEntered = false;
+        boolean syspropsRegistered = false;
         try {
-            AgentArgsApplier.applyToSystemProperties(agentArgs);
-
             File selfJar = locateOwnJar();
             if (selfJar != null && selfJar.isFile() && inst != null) {
                 try {
@@ -68,6 +67,10 @@ public final class SleuthAgent {
                 legacyGateEntered = true;
             }
 
+            // Apply agentArgs only after passing attach gates, to avoid polluting sysprop state on "already attached" paths.
+            SystemPropertyRollbackRegistry.applyAndRegisterIfAbsent(agentArgs);
+            syspropsRegistered = true;
+
             File containerJar = JarLocator.locateAgentContainerJar(SleuthAgent.class);
             if (containerJar == null) {
                 // Backward compatible fallback: old builds might still have core fat-jar.
@@ -83,6 +86,9 @@ public final class SleuthAgent {
                 // 启动失败：回滚闩锁，允许修复参数后重试 attach。
                 if (legacyGateEntered) {
                     BootstrapAttachGate.releaseOnFailure();
+                }
+                if (syspropsRegistered) {
+                    SystemPropertyRollbackRegistry.rollbackAndClearBestEffort();
                 }
                 return;
             }
@@ -137,6 +143,9 @@ public final class SleuthAgent {
             closeQuietly(isolated);
             if (legacyGateEntered) {
                 BootstrapAttachGate.releaseOnFailure();
+            }
+            if (syspropsRegistered) {
+                SystemPropertyRollbackRegistry.rollbackAndClearBestEffort();
             }
         }
     }

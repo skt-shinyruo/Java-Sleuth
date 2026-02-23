@@ -14,18 +14,34 @@ final class BootstrapMonitorConfig {
     private BootstrapMonitorConfig() {}
 
     static boolean isWatchDropOnFull() {
+        Boolean fromStore = BootstrapMonitorConfigStore.getWatchDropOnFull();
+        if (fromStore != null) {
+            return fromStore.booleanValue();
+        }
         return getBoolean(PREFIX + "monitoring.watch.drop.on.full", true);
     }
 
     static boolean isTraceDropOnFull() {
+        Boolean fromStore = BootstrapMonitorConfigStore.getTraceDropOnFull();
+        if (fromStore != null) {
+            return fromStore.booleanValue();
+        }
         return getBoolean(PREFIX + "monitoring.trace.drop.on.full", true);
     }
 
     static double getTraceSampleRate() {
+        Double fromStore = BootstrapMonitorConfigStore.getTraceSampleRate();
+        if (fromStore != null) {
+            return clamp01(fromStore.doubleValue());
+        }
         return clamp01(getDouble(PREFIX + "monitoring.trace.sample.rate", 0.1d));
     }
 
     static double getMonitorSampleRate() {
+        Double fromStore = BootstrapMonitorConfigStore.getMonitorSampleRate();
+        if (fromStore != null) {
+            return clamp01(fromStore.doubleValue());
+        }
         return clamp01(getDouble(PREFIX + "monitoring.monitor.sample.rate", 1.0d));
     }
 

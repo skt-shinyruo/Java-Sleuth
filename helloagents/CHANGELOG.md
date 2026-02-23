@@ -90,6 +90,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - docs/ 文档中文化：用户/开发/运维文档说明文字统一为简体中文（保留命令/配置示例可复制）
 - 安全默认调整：默认不启用认证/签名校验（`security.mode=off`），并默认关闭 RBAC（`security.authorization.enabled=false`）
 - sysprop 写入改为显式子命令 `sysprop set <key> <value>`（并要求更高权限）
+- bootstrap 监控派生配置不再写回 sysprop：引入 `BootstrapMonitorConfigStore`（attach-scoped）承载 `monitoring.*` 派生值并在 shutdown 清理；`agentArgs` sysprop 写入增加 `SystemPropertyRollbackRegistry` 回滚句柄，并在通过 attach gate 后再应用 agentArgs，降低同 JVM detach→re-attach 的状态漂移风险
 - 插桩过滤策略放开常见代理类（例如 Spring/CGLIB `$$EnhancerBySpringCGLIB$$`），transform 逐次日志默认降噪（DEBUG 才输出）
 - 性能维护策略：默认不再定时触发 `System.gc()`（由 `performance.maintenance.force_gc` 控制）
 - Config/Sysprop 等命令输出对敏感值自动脱敏（避免控制台/日志泄露 secret）

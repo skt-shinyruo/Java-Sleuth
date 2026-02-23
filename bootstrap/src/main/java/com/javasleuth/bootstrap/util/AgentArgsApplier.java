@@ -17,6 +17,25 @@ public final class AgentArgsApplier {
     private AgentArgsApplier() {}
 
     public static void applyToSystemProperties(String agentArgs) {
+        applyToSystemPropertiesInternal(agentArgs, null);
+    }
+
+    /**
+     * Apply agentArgs to System properties and return a rollback handle.
+     *
+     * <p>Caller should keep the returned handle and invoke {@link SystemPropertyRollback#rollbackBestEffort()}
+     * on detach/shutdown to restore original values.</p>
+     */
+    public static SystemPropertyRollback applyToSystemPropertiesWithRollback(String agentArgs) {
+        if (agentArgs == null || agentArgs.trim().isEmpty()) {
+            return SystemPropertyRollback.noop();
+        }
+        SystemPropertyRollback rollback = new SystemPropertyRollback();
+        applyToSystemPropertiesInternal(agentArgs, rollback);
+        return rollback;
+    }
+
+    private static void applyToSystemPropertiesInternal(String agentArgs, SystemPropertyRollback rollback) {
         if (agentArgs == null) {
             return;
         }
@@ -43,25 +62,40 @@ public final class AgentArgsApplier {
             }
 
             if ("configFile".equalsIgnoreCase(key)) {
+                if (rollback != null) {
+                    rollback.recordBeforeSet("sleuth.config.file");
+                }
                 System.setProperty("sleuth.config.file", value);
                 continue;
             }
 
             if ("coreJar".equalsIgnoreCase(key)) {
+                if (rollback != null) {
+                    rollback.recordBeforeSet(JarLocator.AGENT_CORE_JAR_OVERRIDE_PROPERTY);
+                }
                 System.setProperty(JarLocator.AGENT_CORE_JAR_OVERRIDE_PROPERTY, value);
                 continue;
             }
 
             if ("containerJar".equalsIgnoreCase(key)) {
+                if (rollback != null) {
+                    rollback.recordBeforeSet(JarLocator.AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY);
+                }
                 System.setProperty(JarLocator.AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY, value);
                 continue;
             }
 
             if (key.startsWith(SLEUTH_PREFIX)) {
+                if (rollback != null) {
+                    rollback.recordBeforeSet(key);
+                }
                 System.setProperty(key, value);
                 continue;
             }
 
+            if (rollback != null) {
+                rollback.recordBeforeSet(SLEUTH_PREFIX + key);
+            }
             System.setProperty(SLEUTH_PREFIX + key, value);
         }
     }

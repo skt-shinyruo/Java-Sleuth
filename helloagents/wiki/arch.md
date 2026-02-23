@@ -19,6 +19,10 @@ Java-Sleuth 的主链路可以抽象为：
   - **Bootstrap 可见桥接层（spy/bridge，JDK-only）**
   - 承载增强代码直接调用的拦截器与共享模型：`com.javasleuth.bootstrap.monitor.*`、`com.javasleuth.bootstrap.data.*`
   - 承载轻量共享工具（值快照/环形缓冲/产物定位/agentArgs 解析）：`com.javasleuth.bootstrap.util.*`
+  - sysprop 回滚句柄（跨 attach 漂移治理）：`com.javasleuth.bootstrap.util.SystemPropertyRollbackRegistry`
+    - attach 期间记录 `agentArgs` 写入的 sysprop 旧值，并在 detach/shutdown best-effort 回滚
+  - bootstrap 监控派生配置 Store：`com.javasleuth.bootstrap.monitor.BootstrapMonitorConfigStore`
+    - 由 container/core 在启动阶段填充（用户未显式设置 sysprop 时），在 detach/shutdown 清理，避免把派生值写回 sysprop
   - attach 生命周期 SSOT：`com.javasleuth.bootstrap.agent.CoreClassLoaderRegistry`
     - bootstrap 侧登记本次 attach 创建的隔离 `URLClassLoader`
     - shutdown 后释放/关闭并清引用（best-effort），支持 detach→re-attach，并降低 Windows 下 JAR 锁风险
@@ -31,6 +35,7 @@ Java-Sleuth 的主链路可以抽象为：
   - Java Agent Container 入口：`com.javasleuth.container.SleuthAgentContainerEntrypoint`
   - 目标：作为隔离类加载域内的 composition root，负责装配并启动 per-attach runtime，并在 shutdown 时收口资源回收与闩锁 reset（detach→re-attach）
   - shutdown 收口点：在 runtime close 完成后回调 `CoreClassLoaderRegistry.onCoreShutdown(...)` 释放隔离 ClassLoader（best-effort）
+  - 配置与全局状态清理：shutdown 时清理 `BootstrapMonitorConfigStore` 并回滚 `SystemPropertyRollbackRegistry`（best-effort），降低同 JVM re-attach 的状态残留风险
 - `core`（Agent Core）
   - Java Agent Core 入口（legacy/测试入口）：`com.javasleuth.core.agent.core.SleuthAgentCore`
   - 目标：在目标 JVM 内提供诊断能力与命令服务端

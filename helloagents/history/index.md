@@ -53,6 +53,7 @@
 - 202602211835_reattach_bootstrap_gate_reset
 - 202602211837_arthas_classloader_lifecycle
 - 202602221036_remove_productionconfig_domain_getters
+- 202602230002_arch_config_lifecycle_refactor
 
 ## 2026-01
 - 202601281207_sleuth_plugin_stream

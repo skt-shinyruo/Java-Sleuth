@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** monitor 拦截器、共享数据模型、轻量共享工具（值快照/环形缓冲/产物定位/agentArgs 落地、attach gate/隔离 ClassLoader 生命周期桥接）
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-21
+- **Last Updated:** 2026-02-23
 - **Build Module:** bootstrap（`java-sleuth-bootstrap`）
 
 ## Specifications
@@ -27,7 +27,7 @@ jar 定位与 agentArgs 落地规则统一，供 launcher/agent/core 复用。
 #### Scenario: 产物定位与参数落地一致
 前置：发布包 / IDE / 任意 cwd  
 - `com.javasleuth.bootstrap.util.JarLocator` 以 Manifest marker 定位 `agent`/`container` 产物，并支持 sysprop/env 覆盖
-- `com.javasleuth.bootstrap.util.AgentArgsApplier` 统一 `agentArgs` 解析并写入 `sleuth.*` sysprop（bootstrap/container/core 共用）
+- `com.javasleuth.bootstrap.util.AgentArgsApplier` 统一 `agentArgs` 解析并写入 `sleuth.*` sysprop（bootstrap/container/core 共用），并通过 `SystemPropertyRollbackRegistry` 在 detach/shutdown 时 best-effort 回滚为 attach 前的值（降低跨 attach 漂移）
 - `com.javasleuth.bootstrap.agent.CoreClassLoaderRegistry` 作为 attach gate SSOT：登记隔离 `URLClassLoader`，并在 shutdown 后 best-effort 关闭/清引用，支持 detach→re-attach
 
 ## API Interfaces
@@ -38,7 +38,7 @@ N/A
 
 ## Notes
 - `bootstrap` 模块必须保持 **无第三方依赖**（JDK-only），避免 bootstrap 可见范围引入依赖碰撞风险。
-- `monitor` 拦截器只读取 `sleuth.monitoring.*` sysprop（带默认值）。core 启动阶段会 best-effort 将 `ProductionConfig` effective 值同步到 sysprop（未显式覆盖时补齐）。
+- `monitor` 拦截器读取 `BootstrapMonitorConfigStore`（优先）与 `sleuth.monitoring.*` sysprop（回退，带默认值）。container/core 启动阶段会在“未显式设置 sysprop”时把 `ProductionConfig` 的监控派生配置写入 Store，并在 detach/shutdown 时清理 Store（避免残留）。
 
 ## Dependencies
 N/A

@@ -5,9 +5,10 @@ package com.javasleuth.core.agent.core;
  *
  * <p>该类负责组装并启动命令服务与 transformer，尽量避免将单例获取与全局副作用散落到各业务对象构造阶段。</p>
  */
-import com.javasleuth.bootstrap.util.AgentArgsApplier;
+import com.javasleuth.bootstrap.monitor.BootstrapMonitorConfigStore;
 import com.javasleuth.bootstrap.monitor.VmToolInterceptor;
 import com.javasleuth.bootstrap.agent.CoreClassLoaderRegistry;
+import com.javasleuth.bootstrap.util.SystemPropertyRollbackRegistry;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.model.MonitoringConfig;
@@ -31,7 +32,7 @@ public class SleuthAgentCore {
         }
 
         try {
-            AgentArgsApplier.applyToSystemProperties(agentArgs);
+            SystemPropertyRollbackRegistry.applyAndRegisterIfAbsent(agentArgs);
             syncBootstrapMonitoringConfig();
             SleuthAgentRuntime runtime = SleuthAgentRuntime.start(inst, SleuthAgentCore::shutdown);
             RUNTIME.set(runtime);
@@ -85,6 +86,14 @@ public class SleuthAgentCore {
             clearBootstrapRegistriesBestEffort();
         } finally {
             ATTACHED.set(false);
+            // 清理 attach 级别的 bootstrap 配置 Store，避免跨 attach 漂移。
+            try {
+                BootstrapMonitorConfigStore.clear();
+            } catch (Exception ignore) {
+                // best-effort
+            }
+            // 回滚本次 attach 写入的 sysprop，避免跨 attach 漂移。
+            SystemPropertyRollbackRegistry.rollbackAndClearBestEffort();
             // 重置 bootstrap 入口闩锁：允许同 JVM detach 后 re-attach。
             BootstrapAttachGateReset.resetBestEffort(instrumentation);
             // 通知 bootstrap registry 释放/关闭本次 attach 的隔离 ClassLoader（best-effort）。
@@ -111,22 +120,21 @@ public class SleuthAgentCore {
             ProductionConfig cfg = ProductionConfig.getInstance();
             SleuthConfig typed = SleuthConfigParser.parse(cfg.snapshot());
             MonitoringConfig monitoring = typed.monitoring();
-            setIfAbsent("sleuth.monitoring.watch.drop.on.full", String.valueOf(monitoring.isWatchDropOnFull()));
-            setIfAbsent("sleuth.monitoring.trace.drop.on.full", String.valueOf(monitoring.isTraceDropOnFull()));
-            setIfAbsent("sleuth.monitoring.trace.sample.rate", String.valueOf(monitoring.getTraceSampleRate()));
-            setIfAbsent("sleuth.monitoring.monitor.sample.rate", String.valueOf(monitoring.getMonitorSampleRate()));
+            // 保持与旧版 setIfAbsent 行为兼容：若用户显式设置 sysprop，则优先使用 sysprop。
+            if (System.getProperty("sleuth.monitoring.watch.drop.on.full") == null) {
+                BootstrapMonitorConfigStore.setWatchDropOnFull(monitoring.isWatchDropOnFull());
+            }
+            if (System.getProperty("sleuth.monitoring.trace.drop.on.full") == null) {
+                BootstrapMonitorConfigStore.setTraceDropOnFull(monitoring.isTraceDropOnFull());
+            }
+            if (System.getProperty("sleuth.monitoring.trace.sample.rate") == null) {
+                BootstrapMonitorConfigStore.setTraceSampleRate(monitoring.getTraceSampleRate());
+            }
+            if (System.getProperty("sleuth.monitoring.monitor.sample.rate") == null) {
+                BootstrapMonitorConfigStore.setMonitorSampleRate(monitoring.getMonitorSampleRate());
+            }
         } catch (Exception ignore) {
             // best-effort
         }
-    }
-
-    private static void setIfAbsent(String key, String value) {
-        if (key == null || key.trim().isEmpty() || value == null) {
-            return;
-        }
-        if (System.getProperty(key) != null) {
-            return;
-        }
-        System.setProperty(key, value);
     }
 }
