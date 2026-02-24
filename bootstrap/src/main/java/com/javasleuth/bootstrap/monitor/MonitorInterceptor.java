@@ -35,6 +35,19 @@ public final class MonitorInterceptor {
         enabled = false;
     }
 
+    /**
+     * detach/shutdown 时使用的重置入口（best-effort）。
+     *
+     * <p>目标：避免跨 attach 的监控统计残留导致观测漂移。</p>
+     */
+    public static void resetForDetach() {
+        try {
+            unregisterAllMonitors();
+        } catch (Exception ignore) {
+            // ignore
+        }
+    }
+
     public static boolean isEnabled() {
         return enabled;
     }

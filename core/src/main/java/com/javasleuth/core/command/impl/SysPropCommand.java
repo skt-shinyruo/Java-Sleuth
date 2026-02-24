@@ -1,6 +1,8 @@
 package com.javasleuth.core.command.impl;
 
+import com.javasleuth.core.agent.runtime.BootstrapMonitoringConfigSync;
 import com.javasleuth.core.command.Command;
+import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.security.SecurityValidator;
 import java.lang.instrument.Instrumentation;
 import java.util.Map;
@@ -153,6 +155,7 @@ public class SysPropCommand implements Command {
             String verifyValue = System.getProperty(key);
             if (value.equals(verifyValue)) {
                 sb.append("Status: Successfully updated\n");
+                syncBootstrapMonitorConfigStoreBestEffort(key);
             } else {
                 sb.append("Status: WARNING - Property may not have been updated as expected\n");
             }
@@ -161,6 +164,27 @@ public class SysPropCommand implements Command {
         } catch (SecurityException e) {
             return String.format("Failed to set system property '%s': %s", key, e.getMessage());
         }
+    }
+
+    private static void syncBootstrapMonitorConfigStoreBestEffort(String sysPropKey) {
+        if (!isMonitoringSysPropKey(sysPropKey)) {
+            return;
+        }
+        try {
+            BootstrapMonitoringConfigSync.syncFromProductionConfigBestEffort(ProductionConfig.getInstance());
+        } catch (Exception ignore) {
+            // best-effort
+        }
+    }
+
+    private static boolean isMonitoringSysPropKey(String key) {
+        if (key == null) {
+            return false;
+        }
+        return "sleuth.monitoring.watch.drop.on.full".equals(key) ||
+            "sleuth.monitoring.trace.drop.on.full".equals(key) ||
+            "sleuth.monitoring.trace.sample.rate".equals(key) ||
+            "sleuth.monitoring.monitor.sample.rate".equals(key);
     }
 
     private boolean isValidPropertyKey(String key) {

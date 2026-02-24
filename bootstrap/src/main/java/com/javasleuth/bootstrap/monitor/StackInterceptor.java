@@ -42,6 +42,33 @@ public final class StackInterceptor {
         enabled = false;
     }
 
+    /**
+     * detach/shutdown 时使用的重置入口（best-effort）。
+     *
+     * <p>目标：避免跨 attach 统计/缓存残留导致观测与行为漂移。</p>
+     */
+    public static void resetForDetach() {
+        try {
+            unregisterAll();
+        } catch (Exception ignore) {
+            // ignore
+        }
+        resetMetrics();
+    }
+
+    /**
+     * 重置统计计数（不会影响功能开关）。
+     */
+    public static void resetMetrics() {
+        try {
+            publishedEvents.set(0);
+            droppedEvents.set(0);
+            evictedEvents.set(0);
+        } catch (Exception ignore) {
+            // ignore
+        }
+    }
+
     public static boolean isEnabled() {
         return enabled;
     }

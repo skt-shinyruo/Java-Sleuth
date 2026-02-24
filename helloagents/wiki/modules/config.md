@@ -6,7 +6,7 @@
 ## Module Overview
 - **Responsibility:** 默认配置、外部配置、系统属性覆盖
 - **Status:** ✅Stable
-- **Last Updated:** 2026-02-21
+- **Last Updated:** 2026-02-24
 - **Build Module:** foundation（低层基础模块）
 
 ## Specifications
@@ -31,10 +31,17 @@
 - Launcher/脚本可通过 agentArgs `containerJar=/path/to/java-sleuth-container-*-jar-with-dependencies.jar` 显式指定隔离域容器产物
 - 或通过 override：`-Dsleuth.agent.container.jar=...` / `SLEUTH_AGENT_CONTAINER_JAR=...`（由 `JarLocator` 解析）
 
+#### Scenario: 运行时 reload（从文件重新加载）
+前置：已连接目标 JVM，配置文件内容已更新或 `sleuth.config.file` 指向的新文件已准备好  
+- 执行 `config reload`：重新读取 defaults + config file，并替换 `ProductionConfig` 的基线配置（不清除 runtime overrides）
+- 运行时覆盖仍优先：`runtime overrides > system properties > file > default`（reload 只影响 file/default 基线）
+- 为保持 bootstrap 拦截器行为一致，reload 后会 best-effort 同步 monitoring effective 配置到 `BootstrapMonitorConfigStore`
+
 #### Scenario: 优先级可解释（含运行时覆盖）
 前置：同一 key 同时存在多来源  
 - 读取优先级：`runtime overrides > system properties > file > default`
 - `config get <key>` 会返回 masked value + origin（便于定位“为什么变了”）
+- detach→re-attach：agent 在 shutdown/detach 时会 best-effort 重置 `ProductionConfig` 单例（`resetInstanceForDetach()`），确保下次 attach 能重新加载 `sleuth.config.file` / sysprop 基线；运行时覆盖不会跨 attach 保留
 
 ### Requirement: Schema 作为 SSOT（SleuthConfigSchema）
 **Module:** config
@@ -139,6 +146,7 @@
 ## Notes
 - 禁用配置键校验（legacy 协议遗留键）默认严格拒绝：`protocol.handshake.enabled`、`protocol.text.end.marker.enabled`
   - 可通过 `-Dsleuth.config.forbidden.keys.policy=off|warn|strict` 控制（默认 strict）
+- bootstrap 监控配置同步：bootstrap 拦截器无法依赖完整 config 栈，因此 core 会将 effective monitoring config 同步到 `BootstrapMonitorConfigStore`（attach 启动阶段 + `config set/remove/clear` 变更后 best-effort 同步），确保默认值/校验/派生规则仍以 `SleuthConfigSchema` 为 SSOT，并避免“config 显示值”与拦截器实际行为漂移
 
 ## Data Models
 N/A

@@ -1,5 +1,6 @@
 package com.javasleuth.core.command.impl;
 
+import com.javasleuth.core.agent.runtime.BootstrapMonitoringConfigSync;
 import com.javasleuth.core.command.Command;
 import com.javasleuth.foundation.config.ConfigLoader;
 import com.javasleuth.foundation.config.ConfigOrigin;
@@ -47,6 +48,7 @@ public class ConfigCommand implements Command {
                 String setKey = args[2];
                 String setValue = args[3];
                 config.setRuntimeConfig(setKey, setValue, ConfigUpdateSource.COMMAND);
+                BootstrapMonitoringConfigSync.syncFromProductionConfigBestEffort(config);
                 return "Runtime configuration updated: " + setKey + " = " + masker.mask(setKey, setValue) +
                     " (origin=" + config.getOrigin(setKey) + ")";
 
@@ -56,6 +58,7 @@ public class ConfigCommand implements Command {
                 }
                 String removeKey = args[2];
                 config.removeRuntimeConfig(removeKey, ConfigUpdateSource.COMMAND);
+                BootstrapMonitoringConfigSync.syncFromProductionConfigBestEffort(config);
                 return "Runtime configuration removed: " + removeKey;
 
             case "save":
@@ -86,11 +89,20 @@ public class ConfigCommand implements Command {
 
             case "clear":
                 config.clearRuntimeConfig(ConfigUpdateSource.COMMAND);
+                BootstrapMonitoringConfigSync.syncFromProductionConfigBestEffort(config);
                 return "Runtime configuration cleared";
 
             case "reload":
-                // Note: In a real implementation, you might want to reload from file
-                return "Configuration reload is not implemented (restart required)";
+                try {
+                    boolean loaded = config.reloadConfiguration();
+                    BootstrapMonitoringConfigSync.syncFromProductionConfigBestEffort(config);
+                    String file = resolveLoadedConfigFile();
+                    return loaded
+                        ? "Configuration reloaded from file: " + file
+                        : "Configuration reloaded (file not found, defaults used): " + file;
+                } catch (Exception e) {
+                    return "Failed to reload configuration: " + e.getMessage();
+                }
 
             case "show":
                 StringBuilder show = new StringBuilder();
@@ -167,7 +179,7 @@ public class ConfigCommand implements Command {
 
     @Override
     public String getDescription() {
-        return "Manage production configuration settings (usage: config [status|get|set|remove|save|clear|show])";
+        return "Manage production configuration settings (usage: config [status|get|set|remove|save|clear|reload|show])";
     }
 
     private String renderStatus() {
@@ -175,7 +187,7 @@ public class ConfigCommand implements Command {
         int runtimeOverrides = countKnownRuntimeOverrides();
         StringBuilder status = new StringBuilder();
         status.append("=== CONFIGURATION STATUS ===\n");
-        status.append("Config File: ").append(resolveConfigFile()).append("\n");
+        status.append("Config File: ").append(resolveLoadedConfigFile()).append("\n");
         status.append("Known Runtime Overrides: ").append(runtimeOverrides).append("\n");
 
         status.append("\n-- Key Settings --\n");
@@ -206,5 +218,17 @@ public class ConfigCommand implements Command {
             return explicit.trim();
         }
         return ConfigLoader.DEFAULT_CONFIG_FILE_NAME;
+    }
+
+    private String resolveLoadedConfigFile() {
+        try {
+            java.io.File f = config.getLoadedConfigFile();
+            if (f != null) {
+                return f.getAbsolutePath();
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+        return resolveConfigFile();
     }
 }

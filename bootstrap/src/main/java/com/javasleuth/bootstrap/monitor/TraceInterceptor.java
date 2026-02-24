@@ -17,13 +17,24 @@ public class TraceInterceptor {
     private static final AtomicLong evictedEvents = new AtomicLong(0);
     private static final AtomicLong sampledOutEvents = new AtomicLong(0);
     private static final ConcurrentHashMap<String, Double> traceSampleRateOverrides = new ConcurrentHashMap<>();
+    // detach → re-attach 的代际（epoch）。用于在下次命中拦截器时清理 ThreadLocal 残留。
+    private static final AtomicLong EPOCH = new AtomicLong(0);
 
-    private static class PerTraceState {
+    private static final class PerTraceState {
         final ArrayDeque<Boolean> sampleStack = new ArrayDeque<>();
     }
 
-    private static final ThreadLocal<Map<String, PerTraceState>> perThreadState =
-        ThreadLocal.withInitial(HashMap::new);
+    private static final class ThreadState {
+        long epoch;
+        final Map<String, PerTraceState> traces = new HashMap<>();
+    }
+
+    private static final ThreadLocal<ThreadState> perThreadState =
+        ThreadLocal.withInitial(() -> {
+            ThreadState ts = new ThreadState();
+            ts.epoch = EPOCH.get();
+            return ts;
+        });
 
     public static void registerTrace(String traceId, BlockingQueue<TraceResult> queue) {
         registerTrace(traceId, queue, null);
@@ -47,6 +58,45 @@ public class TraceInterceptor {
         traceQueues.clear();
         traceSampleRateOverrides.clear();
         enabled = false;
+    }
+
+    /**
+     * detach/shutdown 时使用的重置入口（best-effort）。
+     *
+     * <p>目标：</p>
+     * <ul>
+     *   <li>清理队列/覆盖配置与统计计数，避免跨 attach 漂移</li>
+     *   <li>推进 epoch，使得各线程的 ThreadLocal 状态在下次命中时自动清空</li>
+     * </ul>
+     */
+    public static void resetForDetach() {
+        try {
+            unregisterAllTraces();
+        } catch (Exception ignore) {
+            // ignore
+        }
+        try {
+            EPOCH.incrementAndGet();
+            // best-effort：清理当前线程的 ThreadLocal；其他线程在下次命中时会自动清理。
+            perThreadState.remove();
+        } catch (Exception ignore) {
+            // ignore
+        }
+        resetMetrics();
+    }
+
+    /**
+     * 重置统计计数（不会影响功能开关）。
+     */
+    public static void resetMetrics() {
+        try {
+            publishedEvents.set(0);
+            droppedEvents.set(0);
+            evictedEvents.set(0);
+            sampledOutEvents.set(0);
+        } catch (Exception ignore) {
+            // ignore
+        }
     }
 
     public static void onMethodEntry(String traceId, String className, String methodName,
@@ -193,25 +243,35 @@ public class TraceInterceptor {
     }
 
     private static PerTraceState getOrCreateState(String traceId) {
-        Map<String, PerTraceState> map = perThreadState.get();
-        PerTraceState state = map.get(traceId);
+        ThreadState ts = currentThreadState();
+        PerTraceState state = ts.traces.get(traceId);
         if (state == null) {
             state = new PerTraceState();
-            map.put(traceId, state);
+            ts.traces.put(traceId, state);
         }
         return state;
     }
 
     private static PerTraceState getState(String traceId) {
-        return perThreadState.get().get(traceId);
+        return currentThreadState().traces.get(traceId);
     }
 
     private static void removeState(String traceId) {
-        Map<String, PerTraceState> map = perThreadState.get();
-        map.remove(traceId);
-        if (map.isEmpty()) {
+        ThreadState ts = currentThreadState();
+        ts.traces.remove(traceId);
+        if (ts.traces.isEmpty()) {
             perThreadState.remove();
         }
+    }
+
+    private static ThreadState currentThreadState() {
+        ThreadState ts = perThreadState.get();
+        long cur = EPOCH.get();
+        if (ts.epoch != cur) {
+            ts.traces.clear();
+            ts.epoch = cur;
+        }
+        return ts;
     }
 
     private static void offerWithPolicy(BlockingQueue<TraceResult> queue, TraceResult result) {

@@ -19,27 +19,27 @@ public final class AgentGlobalState {
 
     public static void resetInterceptorsBestEffort() {
         try {
-            WatchInterceptor.unregisterAllWatches();
+            WatchInterceptor.resetForDetach();
         } catch (Exception ignore) {
             // best-effort
         }
         try {
-            TraceInterceptor.unregisterAllTraces();
+            TraceInterceptor.resetForDetach();
         } catch (Exception ignore) {
             // best-effort
         }
         try {
-            MonitorInterceptor.unregisterAllMonitors();
+            MonitorInterceptor.resetForDetach();
         } catch (Exception ignore) {
             // best-effort
         }
         try {
-            TtInterceptor.unregisterAll();
+            TtInterceptor.resetForDetach();
         } catch (Exception ignore) {
             // best-effort
         }
         try {
-            StackInterceptor.unregisterAll();
+            StackInterceptor.resetForDetach();
         } catch (Exception ignore) {
             // best-effort
         }

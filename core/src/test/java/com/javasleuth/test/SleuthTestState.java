@@ -19,27 +19,32 @@ public final class SleuthTestState {
             // ignore
         }
         try {
-            com.javasleuth.bootstrap.monitor.WatchInterceptor.unregisterAllWatches();
+            com.javasleuth.bootstrap.monitor.BootstrapMonitorConfigStore.clear();
         } catch (Exception ignore) {
             // ignore
         }
         try {
-            com.javasleuth.bootstrap.monitor.TraceInterceptor.unregisterAllTraces();
+            com.javasleuth.bootstrap.monitor.WatchInterceptor.resetForDetach();
         } catch (Exception ignore) {
             // ignore
         }
         try {
-            com.javasleuth.bootstrap.monitor.MonitorInterceptor.unregisterAllMonitors();
+            com.javasleuth.bootstrap.monitor.TraceInterceptor.resetForDetach();
         } catch (Exception ignore) {
             // ignore
         }
         try {
-            com.javasleuth.bootstrap.monitor.TtInterceptor.unregisterAll();
+            com.javasleuth.bootstrap.monitor.MonitorInterceptor.resetForDetach();
         } catch (Exception ignore) {
             // ignore
         }
         try {
-            com.javasleuth.bootstrap.monitor.StackInterceptor.unregisterAll();
+            com.javasleuth.bootstrap.monitor.TtInterceptor.resetForDetach();
+        } catch (Exception ignore) {
+            // ignore
+        }
+        try {
+            com.javasleuth.bootstrap.monitor.StackInterceptor.resetForDetach();
         } catch (Exception ignore) {
             // ignore
         }
@@ -52,6 +57,13 @@ public final class SleuthTestState {
         }
         try {
             com.javasleuth.foundation.security.DangerousCommandConfirmationManager.shutdownInstance();
+        } catch (Exception ignore) {
+            // ignore
+        }
+
+        // Config singleton (detach -> re-attach semantics)
+        try {
+            com.javasleuth.foundation.config.ProductionConfig.resetInstanceForDetach();
         } catch (Exception ignore) {
             // ignore
         }

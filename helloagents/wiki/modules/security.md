@@ -45,9 +45,12 @@
 
 #### Scenario: detach 时清理安全缓存（避免状态残留）
 前置：同一 JVM 内发生 detach → re-attach  
-- shutdown 编排会对注入的 `AuthorizationManager` / `RequestSecurityManager` / `DangerousCommandConfirmationManager` 执行 instance `shutdown()`（幂等 best-effort）
+- shutdown 编排会对注入的 `AuthorizationManager` / `RequestSecurityManager` 执行 instance `shutdown()`（幂等 best-effort）
+- 对 singleton manager（`AuthenticationManager` / `DangerousCommandConfirmationManager`）执行 `shutdownInstance()`：
+  - 目的 1：允许 detach→re-attach 时重新装配新实例（避免复用已 shutdown 的执行器/缓存）
+  - 目的 2：避免跨 attach 持有旧 `AuditLogger` 引用（即使隔离 `URLClassLoader` 未能完全释放的降级场景）
 - attach 生命周期边界以隔离 `URLClassLoader` 为准：shutdown 后由 `CoreClassLoaderRegistry.onCoreShutdown(...)` best-effort 释放/关闭并清引用 ClassLoader，使 core/foundation 的 static/singleton 随 ClassLoader 自然消亡（减少对 `shutdownInstance()` 的依赖）
-- `shutdownInstance()` 仅作为测试隔离或极端降级路径的 best-effort 工具（不再作为核心关闭语义）
+- `shutdownInstance()` 在上述 singleton 上作为“保险栓”存在：优先以 ClassLoader 生命周期为主，但需要保证在释放失败时仍可 re-attach 自洽
 - 避免 rate limit/nonce/pending confirm 等状态跨 attach 残留，降低误判与不可预期行为
 - 约束补充：`AuthorizationManager` / `RequestSecurityManager` 的构造注入路径为 **strict non-null**（不再在构造器内对 null 依赖隐式回退到 `getInstance()`）；不提供 `getInstance()` 兼容入口，依赖来源必须显式装配（composition root 或 `createDefault()`）
 

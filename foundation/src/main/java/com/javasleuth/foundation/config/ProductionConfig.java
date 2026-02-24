@@ -9,10 +9,7 @@ import java.util.Properties;
 public class ProductionConfig implements ConfigView, MutableConfig {
     private static final String SYS_PROP_PREFIX = "sleuth.";
 
-    private final Properties properties;
-    private final Properties defaultProperties;
-    private final Properties fileProperties;
-    private final File configFile;
+    private volatile LoadedConfigState state;
 
     private final SensitiveKeyMasker masker;
     private final RuntimeConfigStore runtimeStore;
@@ -21,6 +18,26 @@ public class ProductionConfig implements ConfigView, MutableConfig {
 
     private static ProductionConfig instance;
 
+    private static final class LoadedConfigState {
+        private final Properties properties;
+        private final Properties defaultProperties;
+        private final Properties fileProperties;
+        private final File configFile;
+        private final boolean loadedFromFile;
+
+        private LoadedConfigState(ConfigLoadResult loaded) {
+            Properties defaults = loaded != null ? loaded.getDefaultProperties() : null;
+            Properties file = loaded != null ? loaded.getFileProperties() : null;
+            Properties effective = loaded != null ? loaded.getEffectiveProperties() : null;
+
+            this.defaultProperties = defaults != null ? defaults : new Properties();
+            this.fileProperties = file != null ? file : new Properties();
+            this.properties = effective != null ? effective : new Properties();
+            this.configFile = loaded != null ? loaded.getConfigFile() : null;
+            this.loadedFromFile = loaded != null && loaded.isLoadedFromFile();
+        }
+    }
+
     private ProductionConfig() {
         this.masker = new SensitiveKeyMasker();
         this.runtimeStore = new RuntimeConfigStore(masker);
@@ -28,10 +45,7 @@ public class ProductionConfig implements ConfigView, MutableConfig {
         this.persister = new ConfigPersister();
 
         ConfigLoadResult loaded = loadConfiguration();
-        this.defaultProperties = loaded.getDefaultProperties();
-        this.fileProperties = loaded.getFileProperties();
-        this.properties = loaded.getEffectiveProperties();
-        this.configFile = loaded.getConfigFile();
+        applyLoadedConfig(loaded);
     }
 
     public static synchronized ProductionConfig getInstance() {
@@ -41,13 +55,53 @@ public class ProductionConfig implements ConfigView, MutableConfig {
         return instance;
     }
 
+    /**
+     * Detach/shutdown helper: reset the global singleton so a future attach can reload configuration
+     * (including {@code sleuth.config.file} and other sysprop baselines).
+     *
+     * <p>Note: existing references to the previous instance should not be used after reset.
+     * This method is intended to be invoked on agent detach/shutdown boundaries.</p>
+     */
+    public static synchronized void resetInstanceForDetach() {
+        instance = null;
+    }
+
+    /**
+     * Reload configuration from defaults + config file (as defined by {@code sleuth.config.file} sysprop),
+     * without clearing runtime overrides.
+     *
+     * <p>This method is synchronized to ensure the loaded config state is swapped atomically.</p>
+     *
+     * @return true if a config file exists and was loaded; false if defaults were used
+     */
+    public synchronized boolean reloadConfiguration() {
+        ConfigLoadResult loaded = loadConfiguration();
+        applyLoadedConfig(loaded);
+        return loaded != null && loaded.isLoadedFromFile();
+    }
+
+    public File getLoadedConfigFile() {
+        LoadedConfigState s = state;
+        return s != null ? s.configFile : null;
+    }
+
+    public boolean isLoadedFromFile() {
+        LoadedConfigState s = state;
+        return s != null && s.loadedFromFile;
+    }
+
     private ConfigLoadResult loadConfiguration() {
         return loader.load();
+    }
+
+    private void applyLoadedConfig(ConfigLoadResult loaded) {
+        this.state = new LoadedConfigState(loaded);
     }
 
     // Generic getters with runtime override support
     @Override
     public String getString(String key, String defaultValue) {
+        LoadedConfigState s = state;
         String runtimeValue = runtimeStore.get(key);
         if (runtimeValue != null) {
             return runtimeValue;
@@ -56,7 +110,10 @@ public class ProductionConfig implements ConfigView, MutableConfig {
         if (sysProp != null) {
             return sysProp;
         }
-        return properties.getProperty(key, defaultValue);
+        if (s == null) {
+            return defaultValue;
+        }
+        return s.properties.getProperty(key, defaultValue);
     }
 
     @Override
@@ -127,16 +184,17 @@ public class ProductionConfig implements ConfigView, MutableConfig {
         if (key == null) {
             return ConfigOrigin.UNKNOWN;
         }
+        LoadedConfigState s = state;
         if (runtimeStore.get(key) != null) {
             return ConfigOrigin.RUNTIME_OVERRIDE;
         }
         if (System.getProperty(SYS_PROP_PREFIX + key) != null) {
             return ConfigOrigin.SYSTEM_PROPERTY;
         }
-        if (fileProperties.getProperty(key) != null) {
+        if (s != null && s.fileProperties.getProperty(key) != null) {
             return ConfigOrigin.FILE;
         }
-        if (defaultProperties.getProperty(key) != null) {
+        if (s != null && s.defaultProperties.getProperty(key) != null) {
             return ConfigOrigin.DEFAULT;
         }
         return ConfigOrigin.UNKNOWN;
@@ -148,13 +206,19 @@ public class ProductionConfig implements ConfigView, MutableConfig {
     }
 
     public void saveConfiguration(boolean includeRuntimeOverrides) throws IOException {
-        File out = configFile != null ? configFile : new File(ConfigLoader.DEFAULT_CONFIG_FILE_NAME);
+        LoadedConfigState s = state;
+        File out = s != null && s.configFile != null ? s.configFile : new File(ConfigLoader.DEFAULT_CONFIG_FILE_NAME);
+        Properties effective = s != null ? s.properties : new Properties();
         Map<String, String> runtime = includeRuntimeOverrides ? runtimeStore.snapshot() : null;
-        persister.save(out, properties, runtime, includeRuntimeOverrides);
+        persister.save(out, effective, runtime, includeRuntimeOverrides);
     }
 
     public ConfigSnapshot snapshot() {
-        return new ConfigSnapshot(properties, defaultProperties, fileProperties, runtimeStore.snapshot(), null);
+        LoadedConfigState s = state;
+        Properties effective = s != null ? s.properties : new Properties();
+        Properties defaults = s != null ? s.defaultProperties : new Properties();
+        Properties file = s != null ? s.fileProperties : new Properties();
+        return new ConfigSnapshot(effective, defaults, file, runtimeStore.snapshot(), null);
     }
 
     private static void validateRuntimeOverrideKey(String key) {

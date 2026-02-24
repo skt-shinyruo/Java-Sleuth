@@ -50,6 +50,47 @@ public final class TtInterceptor {
         enabled = false;
     }
 
+    /**
+     * detach/shutdown 时使用的重置入口（best-effort）。
+     *
+     * <p>目标：</p>
+     * <ul>
+     *   <li>清理队列与缓存，避免跨 attach 残留影响后续诊断</li>
+     *   <li>重置统计计数，避免 status 指标跨 attach 累积造成误判</li>
+     * </ul>
+     */
+    public static void resetForDetach() {
+        try {
+            unregisterAll();
+        } catch (Exception ignore) {
+            // ignore
+        }
+        try {
+            clear();
+        } catch (Exception ignore) {
+            // ignore
+        }
+        resetMetrics();
+        try {
+            recordSeq.set(1);
+        } catch (Exception ignore) {
+            // ignore
+        }
+    }
+
+    /**
+     * 重置统计计数（不会影响功能开关）。
+     */
+    public static void resetMetrics() {
+        try {
+            published.set(0);
+            dropped.set(0);
+            evicted.set(0);
+        } catch (Exception ignore) {
+            // ignore
+        }
+    }
+
     public static int getActiveTtCount() {
         return ttQueues.size();
     }

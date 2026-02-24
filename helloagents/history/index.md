@@ -54,6 +54,10 @@
 - 202602211837_arthas_classloader_lifecycle
 - 202602221036_remove_productionconfig_domain_getters
 - 202602230002_arch_config_lifecycle_refactor
+- 202602241220_agent_entrypoint_detach_reset
+- 202602241259_config_detach_reset_monitor_sync
+- 202602241327_config_reload
+- 202602241341_sysprop_monitoring_store_sync
 
 ## 2026-01
 - 202601281207_sleuth_plugin_stream

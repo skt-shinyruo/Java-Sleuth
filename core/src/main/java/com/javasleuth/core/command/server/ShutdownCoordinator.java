@@ -93,9 +93,8 @@ public final class ShutdownCoordinator {
             }
 
             try {
-                if (authenticationManager != null) {
-                    authenticationManager.shutdown();
-                }
+                // AuthenticationManager 是 singleton，并持有 AuditLogger 引用；detach→re-attach 必须允许其重建。
+                AuthenticationManager.shutdownInstance();
             } catch (Exception ignore) {
                 // ignore
             }
@@ -114,9 +113,8 @@ public final class ShutdownCoordinator {
                 // ignore
             }
             try {
-                if (dangerousConfirm != null) {
-                    dangerousConfirm.shutdown();
-                }
+                // DangerousCommandConfirmationManager 也是 singleton；避免跨 attach 持有旧 AuditLogger 引用。
+                DangerousCommandConfirmationManager.shutdownInstance();
             } catch (Exception ignore) {
                 // ignore
             }
@@ -171,9 +169,7 @@ public final class ShutdownCoordinator {
                 // ignore
             }
             try {
-                if (authenticationManager != null) {
-                    authenticationManager.shutdown();
-                }
+                AuthenticationManager.shutdownInstance();
             } catch (Exception ignore) {
                 // ignore
             }
@@ -192,9 +188,7 @@ public final class ShutdownCoordinator {
                 // ignore
             }
             try {
-                if (dangerousConfirm != null) {
-                    dangerousConfirm.shutdown();
-                }
+                DangerousCommandConfirmationManager.shutdownInstance();
             } catch (Exception ignore) {
                 // ignore
             }
