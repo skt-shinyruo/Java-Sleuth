@@ -7,6 +7,8 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 ## [Unreleased]
 
 ### Added
+- 实现审计报告（概述）：输出 P0/P1/P2 问题清单与证据定位（方案：[`202602252229_implementation-audit`](archive/2026-02/202602252229_implementation-audit/)）
+- 架构审计报告（概述）：沉淀架构问题清单与 M0/M1/M2 路线图（方案：[`202602251733_architecture-audit`](archive/2026-02/202602251733_architecture-audit/)）
 - 分层边界守护：新增 `foundation` Maven 模块（承载 util/config/security/data），以编译期模块边界阻断低层反向依赖高层
 - 插件化命令注册与分帧协议基础设施
 - Docker 演示镜像：内置 `EnhancedTestApplication`，支持 `docker exec -it` 纯交互 attach 与命令演示
@@ -57,6 +59,7 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 教学文档补充：命令触发插桩与回滚链路（watch/trace/reset/stop）
 
 ### Changed
+- Jar 定位确定性增强：`JarLocator`/`SleuthAgent` 新增 `sleuth.locator.allowCwdScan`（默认 true）控制 CWD 相对目录兜底扫描；多候选 jar 选择优先“文件名版本号”（无法解析再回退 `lastModified`）；并提供 `sleuth.locator.debug` 输出定位调试信息（bridge CWD 命中时输出一次性提示，建议显式配置 `sleuth.agent.bootstrap.bridge.jar`）。
 - 关键依赖环拆除：`CommandMeta` 下沉到 `com.javasleuth.foundation.security`（SSOT），`security` 不再依赖 `command`；`SleuthLogger` 通过 `SleuthLogContext` 注入上下文，避免 `util -> command`；`stop` 通过注入的 shutdown hook 触发 Agent shutdown，避免 `command -> agent`
 - split package 治理：`bootstrap/foundation/core` 包根前缀化为 `com.javasleuth.bootstrap.*` / `com.javasleuth.foundation.*` / `com.javasleuth.core.*`，消除 `com.javasleuth.util` 在多模块并存的“分裂包”，并避免 core 复用 bootstrap 可见域的实现细节（例如 RingBuffer）
 - 线程与生命周期治理：`AuthenticationManager` 会话清理任务改为可 shutdown 的调度器并纳入关闭编排；`JobManager` 支持 shutdown 并在后台 job 传播/清理上下文；`AuditLogger`/`PerformanceOptimizer` 支持 detach→re-attach 场景重启

@@ -72,4 +72,8 @@
 
 | 时间戳 | 名称 | 类型 | 涉及模块 | 决策 | 结果 |
 |--------|------|------|---------|------|------|
+| 202602252229 | implementation-audit | - | - | - | ✅完成 |
+| 202602252013 | jar-locator-bridge-hardening | - | - | - | ✅完成 |
+| 202602251855 | jar-locator-bridge-risk | - | - | - | ✅完成 |
+| 202602251733 | architecture-audit | - | - | - | ✅完成 |
 | 202602251614 | bootstrap-bridge-separation | implementation | agent,bootstrap | bootstrap-bridge-separation#D001 | ✅完成 |

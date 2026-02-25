@@ -5,7 +5,6 @@ import java.net.URL;
 import java.security.CodeSource;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
@@ -23,6 +22,9 @@ public final class JarLocator {
     public static final String AGENT_CORE_JAR_OVERRIDE_ENV = "SLEUTH_AGENT_CORE_JAR";
     public static final String AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY = "sleuth.agent.container.jar";
     public static final String AGENT_CONTAINER_JAR_OVERRIDE_ENV = "SLEUTH_AGENT_CONTAINER_JAR";
+
+    public static final String LOCATOR_DEBUG_PROPERTY = "sleuth.locator.debug";
+    public static final String LOCATOR_ALLOW_CWD_SCAN_PROPERTY = "sleuth.locator.allowCwdScan";
 
     public static final String DEFAULT_AGENT_JAR_SUFFIX = "-jar-with-dependencies.jar";
     public static final String MANIFEST_MARKER_BOOTSTRAP = "Sleuth-Agent-Bootstrap";
@@ -80,23 +82,27 @@ public final class JarLocator {
         }
 
         // Fallback: scan common build directories under current working directory
-        File fromAgentTarget = locateNewestAgentJarBySuffix(new File("agent/target"), DEFAULT_AGENT_JAR_SUFFIX);
+        if (!isCwdScanAllowed()) {
+            debug("JarLocator: CWD scan disabled by -D" + LOCATOR_ALLOW_CWD_SCAN_PROPERTY + "=false");
+            return null;
+        }
+        File fromAgentTarget = locateNewestAgentJarBySuffix(cwd("agent/target"), DEFAULT_AGENT_JAR_SUFFIX);
         if (fromAgentTarget != null) {
             return fromAgentTarget;
         }
-        File fromCoreTarget = locateNewestAgentJarBySuffix(new File("core/target"), DEFAULT_AGENT_JAR_SUFFIX);
+        File fromCoreTarget = locateNewestAgentJarBySuffix(cwd("core/target"), DEFAULT_AGENT_JAR_SUFFIX);
         if (fromCoreTarget != null) {
             return fromCoreTarget;
         }
-        File fromTarget = locateNewestAgentJarBySuffix(new File("target"), DEFAULT_AGENT_JAR_SUFFIX);
+        File fromTarget = locateNewestAgentJarBySuffix(cwd("target"), DEFAULT_AGENT_JAR_SUFFIX);
         if (fromTarget != null) {
             return fromTarget;
         }
-        File fromLib = locateNewestAgentJarBySuffix(new File("lib"), DEFAULT_AGENT_JAR_SUFFIX);
+        File fromLib = locateNewestAgentJarBySuffix(cwd("lib"), DEFAULT_AGENT_JAR_SUFFIX);
         if (fromLib != null) {
             return fromLib;
         }
-        return locateNewestAgentJarBySuffix(new File("../lib"), DEFAULT_AGENT_JAR_SUFFIX);
+        return locateNewestAgentJarBySuffix(cwd("../lib"), DEFAULT_AGENT_JAR_SUFFIX);
     }
 
     private static File locateOverrideJar() {
@@ -131,19 +137,23 @@ public final class JarLocator {
         }
 
         // Fallback: scan common build/release directories under current working directory
-        File fromCoreTarget = locateNewestCoreJarBySuffix(new File("core/target"), DEFAULT_AGENT_JAR_SUFFIX);
+        if (!isCwdScanAllowed()) {
+            debug("JarLocator: CWD scan disabled by -D" + LOCATOR_ALLOW_CWD_SCAN_PROPERTY + "=false");
+            return null;
+        }
+        File fromCoreTarget = locateNewestCoreJarBySuffix(cwd("core/target"), DEFAULT_AGENT_JAR_SUFFIX);
         if (fromCoreTarget != null) {
             return fromCoreTarget;
         }
-        File fromTarget = locateNewestCoreJarBySuffix(new File("target"), DEFAULT_AGENT_JAR_SUFFIX);
+        File fromTarget = locateNewestCoreJarBySuffix(cwd("target"), DEFAULT_AGENT_JAR_SUFFIX);
         if (fromTarget != null) {
             return fromTarget;
         }
-        File fromLib = locateNewestCoreJarBySuffix(new File("lib"), DEFAULT_AGENT_JAR_SUFFIX);
+        File fromLib = locateNewestCoreJarBySuffix(cwd("lib"), DEFAULT_AGENT_JAR_SUFFIX);
         if (fromLib != null) {
             return fromLib;
         }
-        return locateNewestCoreJarBySuffix(new File("../lib"), DEFAULT_AGENT_JAR_SUFFIX);
+        return locateNewestCoreJarBySuffix(cwd("../lib"), DEFAULT_AGENT_JAR_SUFFIX);
     }
 
     public static File locateAgentContainerJar(Class<?> anchor) {
@@ -163,19 +173,51 @@ public final class JarLocator {
         }
 
         // Fallback: scan common build/release directories under current working directory
-        File fromContainerTarget = locateNewestContainerJarBySuffix(new File("container/target"), DEFAULT_AGENT_JAR_SUFFIX);
+        if (!isCwdScanAllowed()) {
+            debug("JarLocator: CWD scan disabled by -D" + LOCATOR_ALLOW_CWD_SCAN_PROPERTY + "=false");
+            return null;
+        }
+        File fromContainerTarget = locateNewestContainerJarBySuffix(cwd("container/target"), DEFAULT_AGENT_JAR_SUFFIX);
         if (fromContainerTarget != null) {
             return fromContainerTarget;
         }
-        File fromTarget = locateNewestContainerJarBySuffix(new File("target"), DEFAULT_AGENT_JAR_SUFFIX);
+        File fromTarget = locateNewestContainerJarBySuffix(cwd("target"), DEFAULT_AGENT_JAR_SUFFIX);
         if (fromTarget != null) {
             return fromTarget;
         }
-        File fromLib = locateNewestContainerJarBySuffix(new File("lib"), DEFAULT_AGENT_JAR_SUFFIX);
+        File fromLib = locateNewestContainerJarBySuffix(cwd("lib"), DEFAULT_AGENT_JAR_SUFFIX);
         if (fromLib != null) {
             return fromLib;
         }
-        return locateNewestContainerJarBySuffix(new File("../lib"), DEFAULT_AGENT_JAR_SUFFIX);
+        return locateNewestContainerJarBySuffix(cwd("../lib"), DEFAULT_AGENT_JAR_SUFFIX);
+    }
+
+    private static File cwd(String relativePath) {
+        if (relativePath == null || relativePath.trim().isEmpty()) {
+            return null;
+        }
+        String userDir = System.getProperty("user.dir");
+        if (userDir == null || userDir.trim().isEmpty()) {
+            return new File(relativePath);
+        }
+        return new File(new File(userDir), relativePath);
+    }
+
+    private static boolean isCwdScanAllowed() {
+        String v = System.getProperty(LOCATOR_ALLOW_CWD_SCAN_PROPERTY);
+        if (v == null || v.trim().isEmpty()) {
+            return true;
+        }
+        return !"false".equalsIgnoreCase(v.trim());
+    }
+
+    private static void debug(String msg) {
+        if (msg == null || msg.trim().isEmpty()) {
+            return;
+        }
+        if (Boolean.getBoolean(LOCATOR_DEBUG_PROPERTY)) {
+            System.err.println(msg);
+        }
     }
 
     private static File locateCoreOverrideJar() {
@@ -462,14 +504,16 @@ public final class JarLocator {
         if (candidates.isEmpty()) {
             return null;
         }
-        candidates.sort(Comparator.comparingLong(File::lastModified).reversed());
+        sortCandidatesPreferVersion(candidates, suffix);
         for (File f : candidates) {
             if (f != null && f.isFile() && isBootstrapAgentJar(f)) {
+                debug("JarLocator: resolved bootstrap agent jar: " + f.getAbsolutePath());
                 return f;
             }
         }
         for (File f : candidates) {
             if (f != null && f.isFile() && isAgentJar(f)) {
+                debug("JarLocator: resolved agent jar: " + f.getAbsolutePath());
                 return f;
             }
         }
@@ -493,9 +537,10 @@ public final class JarLocator {
         if (candidates.isEmpty()) {
             return null;
         }
-        candidates.sort(Comparator.comparingLong(File::lastModified).reversed());
+        sortCandidatesPreferVersion(candidates, suffix);
         for (File f : candidates) {
             if (f != null && f.isFile() && isCoreJar(f)) {
+                debug("JarLocator: resolved core jar: " + f.getAbsolutePath());
                 return f;
             }
         }
@@ -519,13 +564,167 @@ public final class JarLocator {
         if (candidates.isEmpty()) {
             return null;
         }
-        candidates.sort(Comparator.comparingLong(File::lastModified).reversed());
+        sortCandidatesPreferVersion(candidates, suffix);
         for (File f : candidates) {
             if (f != null && f.isFile() && isContainerJar(f)) {
+                debug("JarLocator: resolved container jar: " + f.getAbsolutePath());
                 return f;
             }
         }
         return null;
+    }
+
+    private static void sortCandidatesPreferVersion(List<File> candidates, String suffix) {
+        if (candidates == null || candidates.isEmpty()) {
+            return;
+        }
+        candidates.sort((a, b) -> {
+            if (a == b) {
+                return 0;
+            }
+            String na = a != null ? a.getName() : null;
+            String nb = b != null ? b.getName() : null;
+            String va = extractVersionFromSuffixedJarName(na, suffix);
+            String vb = extractVersionFromSuffixedJarName(nb, suffix);
+            if (va != null && vb != null) {
+                int cmp = compareVersionLike(va, vb);
+                if (cmp != 0) {
+                    return -cmp; // desc
+                }
+            } else if (va != null) {
+                return -1;
+            } else if (vb != null) {
+                return 1;
+            }
+
+            long ma = a != null ? a.lastModified() : 0L;
+            long mb = b != null ? b.lastModified() : 0L;
+            if (ma != mb) {
+                return ma < mb ? 1 : -1; // desc
+            }
+            String sa = na != null ? na : "";
+            String sb = nb != null ? nb : "";
+            return sa.compareTo(sb);
+        });
+    }
+
+    private static String extractVersionFromSuffixedJarName(String name, String suffix) {
+        if (name == null || suffix == null || suffix.isEmpty()) {
+            return null;
+        }
+        if (!name.endsWith(suffix)) {
+            return null;
+        }
+        String base = name.substring(0, name.length() - suffix.length());
+        if (base.isEmpty()) {
+            return null;
+        }
+        for (int i = base.length() - 1; i >= 0; i--) {
+            if (base.charAt(i) != '-') {
+                continue;
+            }
+            String token = base.substring(i + 1);
+            if (token.isEmpty()) {
+                continue;
+            }
+            if (Character.isDigit(token.charAt(0))) {
+                return token;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isVersionSeparator(char c) {
+        return c == '.' || c == '-' || c == '_' || c == '+';
+    }
+
+    private static boolean remainderHasLetter(String s, int from) {
+        if (s == null) {
+            return false;
+        }
+        for (int i = Math.max(0, from); i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (Character.isLetter(c)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int compareVersionLike(String a, String b) {
+        if (a == null || a.trim().isEmpty()) {
+            return (b == null || b.trim().isEmpty()) ? 0 : -1;
+        }
+        if (b == null || b.trim().isEmpty()) {
+            return 1;
+        }
+        String sa = a.trim();
+        String sb = b.trim();
+        int ia = 0;
+        int ib = 0;
+        while (ia < sa.length() && ib < sb.length()) {
+            char ca = sa.charAt(ia);
+            char cb = sb.charAt(ib);
+
+            if (isVersionSeparator(ca)) {
+                ia++;
+                continue;
+            }
+            if (isVersionSeparator(cb)) {
+                ib++;
+                continue;
+            }
+
+            if (Character.isDigit(ca) && Character.isDigit(cb)) {
+                int za = ia;
+                while (za < sa.length() && sa.charAt(za) == '0') {
+                    za++;
+                }
+                int zb = ib;
+                while (zb < sb.length() && sb.charAt(zb) == '0') {
+                    zb++;
+                }
+                int ea = za;
+                while (ea < sa.length() && Character.isDigit(sa.charAt(ea))) {
+                    ea++;
+                }
+                int eb = zb;
+                while (eb < sb.length() && Character.isDigit(sb.charAt(eb))) {
+                    eb++;
+                }
+                int lenA = ea - za;
+                int lenB = eb - zb;
+                if (lenA != lenB) {
+                    return lenA < lenB ? -1 : 1;
+                }
+                for (int k = 0; k < lenA; k++) {
+                    char da = sa.charAt(za + k);
+                    char db = sb.charAt(zb + k);
+                    if (da != db) {
+                        return da < db ? -1 : 1;
+                    }
+                }
+                ia = ea;
+                ib = eb;
+                continue;
+            }
+
+            int la = Character.toLowerCase(ca);
+            int lb = Character.toLowerCase(cb);
+            if (la != lb) {
+                return la < lb ? -1 : 1;
+            }
+            ia++;
+            ib++;
+        }
+
+        if (ia == sa.length() && ib == sb.length()) {
+            return 0;
+        }
+        if (ia == sa.length()) {
+            return remainderHasLetter(sb, ib) ? 1 : -1;
+        }
+        return remainderHasLetter(sa, ia) ? -1 : 1;
     }
 
     private static boolean isAgentJar(File jarFile) {
