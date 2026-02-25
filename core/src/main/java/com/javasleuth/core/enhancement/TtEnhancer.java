@@ -11,7 +11,7 @@ import org.objectweb.asm.commons.AdviceAdapter;
 /**
  * TimeTunnel-lite enhancer: record params/return/exception with cost.
  */
-public final class TtEnhancer implements ClassEnhancer {
+public final class TtEnhancer implements BootstrapDependentEnhancer {
     private final String targetClassName;
     private final String targetMethodPattern;
     private final String targetMethodDesc;
@@ -32,6 +32,11 @@ public final class TtEnhancer implements ClassEnhancer {
     @Override
     public String getDescription() {
         return "TT enhancer for " + targetClassName + "." + targetMethodPattern;
+    }
+
+    @Override
+    public String requiredBootstrapClassName() {
+        return "com.javasleuth.bootstrap.monitor.TtInterceptor";
     }
 
     private final class TtClassVisitor extends ClassVisitor {

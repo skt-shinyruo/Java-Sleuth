@@ -1,5 +1,6 @@
 package com.javasleuth.core.command.impl;
 
+import com.javasleuth.core.agent.runtime.BootstrapBridge;
 import com.javasleuth.core.command.Command;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.bootstrap.monitor.MonitorInterceptor;
@@ -53,6 +54,7 @@ public class StatusCommand implements Command {
         status.append("Redefine Classes: ").append(instrumentation.isRedefineClassesSupported() ? "Supported" : "Not Supported").append("\n");
         status.append("Retransform Classes: ").append(instrumentation.isRetransformClassesSupported() ? "Supported" : "Not Supported").append("\n");
         status.append("Native Method Prefix: ").append(instrumentation.isNativeMethodPrefixSupported() ? "Supported" : "Not Supported").append("\n");
+        status.append("Bootstrap Bridge: ").append(BootstrapBridge.describeStatus()).append("\n");
         if (transformer != null) {
             status.append("Active Enhancers: ").append(transformer.getActiveEnhancersCount()).append("\n");
             status.append("Transformations: ").append(transformer.getTransformationCount()).append("\n");

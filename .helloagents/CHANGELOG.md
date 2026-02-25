@@ -159,6 +159,9 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 文件/编码治理一致：`mc` 源码读取默认 UTF-8；`redefine` 文件读取统一走 `SecurityValidator.canReadFile` 校验
 - 移除 legacy 文本协议：统一使用 framed/binary，消除逐行回包缺少显式边界导致的多行输出错位风险；输出截断提示不再主动注入换行
 
+### Fixed
+- bootstrap bridge 可用性升级为启动硬前置：当 bootstrap jar 未真正进入 `BootstrapClassLoader` 可见域时，**fail-fast 终止 agent 启动**（`premain/agentmain` 均拒绝启动 core/命令服务）；并在 command/transformer 层保留防御性门禁，避免增强把 `com.javasleuth.bootstrap.*` 调用写进业务字节码导致目标应用运行时 `NoClassDefFoundError/LinkageError`；`status` best-effort 输出 bridge 状态
+
 ### Removed
 - `ProductionConfig` 移除 legacy domain getters（`get*/is*/are*`），消费侧统一使用 `SleuthConfigSchema` / `SleuthConfigParser`（typed config）
 

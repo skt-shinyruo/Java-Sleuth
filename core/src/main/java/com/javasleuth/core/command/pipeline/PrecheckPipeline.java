@@ -2,6 +2,7 @@ package com.javasleuth.core.command.pipeline;
 
 import com.javasleuth.core.command.CommandArgs;
 import com.javasleuth.core.command.CommandContext;
+import com.javasleuth.core.agent.runtime.BootstrapBridge;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.core.command.CommandRegistry;
 import com.javasleuth.foundation.security.AuthorizationManager;
@@ -9,6 +10,7 @@ import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.foundation.security.InputValidator;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 命令 precheck 阶段（validate/authz/confirm）显式化。
@@ -25,6 +27,7 @@ public final class PrecheckPipeline {
     ) {
         List<PrecheckStep> s = new ArrayList<>(3);
         s.add(new ValidateStep(inputValidator));
+        s.add(new BootstrapBridgeStep());
         s.add(new AuthorizationStep(authorizationManager));
         s.add(new DangerousConfirmStep(dangerousConfirm));
         this.steps = s;
@@ -126,6 +129,84 @@ public final class PrecheckPipeline {
                 }
             }
             return null;
+        }
+    }
+
+    /**
+     * Prevent enabling enhancers that would inject bootstrap calls when the bootstrap bridge is unavailable.
+     *
+     * <p>This is a safety gate: failing to meet the bootstrap visibility precondition may crash the target
+     * application at runtime (NoClassDefFoundError/LinkageError) when the enhanced bytecode executes.</p>
+     */
+    private static final class BootstrapBridgeStep implements PrecheckStep {
+        @Override
+        public PrecheckDecision apply(PrecheckState state) {
+            if (state == null) {
+                return null;
+            }
+            String name = state.commandName;
+            if (name == null) {
+                return null;
+            }
+
+            String cmd = name.trim().toLowerCase(Locale.ROOT);
+            String required = requiredBootstrapClassForCommand(cmd);
+            if (required == null) {
+                return null;
+            }
+
+            // Allow help output even when enhancements are disabled.
+            if (isHelpLikeInvocation(state.argsForChecks)) {
+                return null;
+            }
+
+            if (BootstrapBridge.canEnableEnhancement(required, null)) {
+                return null;
+            }
+
+            return PrecheckDecision.denied(BootstrapBridge.formatDisabledMessage(cmd, required), state.argsForChecks);
+        }
+
+        private static String requiredBootstrapClassForCommand(String cmd) {
+            if (cmd == null) {
+                return null;
+            }
+            switch (cmd) {
+                case "watch":
+                    return BootstrapBridge.WATCH_INTERCEPTOR;
+                case "trace":
+                    return BootstrapBridge.TRACE_INTERCEPTOR;
+                case "monitor":
+                    return BootstrapBridge.MONITOR_INTERCEPTOR;
+                case "tt":
+                    return BootstrapBridge.TT_INTERCEPTOR;
+                case "stack":
+                    return BootstrapBridge.STACK_INTERCEPTOR;
+                case "vmtool":
+                    return BootstrapBridge.VMTOOL_INTERCEPTOR;
+                default:
+                    return null;
+            }
+        }
+
+        private static boolean isHelpLikeInvocation(String[] args) {
+            if (args == null) {
+                return false;
+            }
+            if (args.length <= 1) {
+                return true;
+            }
+            for (int i = 1; i < args.length; i++) {
+                String a = args[i];
+                if (a == null) {
+                    continue;
+                }
+                String s = a.trim().toLowerCase(Locale.ROOT);
+                if ("-h".equals(s) || "--help".equals(s) || "help".equals(s)) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 

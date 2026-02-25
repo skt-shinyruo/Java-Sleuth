@@ -11,7 +11,7 @@ import org.objectweb.asm.commons.AdviceAdapter;
  *
  * <p>仅插入 onMethodEnter，避免对返回值/异常路径产生额外影响。</p>
  */
-public final class StackEnhancer implements ClassEnhancer {
+public final class StackEnhancer implements BootstrapDependentEnhancer {
     private final String targetClassName;
     private final String targetMethodPattern;
     private final String targetMethodDesc;
@@ -34,6 +34,11 @@ public final class StackEnhancer implements ClassEnhancer {
     @Override
     public String getDescription() {
         return "Stack enhancer for " + targetClassName + "." + targetMethodPattern;
+    }
+
+    @Override
+    public String requiredBootstrapClassName() {
+        return "com.javasleuth.bootstrap.monitor.StackInterceptor";
     }
 
     private final class StackClassVisitor extends ClassVisitor {

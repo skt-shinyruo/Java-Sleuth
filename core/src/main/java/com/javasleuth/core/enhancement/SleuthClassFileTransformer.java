@@ -1,5 +1,6 @@
 package com.javasleuth.core.enhancement;
 
+import com.javasleuth.core.agent.runtime.BootstrapBridge;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.util.SleuthLogger;
 import org.objectweb.asm.ClassReader;
@@ -129,11 +130,24 @@ public class SleuthClassFileTransformer implements ClassFileTransformer {
     }
 
     public void addEnhancer(Class<?> targetClass, ClassEnhancer enhancer) {
+        if (enhancer instanceof BootstrapDependentEnhancer) {
+            String required = ((BootstrapDependentEnhancer) enhancer).requiredBootstrapClassName();
+            ClassLoader loader = targetClass != null ? targetClass.getClassLoader() : null;
+            if (!BootstrapBridge.canEnableEnhancement(required, loader)) {
+                throw new IllegalStateException(BootstrapBridge.formatDisabledMessage(enhancer.getDescription(), required));
+            }
+        }
         EnhancerKey key = EnhancerKey.of(targetClass);
         enhancers.computeIfAbsent(key, k -> new CopyOnWriteArrayList<>()).add(enhancer);
     }
 
     public void addEnhancer(String className, ClassLoader loader, ClassEnhancer enhancer) {
+        if (enhancer instanceof BootstrapDependentEnhancer) {
+            String required = ((BootstrapDependentEnhancer) enhancer).requiredBootstrapClassName();
+            if (!BootstrapBridge.canEnableEnhancement(required, loader)) {
+                throw new IllegalStateException(BootstrapBridge.formatDisabledMessage(enhancer.getDescription(), required));
+            }
+        }
         EnhancerKey key = EnhancerKey.of(className, loader);
         enhancers.computeIfAbsent(key, k -> new CopyOnWriteArrayList<>()).add(enhancer);
     }

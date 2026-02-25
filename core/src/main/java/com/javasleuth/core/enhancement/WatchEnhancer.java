@@ -6,7 +6,7 @@ import java.util.Set;
 import java.util.HashSet;
 import com.javasleuth.foundation.util.WildcardMatcher;
 
-public class WatchEnhancer implements ClassEnhancer {
+public class WatchEnhancer implements BootstrapDependentEnhancer {
     private final String targetClassName;
     private final String targetMethodName;
     private final String targetMethodDesc;
@@ -34,6 +34,11 @@ public class WatchEnhancer implements ClassEnhancer {
     @Override
     public String getDescription() {
         return "Watch enhancer for " + targetClassName + "." + targetMethodName;
+    }
+
+    @Override
+    public String requiredBootstrapClassName() {
+        return "com.javasleuth.bootstrap.monitor.WatchInterceptor";
     }
 
     private class WatchClassVisitor extends ClassVisitor {

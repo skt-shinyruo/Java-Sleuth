@@ -26,6 +26,17 @@
 - 为避免字节码校验失败（VerifyError），异常处理器依赖的本地变量会先初始化；对有返回值的方法会先保存返回值到本地变量，再调用拦截器后回填到原始 return 指令所需的操作数栈。
 - TraceEnhancer 对“同一类内可被 trace 的方法调用”跳过 SUB_METHOD_CALL 注入，避免 SUB + 子节点双份记录导致的语义重复。
 
+### Requirement: Bootstrap bridge 前置校验（防止目标应用崩溃）
+**Module:** enhancement + command
+增强代码会把对 `com.javasleuth.bootstrap.*` 的调用写入业务字节码；若 bootstrap bridge 未真正进入 `BootstrapClassLoader` 可见域，业务线程触发时可能抛 `NoClassDefFoundError/LinkageError`，风险高于“功能不可用”。
+
+#### Scenario: bridge 不可用时 fail-fast（硬前置）
+前置：bootstrap bridge 缺失/不可见  
+- 增强器通过 `BootstrapDependentEnhancer` 声明关键依赖类（例如 `TraceInterceptor/WatchInterceptor/...`）
+- `SleuthClassFileTransformer.addEnhancer(...)` 在启用增强前强校验 bridge 可用性；失败则拒绝启用
+- agent 启动链路将 bridge 可用性视为硬前置：bridge 不可用时直接 fail-fast，拒绝启动 agent core（`premain/agentmain` 均如此，避免“命令服务还在但增强会埋雷”）
+- command precheck 对 watch/trace/monitor/tt/stack/vmtool 等增强命令做防御性门禁（直接拒绝执行），并建议通过 `status` 查看 bridge 状态（best-effort）
+
 ### Requirement: 多会话增强叠加
 **Module:** enhancement
 支持同一类多个 Enhancer 叠加与独立移除。

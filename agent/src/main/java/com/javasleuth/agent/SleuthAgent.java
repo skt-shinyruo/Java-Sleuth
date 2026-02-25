@@ -26,14 +26,18 @@ public final class SleuthAgent {
     private SleuthAgent() {}
 
     public static void agentmain(String agentArgs, Instrumentation inst) {
-        bootstrap(agentArgs, inst);
+        // Runtime attach: fail fast so the attach caller can detect startup errors.
+        // This does NOT crash the target JVM; it only fails the attach request.
+        bootstrap(agentArgs, inst, true);
     }
 
     public static void premain(String agentArgs, Instrumentation inst) {
-        agentmain(agentArgs, inst);
+        // -javaagent mode: also fail-fast. Starting the JVM with a partially working agent is riskier than
+        // failing fast, because enhancements may inject bootstrap calls that can crash application threads.
+        bootstrap(agentArgs, inst, true);
     }
 
-    private static void bootstrap(String agentArgs, Instrumentation inst) {
+    private static void bootstrap(String agentArgs, Instrumentation inst, boolean failFast) {
         URLClassLoader isolated = null;
         boolean registered = false;
         boolean registryAvailable = false;
@@ -45,9 +49,24 @@ public final class SleuthAgent {
                 try {
                     inst.appendToBootstrapClassLoaderSearch(new JarFile(selfJar));
                 } catch (Throwable e) {
-                    // Best-effort. Do not fail the target JVM if we cannot append.
+                    // Best-effort append. If bootstrap bridge is unavailable, we must NOT continue to start the agent
+                    // core, otherwise "watch/trace/..." enhancements may crash the target app at runtime.
                     System.err.println("Java-Sleuth: Failed to append bootstrap agent jar to bootstrap search: " + e.getMessage());
                 }
+            }
+
+            // Strong hint for operators: when bootstrap bridge is not actually visible, enhancer commands
+            // must not be allowed to inject com.javasleuth.bootstrap.* calls into application bytecode.
+            if (!isBootstrapBridgeAvailableBestEffort()) {
+                System.err.println("Java-Sleuth: Bootstrap bridge is NOT available (bootstrap-visible classes missing).");
+                if (failFast) {
+                    System.err.println("  - Agent startup will fail-fast to protect the target JVM from NoClassDefFoundError/LinkageError.");
+                }
+                System.err.println("  - Fix: ensure appendToBootstrapClassLoaderSearch succeeds and bootstrap classes are loaded by BootstrapClassLoader.");
+                if (failFast) {
+                    throw new IllegalStateException("Java-Sleuth: Bootstrap bridge is not available; aborting agent startup");
+                }
+                return;
             }
 
             // Prefer the bootstrap-visible ClassLoader registry as SSOT attach gate.
@@ -147,6 +166,12 @@ public final class SleuthAgent {
             if (syspropsRegistered) {
                 SystemPropertyRollbackRegistry.rollbackAndClearBestEffort();
             }
+            if (failFast) {
+                if (e instanceof RuntimeException) {
+                    throw (RuntimeException) e;
+                }
+                throw new RuntimeException(e);
+            }
         }
     }
 
@@ -186,6 +211,27 @@ public final class SleuthAgent {
             m.invoke(null, loader);
         } catch (Throwable ignore) {
             // ignore
+        }
+    }
+
+    private static boolean isBootstrapBridgeAvailableBestEffort() {
+        // Registry gate is one required bootstrap-visible bridge.
+        if (!isBootstrapClassAvailable(CORE_LOADER_REGISTRY_CLASS)) {
+            return false;
+        }
+        // Interceptors are required for any bytecode enhancement that injects bootstrap calls.
+        return isBootstrapClassAvailable("com.javasleuth.bootstrap.monitor.TraceInterceptor");
+    }
+
+    private static boolean isBootstrapClassAvailable(String binaryName) {
+        if (binaryName == null || binaryName.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            Class<?> c = Class.forName(binaryName, false, null);
+            return c != null && c.getClassLoader() == null;
+        } catch (Throwable ignore) {
+            return false;
         }
     }
 

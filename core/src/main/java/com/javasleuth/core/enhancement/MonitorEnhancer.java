@@ -8,7 +8,7 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.AdviceAdapter;
 
-public final class MonitorEnhancer implements ClassEnhancer {
+public final class MonitorEnhancer implements BootstrapDependentEnhancer {
     private final String targetClassName;
     private final String targetMethodPattern;
     private final String targetMethodDesc;
@@ -29,6 +29,11 @@ public final class MonitorEnhancer implements ClassEnhancer {
     @Override
     public String getDescription() {
         return "Monitor enhancer for " + targetClassName + "." + targetMethodPattern;
+    }
+
+    @Override
+    public String requiredBootstrapClassName() {
+        return "com.javasleuth.bootstrap.monitor.MonitorInterceptor";
     }
 
     private final class MonitorClassVisitor extends ClassVisitor {

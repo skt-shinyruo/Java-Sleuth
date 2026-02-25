@@ -14,7 +14,7 @@ import org.objectweb.asm.commons.AdviceAdapter;
  *   <li>上报逻辑必须 best-effort，不影响业务构造器语义。</li>
  * </ul>
  */
-public class InstanceTrackEnhancer implements ClassEnhancer {
+public class InstanceTrackEnhancer implements BootstrapDependentEnhancer {
     private final String trackId;
     private final String className;
 
@@ -31,6 +31,11 @@ public class InstanceTrackEnhancer implements ClassEnhancer {
     @Override
     public String getDescription() {
         return "VmTool instance tracker for " + className;
+    }
+
+    @Override
+    public String requiredBootstrapClassName() {
+        return "com.javasleuth.bootstrap.monitor.VmToolInterceptor";
     }
 
     private class TrackClassVisitor extends ClassVisitor {

@@ -4,7 +4,7 @@ import org.objectweb.asm.*;
 import org.objectweb.asm.commons.AdviceAdapter;
 import com.javasleuth.foundation.util.WildcardMatcher;
 
-public class TraceEnhancer implements ClassEnhancer {
+public class TraceEnhancer implements BootstrapDependentEnhancer {
     private final String targetClassName;
     private final String targetClassInternalName;
     private final String targetMethodName;
@@ -27,6 +27,11 @@ public class TraceEnhancer implements ClassEnhancer {
     @Override
     public String getDescription() {
         return "Trace enhancer for " + targetClassName + "." + targetMethodName;
+    }
+
+    @Override
+    public String requiredBootstrapClassName() {
+        return "com.javasleuth.bootstrap.monitor.TraceInterceptor";
     }
 
     private class TraceClassVisitor extends ClassVisitor {

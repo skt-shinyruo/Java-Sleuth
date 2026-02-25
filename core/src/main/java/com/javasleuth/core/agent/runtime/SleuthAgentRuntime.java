@@ -80,6 +80,17 @@ public final class SleuthAgentRuntime implements AutoCloseable {
         try {
             inst.addTransformer(transformer, true);
 
+            // Bootstrap bridge is a hard precondition for starting the agent in isolated mode.
+            // If the bridge is missing, any bytecode enhancement that injects com.javasleuth.bootstrap.* calls
+            // may crash the target application at runtime (NoClassDefFoundError/LinkageError).
+            if (!BootstrapBridge.canEnableEnhancement(BootstrapBridge.TRACE_INTERCEPTOR, null)) {
+                String msg = "Java-Sleuth: " + BootstrapBridge.formatDisabledMessage("enhancement commands", BootstrapBridge.TRACE_INTERCEPTOR);
+                if (BootstrapBridge.isStrictMode()) {
+                    throw new IllegalStateException(msg);
+                }
+                SleuthLogger.warn(msg);
+            }
+
             AuditLogger auditLogger = AuditLogger.getInstance();
             AuthenticationManager authenticationManager = AuthenticationManager.getInstance();
             AuthorizationManager authorizationManager = new AuthorizationManager(config, auditLogger, authenticationManager);
