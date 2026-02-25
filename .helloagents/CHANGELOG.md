@@ -130,6 +130,9 @@ version numbers follow [Semantic Versioning](https://semver.org/lang/zh-CN/).
 - 传输层消除 BufferedReader/PrintWriter 与 Data*Stream 混用导致的升级不稳定风险
 - detach→re-attach 残留治理补齐：Agent shutdown 路径显式清理 vmtool track sessions 与 bootstrap interceptor 缓存；Profiler 命令支持 close 并避免定时线程在 shutdown 后残留
 - detach→re-attach 入口闩锁语义修复：bootstrap 侧以 `CoreClassLoaderRegistry` 作为 attach gate SSOT（登记隔离 `URLClassLoader` 并在 shutdown 后关闭/清引用），`BootstrapAttachGate` 作为 registry 不可用时的 legacy fallback；启动失败路径允许重试（缺 core jar/反射失败/入口抛错时回滚 gate）
+- bootstrap 可见面进一步最小化：`SleuthAgent` 不再 append agent fat-jar 到 bootstrap，而是仅 append `java-sleuth-bootstrap-bridge-*.jar`（只包含 `com.javasleuth.bootstrap.*`），避免 `com.javasleuth.agent.*` 进入 BootstrapClassLoader 可见域
+  - 方案: [202602251614_bootstrap-bridge-separation](archive/2026-02/202602251614_bootstrap-bridge-separation/)
+  - 决策: bootstrap-bridge-separation#D001（独立 bridge jar 替代 append agent fat-jar）
 - AuthenticationManager 锁定窗口与客户端标识解析修复（支持 /ip:port、IPv6、unknown）
 - 审计日志脱敏加强：auth/config/sysprop 等命令参数与 sessionId 不再以明文写入
 - server.max.connections 与 performance.command.timeout 配置落地生效

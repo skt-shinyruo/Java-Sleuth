@@ -19,11 +19,7 @@
     <description>Bootstrap agent entrypoint (thin) for Java-Sleuth. Loads agent-core via isolated ClassLoader.</description>
 
     <dependencies>
-        <dependency>
-            <groupId>com.javasleuth</groupId>
-            <artifactId>java-sleuth-bootstrap</artifactId>
-            <version>${project.version}</version>
-        </dependency>
+        <!-- Keep this module dependency-free (JDK only). -->
     </dependencies>
 
     <build>
@@ -37,6 +33,34 @@
                     <target>8</target>
                     <encoding>UTF-8</encoding>
                 </configuration>
+            </plugin>
+
+            <!-- Copy bootstrap bridge jar near agent jar for runtime append (bootstrap-visible only). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.6.1</version>
+                <executions>
+                    <execution>
+                        <id>copy-bootstrap-bridge</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>com.javasleuth</groupId>
+                                    <artifactId>java-sleuth-bootstrap</artifactId>
+                                    <version>${project.version}</version>
+                                    <type>jar</type>
+                                    <outputDirectory>${project.build.directory}</outputDirectory>
+                                    <destFileName>java-sleuth-bootstrap-bridge-${project.version}.jar</destFileName>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <!-- Build bootstrap agent fat-jar -->

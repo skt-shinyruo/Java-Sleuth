@@ -58,6 +58,7 @@
 - 202602241259_config_detach_reset_monitor_sync
 - 202602241327_config_reload
 - 202602241341_sysprop_monitoring_store_sync
+- 202602251614_bootstrap-bridge-separation
 
 ## 2026-01
 - 202601281207_sleuth_plugin_stream
@@ -66,3 +67,9 @@
 - 202601291031_fix-5-issues
 - 202601291255_arthas_core_simplified
 - 202601291520_arthas_stack_tt_replay_simplified
+
+## 快速索引（当前年份）
+
+| 时间戳 | 名称 | 类型 | 涉及模块 | 决策 | 结果 |
+|--------|------|------|---------|------|------|
+| 202602251614 | bootstrap-bridge-separation | implementation | agent,bootstrap | bootstrap-bridge-separation#D001 | ✅完成 |

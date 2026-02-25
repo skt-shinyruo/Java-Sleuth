@@ -1,12 +1,12 @@
 package com.javasleuth.agent;
 
-import com.javasleuth.bootstrap.util.JarLocator;
-import com.javasleuth.bootstrap.util.SystemPropertyRollbackRegistry;
 import java.io.File;
 import java.lang.instrument.Instrumentation;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.Base64;
+import java.util.Enumeration;
+import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 /**
@@ -15,13 +15,23 @@ import java.util.jar.JarFile;
  * <p>Design goals:
  * <ul>
  *   <li>Keep this jar thin and dependency-free (JDK only)</li>
- *   <li>Append bootstrap-visible spy/bridge classes (from this jar) to BootstrapClassLoader</li>
+ *   <li>Append bootstrap-visible spy/bridge classes (from a dedicated bridge jar) to BootstrapClassLoader</li>
  *   <li>Load the real implementation (container fat-jar) via isolated ClassLoader</li>
  * </ul>
  */
 public final class SleuthAgent {
     private static final String CONTAINER_ENTRYPOINT_CLASS = "com.javasleuth.container.SleuthAgentContainerEntrypoint";
     private static final String CORE_LOADER_REGISTRY_CLASS = "com.javasleuth.bootstrap.agent.CoreClassLoaderRegistry";
+
+    private static final String BOOTSTRAP_JAR_LOCATOR_CLASS = "com.javasleuth.bootstrap.util.JarLocator";
+    private static final String BOOTSTRAP_SYSPROP_ROLLBACK_REGISTRY_CLASS =
+        "com.javasleuth.bootstrap.util.SystemPropertyRollbackRegistry";
+
+    private static final String BOOTSTRAP_BRIDGE_JAR_OVERRIDE_PROPERTY = "sleuth.agent.bootstrap.bridge.jar";
+    private static final String BOOTSTRAP_BRIDGE_JAR_OVERRIDE_ENV = "SLEUTH_AGENT_BOOTSTRAP_BRIDGE_JAR";
+
+    private static final String AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY = "sleuth.agent.container.jar";
+    private static final String AGENT_CONTAINER_JAR_OVERRIDE_ENV = "SLEUTH_AGENT_CONTAINER_JAR";
 
     private SleuthAgent() {}
 
@@ -44,14 +54,20 @@ public final class SleuthAgent {
         boolean legacyGateEntered = false;
         boolean syspropsRegistered = false;
         try {
-            File selfJar = locateOwnJar();
-            if (selfJar != null && selfJar.isFile() && inst != null) {
+            File bridgeJar = locateBootstrapBridgeJar(agentArgs);
+            if (bridgeJar != null && bridgeJar.isFile() && inst != null) {
                 try {
-                    inst.appendToBootstrapClassLoaderSearch(new JarFile(selfJar));
+                    if (jarContainsEntryPrefix(bridgeJar, "com/javasleuth/agent/")) {
+                        throw new IllegalStateException(
+                            "Java-Sleuth: Refusing to append non-minimal bridge jar to bootstrap (contains com.javasleuth.agent.*): "
+                                + bridgeJar.getAbsolutePath()
+                        );
+                    }
+                    inst.appendToBootstrapClassLoaderSearch(new JarFile(bridgeJar));
                 } catch (Throwable e) {
                     // Best-effort append. If bootstrap bridge is unavailable, we must NOT continue to start the agent
                     // core, otherwise "watch/trace/..." enhancements may crash the target app at runtime.
-                    System.err.println("Java-Sleuth: Failed to append bootstrap agent jar to bootstrap search: " + e.getMessage());
+                    System.err.println("Java-Sleuth: Failed to append bootstrap bridge jar to bootstrap search: " + e.getMessage());
                 }
             }
 
@@ -87,19 +103,18 @@ public final class SleuthAgent {
             }
 
             // Apply agentArgs only after passing attach gates, to avoid polluting sysprop state on "already attached" paths.
-            SystemPropertyRollbackRegistry.applyAndRegisterIfAbsent(agentArgs);
-            syspropsRegistered = true;
+            syspropsRegistered = applyAndRegisterAgentArgsBestEffort(agentArgs);
 
-            File containerJar = JarLocator.locateAgentContainerJar(SleuthAgent.class);
+            File containerJar = locateAgentContainerJarBestEffort();
             if (containerJar == null) {
                 // Backward compatible fallback: old builds might still have core fat-jar.
-                containerJar = JarLocator.locateAgentCoreJar(SleuthAgent.class);
+                containerJar = locateAgentCoreJarBestEffort();
             }
             if (containerJar == null) {
                 System.err.println("Java-Sleuth: Agent container jar not found.");
                 System.err.println("  - Provide via agent args: containerJar=<path>");
                 System.err.println(
-                    "  - Or set -D" + JarLocator.AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY + "=<path> / env " + JarLocator.AGENT_CONTAINER_JAR_OVERRIDE_ENV
+                    "  - Or set -D" + AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY + "=<path> / env " + AGENT_CONTAINER_JAR_OVERRIDE_ENV
                 );
                 System.err.println("  - Or place container jar near bootstrap jar: java-sleuth-container*");
                 // 启动失败：回滚闩锁，允许修复参数后重试 attach。
@@ -107,7 +122,7 @@ public final class SleuthAgent {
                     BootstrapAttachGate.releaseOnFailure();
                 }
                 if (syspropsRegistered) {
-                    SystemPropertyRollbackRegistry.rollbackAndClearBestEffort();
+                    rollbackAgentArgsBestEffort();
                 }
                 return;
             }
@@ -164,7 +179,7 @@ public final class SleuthAgent {
                 BootstrapAttachGate.releaseOnFailure();
             }
             if (syspropsRegistered) {
-                SystemPropertyRollbackRegistry.rollbackAndClearBestEffort();
+                rollbackAgentArgsBestEffort();
             }
             if (failFast) {
                 if (e instanceof RuntimeException) {
@@ -175,8 +190,241 @@ public final class SleuthAgent {
         }
     }
 
+    private static File locateBootstrapBridgeJar(String agentArgs) {
+        String override = System.getProperty(BOOTSTRAP_BRIDGE_JAR_OVERRIDE_PROPERTY);
+        if (override == null || override.trim().isEmpty()) {
+            override = System.getenv(BOOTSTRAP_BRIDGE_JAR_OVERRIDE_ENV);
+        }
+        if (override == null || override.trim().isEmpty()) {
+            override = extractBridgeJarOverrideFromAgentArgs(agentArgs);
+        }
+        if (override != null && !override.trim().isEmpty()) {
+            File file = new File(override.trim());
+            return file.isFile() ? file : null;
+        }
+
+        File agentJar = locateOwnJar();
+        File agentDir = agentJar != null ? agentJar.getParentFile() : null;
+        File candidate = null;
+
+        // Preferred: bridge jar copied next to agent jar (agent/target or lib/).
+        candidate = locateNewestJarByPrefix(agentDir, "java-sleuth-bootstrap-bridge-");
+        if (candidate != null) {
+            return candidate;
+        }
+
+        // Fallback: bootstrap jar itself (if present near agent jar).
+        candidate = locateNewestJarByPrefix(agentDir, "java-sleuth-bootstrap-");
+        if (candidate != null) {
+            return candidate;
+        }
+
+        // Dev fallback: source checkout (agent/target -> bootstrap/target).
+        File root = locateProjectRootFromAgentTarget(agentDir);
+        if (root != null) {
+            candidate = locateNewestJarByPrefix(new File(root, "bootstrap/target"), "java-sleuth-bootstrap-");
+            if (candidate != null) {
+                return candidate;
+            }
+            candidate = locateNewestJarByPrefix(new File(root, "lib"), "java-sleuth-bootstrap-");
+            if (candidate != null) {
+                return candidate;
+            }
+        }
+
+        // Last resort: scan common relative directories from CWD (best-effort).
+        candidate = locateNewestJarByPrefix(new File("lib"), "java-sleuth-bootstrap-");
+        if (candidate != null) {
+            return candidate;
+        }
+        candidate = locateNewestJarByPrefix(new File("../lib"), "java-sleuth-bootstrap-");
+        if (candidate != null) {
+            return candidate;
+        }
+        return locateNewestJarByPrefix(new File("bootstrap/target"), "java-sleuth-bootstrap-");
+    }
+
+    private static String extractBridgeJarOverrideFromAgentArgs(String agentArgs) {
+        if (agentArgs == null) {
+            return null;
+        }
+        String trimmedAll = agentArgs.trim();
+        if (trimmedAll.isEmpty()) {
+            return null;
+        }
+        String[] pairs = trimmedAll.split(";");
+        for (String pair : pairs) {
+            if (pair == null) {
+                continue;
+            }
+            String trimmed = pair.trim();
+            if (trimmed.isEmpty() || !trimmed.contains("=")) {
+                continue;
+            }
+            String[] kv = trimmed.split("=", 2);
+            String key = kv[0] != null ? kv[0].trim() : "";
+            String value = kv.length > 1 && kv[1] != null ? kv[1].trim() : "";
+            if (key.isEmpty() || value.isEmpty()) {
+                continue;
+            }
+
+            if (BOOTSTRAP_BRIDGE_JAR_OVERRIDE_PROPERTY.equalsIgnoreCase(key)) {
+                return value;
+            }
+            // Convenience keys (namespaced by AgentArgsApplier at later stages, but we need it before append).
+            if ("bootstrapBridgeJar".equalsIgnoreCase(key) || "bridgeJar".equalsIgnoreCase(key)) {
+                return value;
+            }
+            // Allow key without 'sleuth.' prefix (AgentArgsApplier will add it later).
+            if ("agent.bootstrap.bridge.jar".equalsIgnoreCase(key)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     private static File locateOwnJar() {
-        return JarLocator.locateCodeSourceJar(SleuthAgent.class);
+        try {
+            java.security.ProtectionDomain pd = SleuthAgent.class.getProtectionDomain();
+            if (pd == null) {
+                return null;
+            }
+            java.security.CodeSource cs = pd.getCodeSource();
+            if (cs == null) {
+                return null;
+            }
+            URL location = cs.getLocation();
+            if (location == null) {
+                return null;
+            }
+            File file = new File(location.toURI());
+            if (file.isFile() && file.getName().toLowerCase().endsWith(".jar")) {
+                return file;
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+        return null;
+    }
+
+    private static File locateProjectRootFromAgentTarget(File agentDir) {
+        if (agentDir == null) {
+            return null;
+        }
+        // Pattern: <root>/agent/target/
+        try {
+            File agentModuleDir = agentDir.getParentFile(); // .../agent
+            if (agentModuleDir == null) {
+                return null;
+            }
+            if (!"agent".equalsIgnoreCase(agentModuleDir.getName())) {
+                return null;
+            }
+            File root = agentModuleDir.getParentFile();
+            return root != null && root.isDirectory() ? root : null;
+        } catch (Exception ignore) {
+            return null;
+        }
+    }
+
+    private static File locateNewestJarByPrefix(File dir, String prefix) {
+        if (dir == null || !dir.isDirectory() || prefix == null || prefix.trim().isEmpty()) {
+            return null;
+        }
+        File[] jars = dir.listFiles();
+        if (jars == null || jars.length == 0) {
+            return null;
+        }
+        File newest = null;
+        for (File f : jars) {
+            if (f == null || !f.isFile()) {
+                continue;
+            }
+            String name = f.getName();
+            if (name == null) {
+                continue;
+            }
+            String lower = name.toLowerCase();
+            if (!lower.endsWith(".jar")) {
+                continue;
+            }
+            if (lower.endsWith("-sources.jar") || lower.endsWith("-javadoc.jar") || lower.endsWith("-tests.jar")) {
+                continue;
+            }
+            if (!name.startsWith(prefix)) {
+                continue;
+            }
+            if (newest == null || f.lastModified() > newest.lastModified()) {
+                newest = f;
+            }
+        }
+        return newest;
+    }
+
+    private static boolean jarContainsEntryPrefix(File jarFile, String entryPrefix) {
+        if (jarFile == null || !jarFile.isFile() || entryPrefix == null || entryPrefix.isEmpty()) {
+            return false;
+        }
+        try (JarFile jf = new JarFile(jarFile)) {
+            Enumeration<JarEntry> en = jf.entries();
+            while (en.hasMoreElements()) {
+                JarEntry e = en.nextElement();
+                if (e == null) {
+                    continue;
+                }
+                String name = e.getName();
+                if (name != null && name.startsWith(entryPrefix)) {
+                    return true;
+                }
+            }
+        } catch (Exception ignore) {
+            // ignore
+        }
+        return false;
+    }
+
+    private static boolean applyAndRegisterAgentArgsBestEffort(String agentArgs) {
+        try {
+            Class<?> c = Class.forName(BOOTSTRAP_SYSPROP_ROLLBACK_REGISTRY_CLASS, false, null);
+            java.lang.reflect.Method m = c.getMethod("applyAndRegisterIfAbsent", String.class);
+            m.invoke(null, agentArgs);
+            return true;
+        } catch (Throwable ignore) {
+            // ignore
+            return false;
+        }
+    }
+
+    private static void rollbackAgentArgsBestEffort() {
+        try {
+            Class<?> c = Class.forName(BOOTSTRAP_SYSPROP_ROLLBACK_REGISTRY_CLASS, false, null);
+            java.lang.reflect.Method m = c.getMethod("rollbackAndClearBestEffort");
+            m.invoke(null);
+        } catch (Throwable ignore) {
+            // ignore
+        }
+    }
+
+    private static File locateAgentContainerJarBestEffort() {
+        return invokeJarLocatorFileMethodBestEffort("locateAgentContainerJar");
+    }
+
+    private static File locateAgentCoreJarBestEffort() {
+        return invokeJarLocatorFileMethodBestEffort("locateAgentCoreJar");
+    }
+
+    private static File invokeJarLocatorFileMethodBestEffort(String methodName) {
+        if (methodName == null || methodName.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            Class<?> c = Class.forName(BOOTSTRAP_JAR_LOCATOR_CLASS, false, null);
+            java.lang.reflect.Method m = c.getMethod(methodName, Class.class);
+            Object r = m.invoke(null, SleuthAgent.class);
+            return (r instanceof File) ? (File) r : null;
+        } catch (Throwable ignore) {
+            return null;
+        }
     }
 
     private static Boolean bridgeIsRegisteredOrNull() {
@@ -217,6 +465,13 @@ public final class SleuthAgent {
     private static boolean isBootstrapBridgeAvailableBestEffort() {
         // Registry gate is one required bootstrap-visible bridge.
         if (!isBootstrapClassAvailable(CORE_LOADER_REGISTRY_CLASS)) {
+            return false;
+        }
+        // Bootstrap-only utilities required by SleuthAgent bootstrap flow.
+        if (!isBootstrapClassAvailable(BOOTSTRAP_JAR_LOCATOR_CLASS)) {
+            return false;
+        }
+        if (!isBootstrapClassAvailable(BOOTSTRAP_SYSPROP_ROLLBACK_REGISTRY_CLASS)) {
             return false;
         }
         // Interceptors are required for any bytecode enhancement that injects bootstrap calls.
