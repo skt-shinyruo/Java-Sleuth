@@ -23,6 +23,16 @@ A lightweight Java diagnostic and monitoring tool inspired by Arthas. Java-Sleut
 - ✅ **Class Retransformation**: Apply bytecode transformations to loaded classes
 - ✅ **Dynamic Code Updates**: Modify running applications on-the-fly
 
+### Phase 4 - Production Diagnostics and System Introspection ✅
+- ✅ **Health/Status/Metrics**: Quick agent health checks and runtime metrics (`health/status/metrics`)
+- ✅ **System Introspection**: Inspect JVM/system properties/env and VM options (`jvm/sysprop/sysenv/vmoption`)
+- ✅ **Advanced Memory Tools**: Memory analysis and heap dump (`memory/heapdump`)
+
+### Phase 5 - Class and JMX Analysis ✅
+- ✅ **Decompile Loaded Classes**: Decompile classes with CFR (`jad`)
+- ✅ **ClassLoader Analysis**: Inspect loader trees and class origins (`classloader`)
+- ✅ **JMX MBean Explorer**: List/get/set/invoke MBeans (`mbean`)
+
 ## Requirements
 
 - **Java 8+** (JDK required for tools.jar on Java < 9)
@@ -32,8 +42,9 @@ A lightweight Java diagnostic and monitoring tool inspired by Arthas. Java-Sleut
 
 ## Documentation
 
-- `docs/index.md` - User-facing documentation (usage/dev/ops)
-- `helloagents/wiki/overview.md` - Internal project knowledge base (architecture/modules)
+- `docs/index.md` - Documentation index
+- `docs/usage/index.md` - Usage docs (getting started / commands / troubleshooting)
+- `docs/ops/index.md` - Ops docs (deployment guide / runbook)
 
 ## Quick Start
 

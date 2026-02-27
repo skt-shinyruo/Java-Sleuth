@@ -135,8 +135,15 @@ journalctl -u java-sleuth --since "1 hour ago"
 # 查看应用日志
 tail -50 /opt/java-sleuth/logs/sleuth.out
 
-# 校验配置
-java -jar /opt/java-sleuth/lib/java-sleuth-*.jar --validate-config
+# 校验配置（文件级）
+test -f /opt/java-sleuth/config/sleuth.properties
+grep -nE '^(server\\.bind\\.address|server\\.port|security\\.mode|security\\.hmac\\.secret)=' /opt/java-sleuth/config/sleuth.properties
+
+# 若服务已启动且可连接（推荐）：使用 SleuthLauncher 验证运行态关键项
+# ./sleuth.sh
+# sleuth> config show
+# sleuth> status
+# sleuth> health
 
 # 检查文件权限
 ls -la /opt/java-sleuth/

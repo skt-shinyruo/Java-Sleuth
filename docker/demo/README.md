@@ -117,7 +117,7 @@ watch com.javasleuth.test.EnhancedTestApplication processBusinessTask -n 20 --co
 
 # trace（调用链与耗时）
 trace com.javasleuth.test.EnhancedTestApplication processBusinessTask -n 5 -d 5
-trace com.javasleuth.test.EnhancedTestApplication calculateFibonacci -n 5 -d 10 --sample 1.0
+trace com.javasleuth.test.EnhancedTestApplication calculateFibonacci -n 5 -d 10
 
 # monitor（周期统计）
 monitor com.javasleuth.test.EnhancedTestApplication processBusinessTask -i 1000 -n 5

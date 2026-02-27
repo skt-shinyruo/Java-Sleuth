@@ -422,14 +422,21 @@ sudo logrotate -d /etc/logrotate.d/java-sleuth
 
 #### 外部监控集成
 
-##### Prometheus 指标
+##### Prometheus 指标（通过 JMX Exporter）
+
+> 说明：
+>
+> - `sleuth> metrics json` 可输出结构化指标，但 **不是** Prometheus exposition format（不能被 Prometheus 直接 scrape）。
+> - 本文档中的 `9999` 端口用于 **JMX（RMI）**，Prometheus 也不能直接抓取；需要通过 **JMX Exporter** 将 JMX 指标转换为 HTTP `/metrics` 暴露出来。
+> - JMX Exporter 可以作为 `-javaagent` 跑在 JVM 内，也可以作为独立进程连接 JMX 并对外提供 HTTP；请按你们的平台标准选择。
 
 ```yaml
 # prometheus.yml（示例）
+# 目标应当是「JMX Exporter 暴露的 HTTP 端口」，而不是 JMX 端口（9999）。
 scrape_configs:
-  - job_name: 'java-sleuth'
+  - job_name: 'java-sleuth-jmx'
     static_configs:
-      - targets: ['localhost:9999']
+      - targets: ['localhost:9404']   # 示例：JMX Exporter HTTP 端口
     metrics_path: /metrics
     scrape_interval: 30s
 ```
@@ -454,6 +461,19 @@ scrape_configs:
   }
 }
 ```
+
+> 提示：Grafana 面板中的指标名取决于你使用的 exporter（及其规则文件）。上面的 `jvm_*` 仅作为示例。
+
+##### 另一种方式：命令级指标输出（非 Prometheus）
+
+如果你只需要临时排障或快速对接内部采集链路，可在本机通过 SleuthLauncher 执行：
+
+```bash
+./sleuth.sh
+# sleuth> metrics json
+```
+
+该方式适合“按需拉取/调试”，不建议替代长期的 Prometheus/JMX Exporter 方案。
 
 ### 日志管理
 
