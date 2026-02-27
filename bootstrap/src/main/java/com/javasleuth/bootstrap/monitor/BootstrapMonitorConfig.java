@@ -29,22 +29,6 @@ final class BootstrapMonitorConfig {
         return getBoolean(PREFIX + "monitoring.trace.drop.on.full", true);
     }
 
-    static double getTraceSampleRate() {
-        Double fromStore = BootstrapMonitorConfigStore.getTraceSampleRate();
-        if (fromStore != null) {
-            return clamp01(fromStore.doubleValue());
-        }
-        return clamp01(getDouble(PREFIX + "monitoring.trace.sample.rate", 0.1d));
-    }
-
-    static double getMonitorSampleRate() {
-        Double fromStore = BootstrapMonitorConfigStore.getMonitorSampleRate();
-        if (fromStore != null) {
-            return clamp01(fromStore.doubleValue());
-        }
-        return clamp01(getDouble(PREFIX + "monitoring.monitor.sample.rate", 1.0d));
-    }
-
     private static boolean getBoolean(String key, boolean defaultValue) {
         String v = System.getProperty(key);
         if (v == null) {
@@ -55,31 +39,5 @@ final class BootstrapMonitorConfig {
             return defaultValue;
         }
         return "true".equals(s) || "1".equals(s) || "yes".equals(s) || "y".equals(s) || "on".equals(s);
-    }
-
-    private static double getDouble(String key, double defaultValue) {
-        String v = System.getProperty(key);
-        if (v == null) {
-            return defaultValue;
-        }
-        String s = v.trim();
-        if (s.isEmpty()) {
-            return defaultValue;
-        }
-        try {
-            return Double.parseDouble(s);
-        } catch (Exception ignore) {
-            return defaultValue;
-        }
-    }
-
-    private static double clamp01(double v) {
-        if (v < 0.0d) {
-            return 0.0d;
-        }
-        if (v > 1.0d) {
-            return 1.0d;
-        }
-        return v;
     }
 }

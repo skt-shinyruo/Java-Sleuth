@@ -9,15 +9,11 @@ import org.junit.Test;
 public class SysPropMonitoringStoreSyncTest {
     private final String oldWatchDropOnFull = System.getProperty("sleuth.monitoring.watch.drop.on.full");
     private final String oldTraceDropOnFull = System.getProperty("sleuth.monitoring.trace.drop.on.full");
-    private final String oldTraceSampleRate = System.getProperty("sleuth.monitoring.trace.sample.rate");
-    private final String oldMonitorSampleRate = System.getProperty("sleuth.monitoring.monitor.sample.rate");
 
     @After
     public void cleanup() {
         restoreSysProp("sleuth.monitoring.watch.drop.on.full", oldWatchDropOnFull);
         restoreSysProp("sleuth.monitoring.trace.drop.on.full", oldTraceDropOnFull);
-        restoreSysProp("sleuth.monitoring.trace.sample.rate", oldTraceSampleRate);
-        restoreSysProp("sleuth.monitoring.monitor.sample.rate", oldMonitorSampleRate);
         SleuthTestState.resetAll("SysPropMonitoringStoreSyncTest");
     }
 
@@ -29,13 +25,9 @@ public class SysPropMonitoringStoreSyncTest {
         SysPropCommand cmd = new SysPropCommand(null);
         cmd.execute(new String[] {"sysprop", "set", "sleuth.monitoring.watch.drop.on.full", "false"});
         cmd.execute(new String[] {"sysprop", "set", "sleuth.monitoring.trace.drop.on.full", "false"});
-        cmd.execute(new String[] {"sysprop", "set", "sleuth.monitoring.trace.sample.rate", "0.33"});
-        cmd.execute(new String[] {"sysprop", "set", "sleuth.monitoring.monitor.sample.rate", "0.77"});
 
         Assert.assertEquals(Boolean.FALSE, BootstrapMonitorConfigStore.getWatchDropOnFull());
         Assert.assertEquals(Boolean.FALSE, BootstrapMonitorConfigStore.getTraceDropOnFull());
-        Assert.assertEquals(0.33d, BootstrapMonitorConfigStore.getTraceSampleRate().doubleValue(), 0.000001d);
-        Assert.assertEquals(0.77d, BootstrapMonitorConfigStore.getMonitorSampleRate().doubleValue(), 0.000001d);
     }
 
     private static void restoreSysProp(String key, String oldValue) {
@@ -46,4 +38,3 @@ public class SysPropMonitoringStoreSyncTest {
         System.setProperty(key, oldValue);
     }
 }
-

@@ -182,9 +182,7 @@ public class SysPropCommand implements Command {
             return false;
         }
         return "sleuth.monitoring.watch.drop.on.full".equals(key) ||
-            "sleuth.monitoring.trace.drop.on.full".equals(key) ||
-            "sleuth.monitoring.trace.sample.rate".equals(key) ||
-            "sleuth.monitoring.monitor.sample.rate".equals(key);
+            "sleuth.monitoring.trace.drop.on.full".equals(key);
     }
 
     private boolean isValidPropertyKey(String key) {

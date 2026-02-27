@@ -184,8 +184,6 @@ public final class SleuthConfigParser {
 
         int traceQueue = SleuthConfigSchema.MONITORING_TRACE_QUEUE_CAPACITY.read(config);
         boolean traceDrop = SleuthConfigSchema.MONITORING_TRACE_DROP_ON_FULL.read(config);
-        double traceRate = SleuthConfigSchema.MONITORING_TRACE_SAMPLE_RATE.read(config);
-        double monitorRate = SleuthConfigSchema.MONITORING_MONITOR_SAMPLE_RATE.read(config);
 
         return new MonitoringConfig(
             metrics,
@@ -195,9 +193,7 @@ public final class SleuthConfigParser {
             watchQueue,
             watchDrop,
             traceQueue,
-            traceDrop,
-            traceRate,
-            monitorRate
+            traceDrop
         );
     }
 

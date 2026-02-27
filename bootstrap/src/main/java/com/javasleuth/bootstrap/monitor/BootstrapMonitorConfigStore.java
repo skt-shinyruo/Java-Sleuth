@@ -11,8 +11,6 @@ package com.javasleuth.bootstrap.monitor;
 public final class BootstrapMonitorConfigStore {
     private static volatile Boolean watchDropOnFull;
     private static volatile Boolean traceDropOnFull;
-    private static volatile Double traceSampleRate;
-    private static volatile Double monitorSampleRate;
 
     private BootstrapMonitorConfigStore() {}
 
@@ -24,14 +22,6 @@ public final class BootstrapMonitorConfigStore {
         traceDropOnFull = Boolean.valueOf(value);
     }
 
-    public static void setTraceSampleRate(double value) {
-        traceSampleRate = Double.valueOf(value);
-    }
-
-    public static void setMonitorSampleRate(double value) {
-        monitorSampleRate = Double.valueOf(value);
-    }
-
     static Boolean getWatchDropOnFull() {
         return watchDropOnFull;
     }
@@ -40,19 +30,8 @@ public final class BootstrapMonitorConfigStore {
         return traceDropOnFull;
     }
 
-    static Double getTraceSampleRate() {
-        return traceSampleRate;
-    }
-
-    static Double getMonitorSampleRate() {
-        return monitorSampleRate;
-    }
-
     public static void clear() {
         watchDropOnFull = null;
         traceDropOnFull = null;
-        traceSampleRate = null;
-        monitorSampleRate = null;
     }
 }
-

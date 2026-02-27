@@ -4,7 +4,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -68,9 +67,6 @@ public final class MonitorInterceptor {
         if (collector == null) {
             return;
         }
-        if (!passesSampleRate()) {
-            return;
-        }
         String key = buildMethodKey(className, methodName, methodDesc);
         collector.statsByMethod.computeIfAbsent(key, k -> new MethodStats()).add(durationNanos, exception);
     }
@@ -100,16 +96,7 @@ public final class MonitorInterceptor {
         }
     }
 
-    private static boolean passesSampleRate() {
-        double rate = BootstrapMonitorConfig.getMonitorSampleRate();
-        if (rate >= 1.0) {
-            return true;
-        }
-        if (rate <= 0.0) {
-            return false;
-        }
-        return ThreadLocalRandom.current().nextDouble() < rate;
-    }
+    // Sampling has been removed: monitor always collects (equivalent to 1.0).
 
     private static String buildMethodKey(String className, String methodName, String methodDesc) {
         String c = className == null ? "?" : className;

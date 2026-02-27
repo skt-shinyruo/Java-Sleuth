@@ -44,7 +44,7 @@ public class InterceptorDetachResetTest {
     public void resetForDetach_clearsTraceQueuesAndMetrics() {
         String id = "trace-detach-reset";
         BlockingQueue<TraceResult> q = new LinkedBlockingQueue<>(10);
-        TraceInterceptor.registerTrace(id, q, 1.0);
+        TraceInterceptor.registerTrace(id, q);
         try {
             long start = System.nanoTime();
             TraceInterceptor.onMethodEntry(id, "C", "m", "()V", start);
@@ -60,7 +60,6 @@ public class InterceptorDetachResetTest {
         Assert.assertEquals(0, TraceInterceptor.getPublishedEventCount());
         Assert.assertEquals(0, TraceInterceptor.getDroppedEventCount());
         Assert.assertEquals(0, TraceInterceptor.getEvictedEventCount());
-        Assert.assertEquals(0, TraceInterceptor.getSampledOutEventCount());
     }
 
     @Test
@@ -125,4 +124,3 @@ public class InterceptorDetachResetTest {
         Assert.assertTrue(MonitorInterceptor.snapshot(id).isEmpty());
     }
 }
-

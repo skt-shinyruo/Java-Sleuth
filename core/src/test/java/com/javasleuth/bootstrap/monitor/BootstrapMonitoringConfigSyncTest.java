@@ -23,22 +23,22 @@ public class BootstrapMonitoringConfigSyncTest {
 
         ConfigCommand cmd = new ConfigCommand(config);
 
-        cmd.execute(new String[] {"config", "set", "monitoring.trace.sample.rate", "0.42"});
-        Double fromStore = BootstrapMonitorConfigStore.getTraceSampleRate();
-        Assert.assertNotNull(fromStore);
-        Assert.assertEquals(0.42d, fromStore.doubleValue(), 0.000001d);
+        cmd.execute(new String[] {"config", "set", "monitoring.watch.drop.on.full", "false"});
+        Assert.assertEquals(Boolean.FALSE, BootstrapMonitorConfigStore.getWatchDropOnFull());
 
-        cmd.execute(new String[] {"config", "remove", "monitoring.trace.sample.rate"});
+        cmd.execute(new String[] {"config", "set", "monitoring.trace.drop.on.full", "false"});
+        Assert.assertEquals(Boolean.FALSE, BootstrapMonitorConfigStore.getTraceDropOnFull());
+
+        cmd.execute(new String[] {"config", "remove", "monitoring.watch.drop.on.full"});
         SleuthConfig typedAfterRemove = SleuthConfigParser.parse(config.snapshot());
-        Double fromStoreAfterRemove = BootstrapMonitorConfigStore.getTraceSampleRate();
-        Assert.assertNotNull(fromStoreAfterRemove);
-        Assert.assertEquals(typedAfterRemove.monitoring().getTraceSampleRate(), fromStoreAfterRemove.doubleValue(), 0.000001d);
+        Assert.assertEquals(Boolean.valueOf(typedAfterRemove.monitoring().isWatchDropOnFull()),
+            BootstrapMonitorConfigStore.getWatchDropOnFull());
 
         cmd.execute(new String[] {"config", "clear"});
         SleuthConfig typedAfterClear = SleuthConfigParser.parse(config.snapshot());
-        Double fromStoreAfterClear = BootstrapMonitorConfigStore.getTraceSampleRate();
-        Assert.assertNotNull(fromStoreAfterClear);
-        Assert.assertEquals(typedAfterClear.monitoring().getTraceSampleRate(), fromStoreAfterClear.doubleValue(), 0.000001d);
+        Assert.assertEquals(Boolean.valueOf(typedAfterClear.monitoring().isWatchDropOnFull()),
+            BootstrapMonitorConfigStore.getWatchDropOnFull());
+        Assert.assertEquals(Boolean.valueOf(typedAfterClear.monitoring().isTraceDropOnFull()),
+            BootstrapMonitorConfigStore.getTraceDropOnFull());
     }
 }
-

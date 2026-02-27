@@ -123,7 +123,6 @@ public class StatusCommand implements Command {
         status.append("Trace Published: ").append(TraceInterceptor.getPublishedEventCount()).append("\n");
         status.append("Trace Dropped: ").append(TraceInterceptor.getDroppedEventCount()).append("\n");
         status.append("Trace Evicted: ").append(TraceInterceptor.getEvictedEventCount()).append("\n");
-        status.append("Trace Sampled Out: ").append(TraceInterceptor.getSampledOutEventCount()).append("\n");
         status.append("Active Stacks: ").append(StackInterceptor.getActiveStackCount()).append("\n");
         status.append("Stack Published: ").append(StackInterceptor.getPublishedEventCount()).append("\n");
         status.append("Stack Dropped: ").append(StackInterceptor.getDroppedEventCount()).append("\n");

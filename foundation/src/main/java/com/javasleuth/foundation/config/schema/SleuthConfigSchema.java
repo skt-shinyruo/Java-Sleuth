@@ -485,22 +485,6 @@ public final class SleuthConfigSchema {
             .build()
     );
 
-    public static final ConfigKey<Double> MONITORING_TRACE_SAMPLE_RATE = register(
-        ConfigKey.doubleKey("monitoring.trace.sample.rate")
-            .defaultValue(0.1)
-            .doubleRange(0.0, 1.0)
-            .failurePolicy(ConfigKey.FailurePolicy.CLAMP_AND_WARN)
-            .build()
-    );
-
-    public static final ConfigKey<Double> MONITORING_MONITOR_SAMPLE_RATE = register(
-        ConfigKey.doubleKey("monitoring.monitor.sample.rate")
-            .defaultValue(1.0)
-            .doubleRange(0.0, 1.0)
-            .failurePolicy(ConfigKey.FailurePolicy.CLAMP_AND_WARN)
-            .build()
-    );
-
     // =============================================================================
     // Logging
     // =============================================================================
@@ -666,4 +650,3 @@ public final class SleuthConfigSchema {
         return BY_KEY.get(key);
     }
 }
-

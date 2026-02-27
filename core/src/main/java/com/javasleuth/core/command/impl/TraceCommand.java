@@ -85,7 +85,6 @@ public class TraceCommand implements StreamCommand {
         long timeoutSeconds = 30;
         String exprRaw = null;
         List<String> rawConditions = new ArrayList<>();
-        Double sampleRateOverride = null;
 
         for (int i = 3; i < args.length; i++) {
             switch (args[i]) {
@@ -119,10 +118,13 @@ public class TraceCommand implements StreamCommand {
                     break;
                 case "--sample":
                 case "--sample-rate":
-                    if (i + 1 < args.length) {
-                        sampleRateOverride = parseSampleRate(args[++i]);
+                    String sampleRemovedMsg = "ERROR: --sample/--sample-rate 已移除 (removed). "
+                        + "Trace sampling is always 1.0 (collect all).";
+                    if (sink != null) {
+                        sink.error(sampleRemovedMsg);
+                        return "";
                     }
-                    break;
+                    return sampleRemovedMsg;
                 case "--bg":
                     background = true;
                     break;
@@ -175,7 +177,7 @@ public class TraceCommand implements StreamCommand {
         List<SleuthConditionEvaluator.Condition> conditions = SleuthConditionEvaluator.parseConditions(rawConditions);
 
         return startTracing(classPattern, methodPattern, maxDepth, maxCount, timeoutSeconds, loaderId, allowFirstWhenAmbiguous,
-            expr, conditions, sampleRateOverride, sink);
+            expr, conditions, sink);
     }
 
     private String startTracing(String classPattern, String methodPattern,
@@ -184,7 +186,6 @@ public class TraceCommand implements StreamCommand {
                               boolean allowFirstWhenAmbiguous,
                               List<String> expr,
                               List<SleuthConditionEvaluator.Condition> conditions,
-                              Double sampleRateOverride,
                               StreamSink sink) throws Exception {
 
         // Find matching class (multi-ClassLoader safe)
@@ -220,7 +221,7 @@ public class TraceCommand implements StreamCommand {
         boolean enhancerAdded = false;
         try {
             // Register the trace
-            TraceInterceptor.registerTrace(traceId, resultQueue, sampleRateOverride);
+            TraceInterceptor.registerTrace(traceId, resultQueue);
             interceptorRegistered = true;
 
             // Create and register enhancer
@@ -277,9 +278,6 @@ public class TraceCommand implements StreamCommand {
         result.append("Trace ID: ").append(traceId).append("\n");
         result.append("Max depth: ").append(maxDepth).append(", Max invocations: ").append(maxCount);
         result.append(", Timeout: ").append(timeoutSeconds).append("s\n");
-        if (sampleRateOverride != null) {
-            result.append("Sample rate override: ").append(sampleRateOverride).append("\n");
-        }
         result.append("Press Ctrl+C to stop tracing\n\n");
 
         if (sink != null) {
@@ -506,31 +504,12 @@ public class TraceCommand implements StreamCommand {
                "  --first               Use first matched class when ambiguous (unsafe)\n" +
                "  --expr <fields>       Output fields (comma-separated), e.g. tree,cost,thread\n" +
                "  --condition <c>       Filter condition (lhs:op:rhs), can repeat; e.g. cost:gt:1000000\n" +
-               "  --sample <rate>       Override sample rate for this trace (0.0..1.0)\n" +
                "  --bg                 Run in background (use jobs tail/stop)\n" +
                "  -h, --help            Show this help\n\n" +
                "Examples:\n" +
                "  trace com.example.* execute*\n" +
                "  trace *Service* *method* -d 5 -n 50\n" +
-               "  trace MyClass doWork -t 60\n" +
-               "  trace MyClass doWork --sample 1.0\n";
-    }
-
-    private static Double parseSampleRate(String raw) {
-        if (raw == null) {
-            return null;
-        }
-        try {
-            double v = Double.parseDouble(raw.trim());
-            if (v < 0) {
-                v = 0;
-            } else if (v > 1.0) {
-                v = 1.0;
-            }
-            return v;
-        } catch (Exception ignore) {
-            return null;
-        }
+               "  trace MyClass doWork -t 60\n";
     }
 
     private static List<String> parseExpr(String raw) {

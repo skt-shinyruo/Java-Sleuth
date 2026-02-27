@@ -46,11 +46,8 @@ public final class BootstrapMonitoringConfigSync {
 
             BootstrapMonitorConfigStore.setWatchDropOnFull(monitoring.isWatchDropOnFull());
             BootstrapMonitorConfigStore.setTraceDropOnFull(monitoring.isTraceDropOnFull());
-            BootstrapMonitorConfigStore.setTraceSampleRate(monitoring.getTraceSampleRate());
-            BootstrapMonitorConfigStore.setMonitorSampleRate(monitoring.getMonitorSampleRate());
         } catch (Exception ignore) {
             // best-effort
         }
     }
 }
-

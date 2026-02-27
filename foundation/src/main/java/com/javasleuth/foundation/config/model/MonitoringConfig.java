@@ -1,7 +1,7 @@
 package com.javasleuth.foundation.config.model;
 
 /**
- * 监控相关配置（metrics/health/jmx + watch/trace/monitor 队列与采样）。
+ * 监控相关配置（metrics/health/jmx + watch/trace/monitor 队列策略）。
  */
 public final class MonitoringConfig {
     private final boolean metricsEnabled;
@@ -14,9 +14,6 @@ public final class MonitoringConfig {
 
     private final int traceQueueCapacity;
     private final boolean traceDropOnFull;
-    private final double traceSampleRate;
-
-    private final double monitorSampleRate;
 
     public MonitoringConfig(
         boolean metricsEnabled,
@@ -26,9 +23,7 @@ public final class MonitoringConfig {
         int watchQueueCapacity,
         boolean watchDropOnFull,
         int traceQueueCapacity,
-        boolean traceDropOnFull,
-        double traceSampleRate,
-        double monitorSampleRate
+        boolean traceDropOnFull
     ) {
         this.metricsEnabled = metricsEnabled;
         this.healthChecksEnabled = healthChecksEnabled;
@@ -38,8 +33,6 @@ public final class MonitoringConfig {
         this.watchDropOnFull = watchDropOnFull;
         this.traceQueueCapacity = traceQueueCapacity;
         this.traceDropOnFull = traceDropOnFull;
-        this.traceSampleRate = traceSampleRate;
-        this.monitorSampleRate = monitorSampleRate;
     }
 
     public boolean isMetricsEnabled() {
@@ -73,13 +66,4 @@ public final class MonitoringConfig {
     public boolean isTraceDropOnFull() {
         return traceDropOnFull;
     }
-
-    public double getTraceSampleRate() {
-        return traceSampleRate;
-    }
-
-    public double getMonitorSampleRate() {
-        return monitorSampleRate;
-    }
 }
-

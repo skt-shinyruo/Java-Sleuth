@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class TraceInterceptor {
     private static final ConcurrentHashMap<String, BlockingQueue<TraceResult>> traceQueues = new ConcurrentHashMap<>();
@@ -15,13 +14,12 @@ public class TraceInterceptor {
     private static final AtomicLong publishedEvents = new AtomicLong(0);
     private static final AtomicLong droppedEvents = new AtomicLong(0);
     private static final AtomicLong evictedEvents = new AtomicLong(0);
-    private static final AtomicLong sampledOutEvents = new AtomicLong(0);
-    private static final ConcurrentHashMap<String, Double> traceSampleRateOverrides = new ConcurrentHashMap<>();
     // detach → re-attach 的代际（epoch）。用于在下次命中拦截器时清理 ThreadLocal 残留。
     private static final AtomicLong EPOCH = new AtomicLong(0);
 
     private static final class PerTraceState {
-        final ArrayDeque<Boolean> sampleStack = new ArrayDeque<>();
+        // Invocation nesting stack. We only use size/push/pop for depth tracking.
+        final ArrayDeque<Boolean> callStack = new ArrayDeque<>();
     }
 
     private static final class ThreadState {
@@ -37,26 +35,17 @@ public class TraceInterceptor {
         });
 
     public static void registerTrace(String traceId, BlockingQueue<TraceResult> queue) {
-        registerTrace(traceId, queue, null);
-    }
-
-    public static void registerTrace(String traceId, BlockingQueue<TraceResult> queue, Double sampleRateOverride) {
         traceQueues.put(traceId, queue);
-        if (sampleRateOverride != null) {
-            traceSampleRateOverrides.put(traceId, sampleRateOverride);
-        }
         enabled = true;
     }
 
     public static void unregisterTrace(String traceId) {
         traceQueues.remove(traceId);
-        traceSampleRateOverrides.remove(traceId);
         enabled = !traceQueues.isEmpty();
     }
 
     public static void unregisterAllTraces() {
         traceQueues.clear();
-        traceSampleRateOverrides.clear();
         enabled = false;
     }
 
@@ -93,7 +82,6 @@ public class TraceInterceptor {
             publishedEvents.set(0);
             droppedEvents.set(0);
             evictedEvents.set(0);
-            sampledOutEvents.set(0);
         } catch (Exception ignore) {
             // ignore
         }
@@ -108,19 +96,8 @@ public class TraceInterceptor {
 
         try {
             PerTraceState state = getOrCreateState(traceId);
-            int depth = state.sampleStack.size();
-            boolean sampled;
-            if (state.sampleStack.isEmpty()) {
-                // Sample decision is made at root invocation, and inherited by nested calls.
-                sampled = passesSampleRate(traceId);
-            } else {
-                Boolean parent = state.sampleStack.peekFirst();
-                sampled = parent != null && parent;
-            }
-            state.sampleStack.addFirst(sampled);
-            if (!sampled) {
-                return;
-            }
+            int depth = state.callStack.size();
+            state.callStack.addFirst(Boolean.TRUE);
 
             TraceResult result = new TraceResult();
             result.setTraceId(traceId);
@@ -146,22 +123,19 @@ public class TraceInterceptor {
             if (state == null) {
                 return;
             }
-            Boolean sampled = state.sampleStack.pollFirst();
-            if (sampled == null) {
+            Boolean marker = state.callStack.pollFirst();
+            if (marker == null) {
                 return;
             }
-            if (state.sampleStack.isEmpty()) {
+            if (state.callStack.isEmpty()) {
                 removeState(traceId);
-            }
-            if (!sampled) {
-                return;
             }
 
             BlockingQueue<TraceResult> queue = traceQueues.get(traceId);
             if (queue == null) {
                 return;
             }
-            int depth = state.sampleStack.size();
+            int depth = state.callStack.size();
 
             TraceResult result = new TraceResult();
             result.setTraceId(traceId);
@@ -193,11 +167,10 @@ public class TraceInterceptor {
             if (state == null) {
                 return;
             }
-            Boolean sampled = state.sampleStack.peekFirst();
-            if (sampled == null || !sampled) {
+            if (state.callStack.isEmpty()) {
                 return;
             }
-            int depth = state.sampleStack.size();
+            int depth = state.callStack.size();
 
             TraceResult result = new TraceResult();
             result.setTraceId(traceId);
@@ -222,24 +195,6 @@ public class TraceInterceptor {
 
     public static int getActiveTraceCount() {
         return traceQueues.size();
-    }
-
-    private static boolean passesSampleRate(String traceId) {
-        Double override = traceId != null ? traceSampleRateOverrides.get(traceId) : null;
-        double rate = override != null ? override : BootstrapMonitorConfig.getTraceSampleRate();
-        if (rate < 0) {
-            rate = 0;
-        } else if (rate > 1.0) {
-            rate = 1.0;
-        }
-        if (rate >= 1.0) {
-            return true;
-        }
-        boolean pass = ThreadLocalRandom.current().nextDouble() <= rate;
-        if (!pass) {
-            sampledOutEvents.incrementAndGet();
-        }
-        return pass;
     }
 
     private static PerTraceState getOrCreateState(String traceId) {
@@ -306,9 +261,5 @@ public class TraceInterceptor {
 
     public static long getEvictedEventCount() {
         return evictedEvents.get();
-    }
-
-    public static long getSampledOutEventCount() {
-        return sampledOutEvents.get();
     }
 }
