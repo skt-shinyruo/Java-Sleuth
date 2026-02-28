@@ -48,14 +48,11 @@ public final class SleuthConfigParser {
     }
 
     private static ProtocolConfig parseProtocol(ConfigView config) {
-        String rawMode = SleuthConfigSchema.PROTOCOL_MODE.read(config);
-        ProtocolConfig.Mode mode = parseProtocolMode(rawMode);
-
         boolean streaming = SleuthConfigSchema.PROTOCOL_STREAMING_ENABLED.read(config);
         int frameMaxPayload = SleuthConfigSchema.PROTOCOL_FRAME_MAX_PAYLOAD.read(config);
         int textMaxLineBytes = SleuthConfigSchema.PROTOCOL_TEXT_MAX_LINE_BYTES.read(config);
 
-        return new ProtocolConfig(mode, streaming, frameMaxPayload, textMaxLineBytes);
+        return new ProtocolConfig(streaming, frameMaxPayload, textMaxLineBytes);
     }
 
     private static SecurityConfig parseSecurity(ConfigView config) {
@@ -245,17 +242,6 @@ public final class SleuthConfigParser {
         );
 
         return new PluginsConfig(enabled, serviceLoader, allowlist, dir, strategy);
-    }
-
-    private static ProtocolConfig.Mode parseProtocolMode(String raw) {
-        String v = normalizeNonBlank(raw, "framed").toLowerCase(Locale.ROOT);
-        if ("framed".equals(v)) {
-            return ProtocolConfig.Mode.FRAMED;
-        }
-        if ("binary".equals(v)) {
-            return ProtocolConfig.Mode.BINARY;
-        }
-        return ProtocolConfig.Mode.FRAMED;
     }
 
     private static SecurityConfig.Mode parseSecurityMode(String raw) {

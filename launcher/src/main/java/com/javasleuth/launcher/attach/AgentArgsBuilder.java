@@ -88,7 +88,6 @@ public final class AgentArgsBuilder {
             agentArgs.append("configFile=").append(configFile).append(";");
         }
         agentArgs.append("server.port=").append(SleuthConfigSchema.SERVER_PORT.read(config)).append(";");
-        agentArgs.append("protocol.mode=").append(SleuthConfigSchema.PROTOCOL_MODE.read(config)).append(";");
         agentArgs.append("protocol.streaming.enabled=").append(SleuthConfigSchema.PROTOCOL_STREAMING_ENABLED.read(config)).append(";");
         agentArgs.append("security.mode=").append(securityMode).append(";");
         if ("hmac".equalsIgnoreCase(securityMode)) {

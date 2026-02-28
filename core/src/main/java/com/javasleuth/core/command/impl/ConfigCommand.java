@@ -148,7 +148,6 @@ public class ConfigCommand implements Command {
                 show.append("security.allowed.commands = ").append(typed.security().getAllowedCommands()).append("\n");
 
                 show.append("\n-- Protocol Settings --\n");
-                show.append("protocol.mode = ").append(typed.protocol().getModeWireName()).append("\n");
                 show.append("protocol.streaming.enabled = ").append(typed.protocol().isStreamingEnabled()).append("\n");
                 show.append("protocol.frame.max.payload = ").append(typed.protocol().getFrameMaxPayloadBytes()).append("\n");
                 show.append("protocol.text.max.line.bytes = ").append(typed.protocol().getTextMaxLineBytes()).append("\n");

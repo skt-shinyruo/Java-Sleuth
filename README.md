@@ -125,8 +125,8 @@ quit         - Exit the Java-Sleuth session
 
 传输层与资源治理相关配置：
 
-- `protocol.mode=framed`：默认使用分帧协议，便于长输出与流式命令（watch/trace/monitor/tt/stack）
-- `protocol.text.max.line.bytes`：文本协议单行最大字节数，避免超长输入导致资源耗尽
+- 传输协议：仅支持 `binary`（不再支持 `framed`）
+- `protocol.text.max.line.bytes`：文本握手/控制面单行最大字节数，避免超长输入导致资源耗尽
 - `server.max.connections`：并发连接上限（超限新连接会被拒绝）
 - `server.executor.queue.capacity`：连接处理线程池排队上限（用于背压与内存上限控制，过载会拒绝新连接）
 - `performance.command.executor.queue.capacity`：命令执行线程池排队上限（过载会返回明确错误，避免无限排队/线程膨胀）
