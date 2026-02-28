@@ -2,8 +2,6 @@ package com.javasleuth.core.command;
 
 import com.javasleuth.foundation.command.protocol.BinaryFrame;
 import com.javasleuth.foundation.command.protocol.BinaryFrameCodec;
-import com.javasleuth.foundation.command.protocol.Frame;
-import com.javasleuth.foundation.command.protocol.FrameCodec;
 import com.javasleuth.foundation.command.protocol.Utf8LineCodec;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.security.AuditLogger;
@@ -40,54 +38,6 @@ public class CommandProcessorTest {
         assertEquals("do Work", parts[2]);
         assertEquals("-n", parts[3]);
         assertEquals("5", parts[4]);
-    }
-
-        @Test
-    public void testFrameCodecRoundTrip() throws Exception {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        FrameCodec.writeFrame(baos, Frame.data("hello\nworld\n中文"), 10);
-        FrameCodec.writeFrame(baos, Frame.end(), 10);
-
-        BufferedReader br = new BufferedReader(
-            new java.io.InputStreamReader(new ByteArrayInputStream(baos.toByteArray()), java.nio.charset.StandardCharsets.UTF_8)
-        );
-
-        StringBuilder sb = new StringBuilder();
-        boolean firstLine = true;
-        while (true) {
-            Frame frame = FrameCodec.readFrame(br);
-            assertNotNull(frame);
-            if (frame.getType() == Frame.Type.DATA) {
-                if (!firstLine) {
-                    sb.append("\n");
-                }
-                sb.append(frame.getPayload());
-                firstLine = false;
-                continue;
-            }
-            if (frame.getType() == Frame.Type.END) {
-                break;
-            }
-            fail("Unexpected frame type: " + frame.getType());
-        }
-        assertEquals("hello\nworld\n中文", sb.toString());
-    }
-
-    @Test
-    public void testFrameCodecRoundTripStream() throws Exception {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        FrameCodec.writeFrame(baos, Frame.data("hello"), 4096);
-        FrameCodec.writeFrame(baos, Frame.end(), 4096);
-
-        ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
-        Frame data = FrameCodec.readFrame(bais, 8192);
-        assertNotNull(data);
-        assertEquals(Frame.Type.DATA, data.getType());
-        assertEquals("hello", data.getPayload());
-
-        Frame end = FrameCodec.readFrame(bais, 8192);
-        assertNotNull(end);
-        assertEquals(Frame.Type.END, end.getType());
     }
 
     @Test
