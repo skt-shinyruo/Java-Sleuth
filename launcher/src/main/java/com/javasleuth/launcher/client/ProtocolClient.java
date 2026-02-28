@@ -2,8 +2,6 @@ package com.javasleuth.launcher.client;
 
 import com.javasleuth.foundation.command.protocol.BinaryFrame;
 import com.javasleuth.foundation.command.protocol.BinaryFrameCodec;
-import com.javasleuth.foundation.command.protocol.Frame;
-import com.javasleuth.foundation.command.protocol.FrameCodec;
 import com.javasleuth.foundation.command.protocol.Utf8LineCodec;
 import com.javasleuth.foundation.security.CommandSigner;
 import com.javasleuth.foundation.security.RequestSecurityManager;
@@ -18,7 +16,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 /**
- * 客户端协议会话（握手 + 协商 + framed/binary 收发）。
+ * 客户端协议会话（握手 + 协商 + binary frame 收发）。
  *
  * <p>该类不依赖 JLine，不处理 JVM 选择/Attach，仅处理网络协议与命令执行。</p>
  */
@@ -35,7 +33,6 @@ public final class ProtocolClient implements AutoCloseable {
     private final String welcomeMessage;
 
     private final boolean binary;
-    private final boolean framed;
     private final boolean streamingEnabled;
     private final int maxPayloadBytes;
     private final int maxLineBytes;
@@ -52,7 +49,6 @@ public final class ProtocolClient implements AutoCloseable {
         BufferedOutputStream out,
         String welcomeMessage,
         boolean binary,
-        boolean framed,
         boolean streamingEnabled,
         int maxPayloadBytes,
         int maxLineBytes,
@@ -66,7 +62,6 @@ public final class ProtocolClient implements AutoCloseable {
         this.out = out;
         this.welcomeMessage = welcomeMessage;
         this.binary = binary;
-        this.framed = framed;
         this.streamingEnabled = streamingEnabled;
         this.maxPayloadBytes = maxPayloadBytes;
         this.maxLineBytes = maxLineBytes;
@@ -209,10 +204,9 @@ public final class ProtocolClient implements AutoCloseable {
         }
         String protocol = negotiated.trim().toLowerCase();
         boolean binary = "binary".equals(protocol);
-        boolean framed = "framed".equals(protocol);
-        if (!binary && !framed) {
+        if (!binary) {
             closeQuietly(socket);
-            throw new IOException("Handshake failed: unsupported negotiated protocol: " + protocol);
+            throw new IOException("Handshake failed: unsupported negotiated protocol: " + protocol + " (binary required)");
         }
 
         // 服务端 CONFIG streaming= 是最终协议能力的 SSOT：客户端不能用本地 hint 覆盖服务端的关闭状态。
@@ -228,18 +222,14 @@ public final class ProtocolClient implements AutoCloseable {
             connId = proposedConnId;
         }
 
-        DataInputStream binaryIn = null;
-        DataOutputStream binaryOut = null;
-        if (binary) {
-            Utf8LineCodec.writeLine(out, "UPGRADE BINARY", true);
-            String ok = Utf8LineCodec.readLine(in, maxLineBytes);
-            if (ok == null || !"OK".equalsIgnoreCase(ok.trim())) {
-                closeQuietly(socket);
-                throw new IOException("Binary upgrade failed: expected OK but got: " + ok);
-            }
-            binaryIn = new DataInputStream(in);
-            binaryOut = new DataOutputStream(out);
+        Utf8LineCodec.writeLine(out, "UPGRADE BINARY", true);
+        String ok = Utf8LineCodec.readLine(in, maxLineBytes);
+        if (ok == null || !"OK".equalsIgnoreCase(ok.trim())) {
+            closeQuietly(socket);
+            throw new IOException("Binary upgrade failed: expected OK but got: " + ok);
         }
+        DataInputStream binaryIn = new DataInputStream(in);
+        DataOutputStream binaryOut = new DataOutputStream(out);
 
         ProtocolClient client = new ProtocolClient(
             socket,
@@ -247,7 +237,6 @@ public final class ProtocolClient implements AutoCloseable {
             out,
             welcome,
             binary,
-            framed,
             streamingEnabled,
             maxPayloadBytes,
             maxLineBytes,
@@ -378,10 +367,6 @@ public final class ProtocolClient implements AutoCloseable {
         return binary;
     }
 
-    public boolean isFramed() {
-        return framed;
-    }
-
     public boolean isStreamingEnabled() {
         return streamingEnabled;
     }
@@ -407,7 +392,7 @@ public final class ProtocolClient implements AutoCloseable {
             return CommandResult.ok(false);
         }
 
-        boolean shouldStream = (binary || framed) && streamingEnabled && stream;
+        boolean shouldStream = streamingEnabled && stream;
         String signed;
         try {
             signed = signer.sign(trimmed, System.currentTimeMillis(), generateNonce(), connId);
@@ -417,46 +402,26 @@ public final class ProtocolClient implements AutoCloseable {
 
         boolean hadErr = false;
         try {
-            if (binary && binaryIn != null && binaryOut != null) {
-                BinaryFrameCodec.writeFrame(binaryOut, BinaryFrame.request(signed, shouldStream), maxPayloadBytes);
-                while (true) {
-                    BinaryFrame frame = BinaryFrameCodec.readFrame(binaryIn, maxPayloadBytes);
-                    if (frame == null) {
-                        break;
-                    }
-                    if (frame.getType() == BinaryFrame.Type.DATA) {
-                        if (output != null) {
-                            output.onStdoutChunk(frame.getPayloadUtf8());
-                        }
-                    } else if (frame.getType() == BinaryFrame.Type.ERR) {
-                        hadErr = true;
-                        if (output != null) {
-                            output.onStderrChunk(frame.getPayloadUtf8());
-                        }
-                    } else if (frame.getType() == BinaryFrame.Type.END) {
-                        break;
-                    }
-                }
-                return CommandResult.ok(hadErr);
+            if (!binary || binaryIn == null || binaryOut == null) {
+                return CommandResult.error("Protocol error: binary data plane not available");
             }
 
-            String outbound = shouldStream ? "STREAM " + signed : "CMD " + signed;
-            Utf8LineCodec.writeLine(out, outbound, true);
+            BinaryFrameCodec.writeFrame(binaryOut, BinaryFrame.request(signed, shouldStream), maxPayloadBytes);
             while (true) {
-                Frame frame = FrameCodec.readFrame(in, maxLineBytes);
+                BinaryFrame frame = BinaryFrameCodec.readFrame(binaryIn, maxPayloadBytes);
                 if (frame == null) {
                     break;
                 }
-                if (frame.getType() == Frame.Type.DATA) {
+                if (frame.getType() == BinaryFrame.Type.DATA) {
                     if (output != null) {
-                        output.onStdoutLine(frame.getPayload());
+                        output.onStdoutChunk(frame.getPayloadUtf8());
                     }
-                } else if (frame.getType() == Frame.Type.ERR) {
+                } else if (frame.getType() == BinaryFrame.Type.ERR) {
                     hadErr = true;
                     if (output != null) {
-                        output.onStderrLine(frame.getPayload());
+                        output.onStderrChunk(frame.getPayloadUtf8());
                     }
-                } else if (frame.getType() == Frame.Type.END) {
+                } else if (frame.getType() == BinaryFrame.Type.END) {
                     break;
                 }
             }
