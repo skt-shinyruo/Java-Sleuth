@@ -39,7 +39,10 @@ public final class HandshakeNegotiator {
             throw new IOException("Handshake requires protocol");
         }
         String requestedNorm = requested.trim().toLowerCase();
-        if (!"framed".equals(requestedNorm) && !"binary".equals(requestedNorm)) {
+        if ("framed".equals(requestedNorm)) {
+            throw new IOException("Unsupported handshake protocol: framed (legacy protocol removed; use protocol=binary)");
+        }
+        if (!"binary".equals(requestedNorm)) {
             throw new IOException("Unsupported handshake protocol: " + requested);
         }
         boolean requestedListed = false;
@@ -58,19 +61,7 @@ public final class HandshakeNegotiator {
         if (clientProtocols.isEmpty()) {
             clientProtocols.add("framed");
         }
-
-        String preferred = config.protocol().getModeWireName().toLowerCase();
-
-        String selected;
-        if ("binary".equals(preferred) && clientProtocols.contains("binary")) {
-            selected = "binary";
-        } else if (clientProtocols.contains("framed")) {
-            selected = "framed";
-        } else if (clientProtocols.contains("binary")) {
-            selected = "binary";
-        } else {
-            selected = "framed";
-        }
+        String selected = "binary";
 
         String connId = kv.get("connid");
         if (connId == null || connId.trim().isEmpty()) {
