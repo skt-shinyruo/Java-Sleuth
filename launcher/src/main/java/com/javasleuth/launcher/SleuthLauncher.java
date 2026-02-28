@@ -198,7 +198,7 @@ public class SleuthLauncher {
             try (ProtocolClient client = ProtocolClient.connectWithRetry(
                 connectHost,
                 port,
-                typed.protocol().getModeWireName(),
+                "binary",
                 streamingEnabled,
                 maxPayloadBytes,
                 maxLineBytes
@@ -231,7 +231,7 @@ public class SleuthLauncher {
         try (ProtocolClient client = ProtocolClient.connectWithRetry(
             connectHost,
             port,
-            typed.protocol().getModeWireName(),
+            "binary",
             streamingEnabled,
             maxPayloadBytes,
             maxLineBytes

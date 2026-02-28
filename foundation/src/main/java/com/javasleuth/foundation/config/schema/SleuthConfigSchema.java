@@ -541,14 +541,6 @@ public final class SleuthConfigSchema {
     // =============================================================================
     // Protocol
     // =============================================================================
-    public static final ConfigKey<String> PROTOCOL_MODE = register(
-        ConfigKey.stringKey("protocol.mode")
-            .defaultValue("framed")
-            .allowedStrings("framed", "binary")
-            .failurePolicy(ConfigKey.FailurePolicy.FAIL_FAST)
-            .build()
-    );
-
     public static final ConfigKey<Boolean> PROTOCOL_STREAMING_ENABLED = register(
         ConfigKey.booleanKey("protocol.streaming.enabled")
             .defaultValue(Boolean.TRUE)
@@ -627,6 +619,7 @@ public final class SleuthConfigSchema {
 
     private static Set<String> forbiddenKeysInternal() {
         Set<String> keys = new HashSet<>();
+        keys.add("protocol.mode");
         keys.add("protocol.handshake.enabled");
         keys.add("protocol.text.end.marker.enabled");
         return keys;

@@ -1050,7 +1050,6 @@ logging.audit.enabled=true
 logging.performance.enabled=false
 
 # 协议配置
-protocol.mode=framed
 protocol.streaming.enabled=true
 protocol.frame.max.payload=4096
 protocol.text.max.line.bytes=8192

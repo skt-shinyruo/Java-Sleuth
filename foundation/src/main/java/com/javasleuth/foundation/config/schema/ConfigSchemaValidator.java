@@ -60,11 +60,9 @@ public final class ConfigSchemaValidator {
         }
 
         // 关键边界必须显式 fail-fast。
-        assertFailFast(errors, SleuthConfigSchema.PROTOCOL_MODE);
         assertFailFast(errors, SleuthConfigSchema.SECURITY_MODE);
 
         // 合法枚举集合必须覆盖默认值（避免默认值与 allowed 漂移）。
-        assertAllowedContainsDefault(errors, SleuthConfigSchema.PROTOCOL_MODE);
         assertAllowedContainsDefault(errors, SleuthConfigSchema.SECURITY_MODE);
         assertAllowedContainsDefault(errors, SleuthConfigSchema.PLUGINS_CONFLICT_STRATEGY);
         assertAllowedContainsDefault(errors, SleuthConfigSchema.LOGGING_LEVEL);
@@ -95,9 +93,6 @@ public final class ConfigSchemaValidator {
         try {
             // 通过读取一个空 ConfigView 无法触发 allowed 检查；因此在这里对常见关键 key 做白名单校验。
             // 该检查由 Schema 常量本身（allowedStrings）保证，若缺失会在运行时导致 fallback。
-            if ("protocol.mode".equals(key.getKey()) && !("framed".equals(lower) || "binary".equals(lower))) {
-                errors.add("protocol.mode default must be framed|binary: " + def);
-            }
             if ("security.mode".equals(key.getKey()) && !("off".equals(lower) || "hmac".equals(lower))) {
                 errors.add("security.mode default must be off|hmac: " + def);
             }
