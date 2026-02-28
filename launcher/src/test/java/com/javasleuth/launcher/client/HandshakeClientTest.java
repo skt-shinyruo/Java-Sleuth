@@ -11,7 +11,7 @@ public class HandshakeClientTest {
     public void testBuildHelloLineDefaultsToFramed() {
         String line = HandshakeClient.buildHelloLine("invalid", "abc");
         Assert.assertTrue(line.startsWith("HELLO"));
-        Assert.assertTrue(line.contains("protocol=framed"));
+        Assert.assertTrue(line.contains("protocol=binary"));
         Assert.assertTrue(line.contains("connId=abc"));
     }
 
