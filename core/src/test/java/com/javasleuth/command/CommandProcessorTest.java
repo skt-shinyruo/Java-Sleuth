@@ -185,7 +185,7 @@ public class CommandProcessorTest {
             };
 
             CommandRegistry.Entry entry = new CommandRegistry.Entry(slow, CommandMeta.viewer(false, false), "test");
-            CommandContext context = new CommandContext("c1", "test", null, false, false);
+            CommandContext context = new CommandContext("c1", "test", null, false);
             CommandPipeline.Result result = pipeline.execute(entry, new String[]{"slow"}, context);
             assertFalse(result.isSuccess());
             assertNotNull(result.getError());

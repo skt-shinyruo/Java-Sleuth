@@ -48,7 +48,7 @@ public class SessionCleanupOnDisconnectTest {
         Thread ttThread = null;
         try {
             ClientSession session = registry.open(clientId, clientInfo, sessionId);
-            CommandContext context = new CommandContext(clientId, clientInfo, sessionId, true, true, session);
+            CommandContext context = new CommandContext(clientId, clientInfo, sessionId, true, session);
 
             watchThread = startInThreadWithContext(context, () -> {
                 try {

@@ -17,7 +17,7 @@ public class SessionCommandTest {
         assertTrue(session.isSuccess());
 
         String sessionId = session.getSessionId();
-        CommandContext ctx = new CommandContext("c1", "test", sessionId, false, false);
+        CommandContext ctx = new CommandContext("c1", "test", sessionId, false);
         CommandContextHolder.set(ctx);
         try {
             SessionCommand cmd = new SessionCommand(auth);

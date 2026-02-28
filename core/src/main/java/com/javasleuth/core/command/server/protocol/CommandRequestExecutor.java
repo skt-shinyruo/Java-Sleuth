@@ -67,7 +67,6 @@ public final class CommandRequestExecutor {
         ClientSession clientSession,
         ProtocolConfig protocolConfig,
         SecurityConfig securityConfig,
-        boolean framedRequested,
         boolean streamRequested,
         String raw,
         CommandReplyChannel reply,
@@ -139,7 +138,6 @@ public final class CommandRequestExecutor {
             currentSessionId,
             connId,
             commandName,
-            framedRequested,
             streamRequested,
             clientSession
         );

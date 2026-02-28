@@ -72,7 +72,7 @@ public class CommandPipelineStreamExecutionTest {
 
             CommandRegistry.Entry entry = new CommandRegistry.Entry(cmd, CommandMeta.viewer(false, true), "test");
             CapturingSink sink = new CapturingSink();
-            CommandPipeline.StreamResult r = pipeline.executeStreamPrechecked(entry, new String[]{"watch"}, new CommandContext("c", "i", "s", true, true), sink);
+            CommandPipeline.StreamResult r = pipeline.executeStreamPrechecked(entry, new String[]{"watch"}, new CommandContext("c", "i", "s", true), sink);
 
             assertNotNull(r);
             assertTrue(r.isSuccess());
@@ -120,7 +120,7 @@ public class CommandPipelineStreamExecutionTest {
 
             CommandRegistry.Entry entry = new CommandRegistry.Entry(cmd, CommandMeta.viewer(false, true), "test");
             CapturingSink sink = new CapturingSink();
-            CommandPipeline.StreamResult r = pipeline.executeStreamPrechecked(entry, new String[]{"watch"}, new CommandContext("c", "i", "s", true, true), sink);
+            CommandPipeline.StreamResult r = pipeline.executeStreamPrechecked(entry, new String[]{"watch"}, new CommandContext("c", "i", "s", true), sink);
 
             assertNotNull(r);
             assertFalse(r.isSuccess());
