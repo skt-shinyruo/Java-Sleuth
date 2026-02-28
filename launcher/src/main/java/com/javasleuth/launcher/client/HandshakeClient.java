@@ -20,11 +20,11 @@ public final class HandshakeClient {
     }
 
     public static String buildHelloLine(String preferredProtocol, String connId) {
-        String requested = preferredProtocol != null ? preferredProtocol.trim().toLowerCase() : "framed";
-        if (!"binary".equals(requested) && !"framed".equals(requested)) {
-            requested = "framed";
+        String requested = preferredProtocol != null ? preferredProtocol.trim().toLowerCase() : "binary";
+        if (!"binary".equals(requested)) {
+            requested = "binary";
         }
-        String base = "HELLO v=1 protocols=binary,framed protocol=" + requested;
+        String base = "HELLO v=1 protocols=binary protocol=" + requested;
         if (connId != null && !connId.trim().isEmpty()) {
             return base + " connId=" + connId.trim();
         }
