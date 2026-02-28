@@ -16,14 +16,13 @@ import org.junit.Test;
 public class ProtocolClientIntegrationTest {
 
     @Test
-    public void testHandshakeAndVersionCommandOverFramed() throws Exception {
+    public void testHandshakeAndVersionCommandOverBinary() throws Exception {
         ProductionConfig config = ProductionConfig.getInstance();
         config.clearRuntimeConfig();
         try {
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", "0");
             config.setRuntimeConfig("security.mode", "off");
-            config.setRuntimeConfig("protocol.mode", "framed");
             config.setRuntimeConfig("protocol.streaming.enabled", "true");
 
             CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(config));
@@ -37,7 +36,7 @@ public class ProtocolClientIntegrationTest {
             try (ProtocolClient client = ProtocolClient.connectWithRetry(
                 "127.0.0.1",
                 port,
-                "framed",
+                "binary",
                 true,
                 1024 * 1024,
                 8192
@@ -63,7 +62,6 @@ public class ProtocolClientIntegrationTest {
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", "0");
             config.setRuntimeConfig("security.mode", "off");
-            config.setRuntimeConfig("protocol.mode", "framed");
             config.setRuntimeConfig("protocol.streaming.enabled", "false");
 
             CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(config));
@@ -77,7 +75,7 @@ public class ProtocolClientIntegrationTest {
             try (ProtocolClient client = ProtocolClient.connectWithRetry(
                 "127.0.0.1",
                 port,
-                "framed",
+                "binary",
                 true,
                 1024 * 1024,
                 8192
@@ -108,7 +106,6 @@ public class ProtocolClientIntegrationTest {
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", "0");
             config.setRuntimeConfig("security.mode", "off");
-            config.setRuntimeConfig("protocol.mode", "framed");
             config.setRuntimeConfig("protocol.streaming.enabled", "true");
 
             CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(config));
@@ -131,7 +128,7 @@ public class ProtocolClientIntegrationTest {
             try (ProtocolClient client = ProtocolClient.connectWithRetry(
                 "127.0.0.1",
                 port,
-                "framed",
+                "binary",
                 true,
                 1024 * 1024,
                 8192,
