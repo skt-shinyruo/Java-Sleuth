@@ -8,12 +8,11 @@ public class CommandContext {
     private String sessionId;
     private final String connId;
     private final String commandName;
-    private final boolean framed;
     private final boolean streaming;
     private final ClientSession clientSession;
 
-    public CommandContext(String clientId, String clientInfo, String sessionId, boolean framed, boolean streaming) {
-        this(clientId, clientInfo, sessionId, null, null, framed, streaming, null);
+    public CommandContext(String clientId, String clientInfo, String sessionId, boolean streaming) {
+        this(clientId, clientInfo, sessionId, null, null, streaming, null);
     }
 
     public CommandContext(String clientId,
@@ -21,7 +20,6 @@ public class CommandContext {
                           String sessionId,
                           String connId,
                           String commandName,
-                          boolean framed,
                           boolean streaming,
                           ClientSession clientSession) {
         this.clientId = clientId;
@@ -29,7 +27,6 @@ public class CommandContext {
         this.sessionId = sessionId;
         this.connId = connId;
         this.commandName = commandName;
-        this.framed = framed;
         this.streaming = streaming;
         this.clientSession = clientSession;
     }
@@ -37,10 +34,9 @@ public class CommandContext {
     public CommandContext(String clientId,
                           String clientInfo,
                           String sessionId,
-                          boolean framed,
                           boolean streaming,
                           ClientSession clientSession) {
-        this(clientId, clientInfo, sessionId, null, null, framed, streaming, clientSession);
+        this(clientId, clientInfo, sessionId, null, null, streaming, clientSession);
     }
 
     public String getClientId() {
@@ -65,10 +61,6 @@ public class CommandContext {
 
     public String getCommandName() {
         return commandName;
-    }
-
-    public boolean isFramed() {
-        return framed;
     }
 
     public boolean isStreaming() {

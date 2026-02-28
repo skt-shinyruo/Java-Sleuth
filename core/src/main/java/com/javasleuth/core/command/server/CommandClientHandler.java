@@ -10,9 +10,7 @@ import com.javasleuth.core.command.CommandRegistry;
 import com.javasleuth.foundation.command.protocol.Utf8LineCodec;
 import com.javasleuth.core.command.server.protocol.BinaryClientProtocolHandler;
 import com.javasleuth.core.command.server.protocol.CommandRequestExecutor;
-import com.javasleuth.core.command.server.protocol.FramedClientCommandHandler;
 import com.javasleuth.core.command.server.protocol.HandshakeNegotiator;
-import com.javasleuth.core.command.session.ClientDisconnectedException;
 import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.core.command.session.ClientSessionIndex;
 import com.javasleuth.core.command.session.ClientSessionRegistry;
@@ -38,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 单个客户端连接的处理逻辑（framed/binary）。
+ * 单个客户端连接的处理逻辑（binary-only）。
  *
  * <p>将 CommandProcessor 中“协议 + 会话 + 调度 + 回写”部分拆出，降低巨型类维护成本。</p>
  */
@@ -166,9 +164,6 @@ public final class CommandClientHandler {
             try (BufferedInputStream in = new BufferedInputStream(clientSocket.getInputStream());
                  BufferedOutputStream out = new BufferedOutputStream(clientSocket.getOutputStream())) {
 
-                FramedClientCommandHandler framedHandler =
-                    new FramedClientCommandHandler(requestExecutor, out, maxPayloadBytes);
-
                 HandshakeNegotiator handshakeNegotiator =
                     new HandshakeNegotiator(sessionConfig, metricsCollector);
 
@@ -194,8 +189,7 @@ public final class CommandClientHandler {
                     if (line.regionMatches(true, 0, "HELLO", 0, "HELLO".length())) {
                         HandshakeNegotiator.NegotiationResult negotiated = handshakeNegotiator.handleHello(line, out);
                         connId = negotiated.getConnId();
-                        String selected = negotiated.getProtocol();
-                        pendingBinaryUpgrade = "binary".equalsIgnoreCase(selected);
+                        pendingBinaryUpgrade = true;
                         handshakeCompleted = true;
                         SleuthLogContext.setConnection(clientId, sessionId, connId);
                         continue;
@@ -225,47 +219,9 @@ public final class CommandClientHandler {
                             );
                             break;
                         } else {
-                            Utf8LineCodec.writeLine(out, "Handshake pending. Send: UPGRADE BINARY", true);
+                            Utf8LineCodec.writeLine(out, "Send: UPGRADE BINARY", true);
                             continue;
                         }
-                    }
-
-                    final boolean streamRequested;
-                    final String raw;
-                    if (line.startsWith("CMD ")) {
-                        streamRequested = false;
-                        raw = line.substring(4);
-                    } else if (line.startsWith("STREAM ")) {
-                        streamRequested = true;
-                        raw = line.substring(7);
-                    } else {
-                        Utf8LineCodec.writeLine(
-                            out,
-                            "Protocol error: expected CMD <signed_command> or STREAM <signed_command>.",
-                            true
-                        );
-                        metricsCollector.recordError("protocol_invalid_prefix");
-                        break;
-                    }
-
-                    try {
-                        boolean shouldClose =
-                            framedHandler.handle(
-                                raw,
-                                streamRequested,
-                                clientId,
-                                clientInfo,
-                                sessionId,
-                                connId,
-                                clientSession,
-                                protocolConfig,
-                                securityConfig
-                            );
-                        if (shouldClose) {
-                            break;
-                        }
-                    } catch (ClientDisconnectedException disconnected) {
-                        break;
                     }
                 }
             } catch (IOException e) {

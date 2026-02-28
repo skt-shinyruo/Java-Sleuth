@@ -50,9 +50,9 @@ public class CommandPipelineCacheIsolationTest {
 
             CommandRegistry.Entry entry = new CommandRegistry.Entry(cmd, CommandMeta.viewer(true, false), "test");
 
-            CommandPipeline.Result r1 = pipeline.execute(entry, new String[]{"foo"}, new CommandContext("c1", "i1", "s1", false, false));
-            CommandPipeline.Result r2 = pipeline.execute(entry, new String[]{"foo"}, new CommandContext("c1", "i1", "s1", false, false));
-            CommandPipeline.Result r3 = pipeline.execute(entry, new String[]{"foo"}, new CommandContext("c2", "i2", "s2", false, false));
+            CommandPipeline.Result r1 = pipeline.execute(entry, new String[]{"foo"}, new CommandContext("c1", "i1", "s1", false));
+            CommandPipeline.Result r2 = pipeline.execute(entry, new String[]{"foo"}, new CommandContext("c1", "i1", "s1", false));
+            CommandPipeline.Result r3 = pipeline.execute(entry, new String[]{"foo"}, new CommandContext("c2", "i2", "s2", false));
 
             assertTrue(r1.isSuccess());
             assertTrue(r2.isSuccess());
@@ -102,7 +102,7 @@ public class CommandPipelineCacheIsolationTest {
 
             CommandRegistry.Entry entry = new CommandRegistry.Entry(cmd, CommandMeta.viewer(true, false), "test");
 
-            CommandContext ctx = new CommandContext("c1", "i1", "s1", false, false);
+            CommandContext ctx = new CommandContext("c1", "i1", "s1", false);
 
             CommandPipeline.Result r1 = pipeline.execute(entry, new String[]{"dashboard", "realtime"}, ctx);
             CommandPipeline.Result r2 = pipeline.execute(entry, new String[]{"dashboard", "realtime"}, ctx);

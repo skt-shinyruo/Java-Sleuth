@@ -23,7 +23,6 @@ public class CommandErrorHandlingTest {
             "conn-abc",
             "test",
             false,
-            false,
             null
         );
 
@@ -66,7 +65,7 @@ public class CommandErrorHandlingTest {
             };
 
             CommandRegistry.Entry entry = new CommandRegistry.Entry(boom, CommandMeta.viewer(false, false), "test");
-            CommandContext context = new CommandContext("c1", "test", null, false, false);
+            CommandContext context = new CommandContext("c1", "test", null, false);
             CommandPipeline.Result result = pipeline.execute(entry, new String[] { "boom" }, context);
             assertFalse(result.isSuccess());
             assertNotNull(result.getError());

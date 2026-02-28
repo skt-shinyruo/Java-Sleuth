@@ -48,7 +48,12 @@ public final class BinaryClientProtocolHandler {
         CommandReplyChannel reply = new BinaryReplyChannel(out, maxPayloadBytes);
 
         while (running.get()) {
-            BinaryFrame frame = BinaryFrameCodec.readFrame(in, maxPayloadBytes);
+            final BinaryFrame frame;
+            try {
+                frame = BinaryFrameCodec.readFrame(in, maxPayloadBytes);
+            } catch (java.net.SocketTimeoutException timeout) {
+                continue;
+            }
             if (frame == null) {
                 break;
             }
@@ -76,7 +81,6 @@ public final class BinaryClientProtocolHandler {
                     clientSession,
                     protocolConfig,
                     securityConfig,
-                    false,
                     streamRequested,
                     raw,
                     reply,

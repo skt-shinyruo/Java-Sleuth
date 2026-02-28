@@ -61,7 +61,7 @@ public class CommandPipelineImpactConcurrencyTest {
                 "test"
             );
 
-            CommandContext ctx = new CommandContext("c1", "i1", "s1", false, false);
+            CommandContext ctx = new CommandContext("c1", "i1", "s1", false);
 
             AtomicReference<CommandPipeline.Result> r1 = new AtomicReference<>();
             Thread t = new Thread(() -> r1.set(pipeline.execute(entry, new String[]{"dump"}, ctx)), "t1");
