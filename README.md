@@ -125,7 +125,7 @@ quit         - Exit the Java-Sleuth session
 
 传输层与资源治理相关配置：
 
-- 传输协议：仅支持 `binary`（不再支持 `framed`）
+- 传输协议：仅支持 `binary`
 - `protocol.text.max.line.bytes`：文本握手/控制面单行最大字节数，避免超长输入导致资源耗尽
 - `server.max.connections`：并发连接上限（超限新连接会被拒绝）
 - `server.executor.queue.capacity`：连接处理线程池排队上限（用于背压与内存上限控制，过载会拒绝新连接）
