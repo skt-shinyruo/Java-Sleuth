@@ -39,11 +39,8 @@ public final class HandshakeNegotiator {
             throw new IOException("Handshake requires protocol");
         }
         String requestedNorm = requested.trim().toLowerCase();
-        if ("framed".equals(requestedNorm)) {
-            throw new IOException("Unsupported handshake protocol: framed (legacy protocol removed; use protocol=binary)");
-        }
         if (!"binary".equals(requestedNorm)) {
-            throw new IOException("Unsupported handshake protocol: " + requested);
+            throw new IOException("Unsupported handshake protocol: " + requested + " (binary required)");
         }
         boolean requestedListed = false;
         for (String p : protocolsRaw.split(",")) {
@@ -59,7 +56,7 @@ public final class HandshakeNegotiator {
             clientProtocols.add(requested.trim().toLowerCase());
         }
         if (clientProtocols.isEmpty()) {
-            clientProtocols.add("framed");
+            clientProtocols.add("binary");
         }
         String selected = "binary";
 
