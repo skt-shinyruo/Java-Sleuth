@@ -32,9 +32,8 @@ public class ProductionConfigReloadTest {
         writeProperties(tmp, "demo.key", "v1");
         System.setProperty(ConfigLoader.CONFIG_FILE_PROPERTY, tmp.getAbsolutePath());
 
-        // Ensure the singleton is created after we set configFile sysprop.
-        ProductionConfig.resetInstanceForDetach();
-        ProductionConfig config = ProductionConfig.getInstance();
+        // Create config after we set configFile sysprop.
+        ProductionConfig config = ProductionConfig.createDefault();
         Assert.assertEquals("v1", config.getString("demo.key", "x"));
 
         config.setRuntimeConfig("demo.runtime", "r1", ConfigUpdateSource.COMMAND);

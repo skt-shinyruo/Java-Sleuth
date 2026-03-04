@@ -44,13 +44,16 @@ public class CommandErrorHandlingTest {
             System.setProperty("sleuth.security.authorization.enabled", "false");
             System.setProperty("sleuth.security.input.validation", "false");
 
-            ProductionConfig config = ProductionConfig.getInstance();
-            AuditLogger auditLogger = AuditLogger.getInstance();
-            AuthenticationManager authn = AuthenticationManager.getInstance();
-            AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
-            DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
-            InputValidator validator = new InputValidator(config, auditLogger);
-            CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (
+                AuditLogger auditLogger = new AuditLogger(config);
+                AuthenticationManager authn = new AuthenticationManager(config, auditLogger);
+                DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger)
+            ) {
+                AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
+                InputValidator validator = new InputValidator(config, auditLogger);
+                CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+                try {
 
             Command boom = new Command() {
                 @Override
@@ -73,6 +76,10 @@ public class CommandErrorHandlingTest {
             assertTrue(result.getError().contains("errorId="));
             assertFalse(result.getError().contains("\n"));
             assertFalse(result.getError().contains("\r"));
+                } finally {
+                    pipeline.shutdown();
+                }
+            }
         } finally {
             setOrClearProperty("sleuth.security.authorization.enabled", oldAuthz);
             setOrClearProperty("sleuth.security.input.validation", oldValidation);

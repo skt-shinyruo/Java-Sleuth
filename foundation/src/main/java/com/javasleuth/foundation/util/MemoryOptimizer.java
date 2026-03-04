@@ -29,8 +29,11 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
     private volatile long lastGcTime = 0;
     private volatile long gcCooldownMs = 30000; // 30 seconds between forced GCs
 
-    private MemoryOptimizer() {
-        this.config = ProductionConfig.getInstance();
+    private MemoryOptimizer(ConfigView config) {
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
+        }
+        this.config = config;
         this.memoryBean = ManagementFactory.getMemoryMXBean();
 
         // Create memory monitoring thread
@@ -46,11 +49,15 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
         registerMBean();
     }
 
-    public static synchronized MemoryOptimizer getInstance() {
+    public static synchronized MemoryOptimizer getInstance(ConfigView config) {
         if (instance == null) {
-            instance = new MemoryOptimizer();
+            instance = new MemoryOptimizer(config);
         }
         return instance;
+    }
+
+    public static synchronized MemoryOptimizer getInstance() {
+        return getInstance(ProductionConfig.createDefault());
     }
 
     /**

@@ -1,8 +1,6 @@
 package com.javasleuth.bootstrap.agent;
 
-import java.io.Closeable;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Bootstrap-visible ClassLoader registry for "attach lifecycle" boundary.
@@ -22,7 +20,6 @@ import java.util.concurrent.atomic.AtomicReference;
  * </ul>
  */
 public final class CoreClassLoaderRegistry {
-    private static final AtomicReference<ClassLoader> REGISTERED = new AtomicReference<>();
     private static final AtomicBoolean WARNED_NON_BOOTSTRAP = new AtomicBoolean(false);
 
     private CoreClassLoaderRegistry() {
@@ -40,12 +37,12 @@ public final class CoreClassLoaderRegistry {
 
     public static boolean isRegistered() {
         warnIfNotBootstrapLoaded();
-        return REGISTERED.get() != null;
+        return getRegistered() != null;
     }
 
     public static ClassLoader getRegistered() {
         warnIfNotBootstrapLoaded();
-        return REGISTERED.get();
+        return AgentLifecycle.getCommittedIsolatedClassLoaderBestEffort();
     }
 
     /**
@@ -61,7 +58,18 @@ public final class CoreClassLoaderRegistry {
         if (loader == null) {
             return false;
         }
-        return REGISTERED.compareAndSet(null, loader);
+
+        long sessionId = AgentLifecycle.tryBeginAttach();
+        if (sessionId == 0L) {
+            return false;
+        }
+
+        boolean committed = AgentLifecycle.commitIsolatedClassLoader(sessionId, loader);
+        if (!committed) {
+            AgentLifecycle.failBestEffort(sessionId, loader);
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -71,7 +79,7 @@ public final class CoreClassLoaderRegistry {
      */
     public static void onCoreShutdown(ClassLoader loader) {
         warnIfNotBootstrapLoaded();
-        releaseIfMatch(loader);
+        AgentLifecycle.detachBestEffort(loader);
     }
 
     /**
@@ -79,36 +87,7 @@ public final class CoreClassLoaderRegistry {
      */
     public static void releaseOnFailure(ClassLoader loader) {
         warnIfNotBootstrapLoaded();
-        releaseIfMatch(loader);
-    }
-
-    private static void releaseIfMatch(ClassLoader loader) {
-        if (loader == null) {
-            return;
-        }
-
-        ClassLoader current = REGISTERED.get();
-        if (current != loader) {
-            return;
-        }
-
-        // Clear the strong reference first so re-attach is not blocked even if close() fails.
-        if (!REGISTERED.compareAndSet(current, null)) {
-            return;
-        }
-
-        closeBestEffort(loader);
-    }
-
-    private static void closeBestEffort(ClassLoader loader) {
-        if (!(loader instanceof Closeable)) {
-            return;
-        }
-        try {
-            ((Closeable) loader).close();
-        } catch (Throwable ignore) {
-            // best-effort
-        }
+        AgentLifecycle.detachBestEffort(loader);
     }
 
     private static void warnIfNotBootstrapLoaded() {

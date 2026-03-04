@@ -1,7 +1,6 @@
 package com.javasleuth.foundation.security;
 
 import com.javasleuth.foundation.config.ConfigView;
-import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import com.javasleuth.foundation.util.SleuthLogger;
 import java.util.Map;
@@ -19,8 +18,7 @@ import java.nio.charset.StandardCharsets;
 import com.javasleuth.foundation.util.SleuthExecutors;
 import com.javasleuth.foundation.util.SleuthThreadFactory;
 
-public class AuthenticationManager {
-    private static AuthenticationManager instance;
+public class AuthenticationManager implements AutoCloseable {
     private final ConfigView config;
     private final AuditLogger auditLogger;
     private final AtomicBoolean shutdown = new AtomicBoolean(false);
@@ -135,35 +133,18 @@ public class AuthenticationManager {
         }
     }
 
-    private AuthenticationManager() {
-        this.config = ProductionConfig.getInstance();
-        this.auditLogger = AuditLogger.getInstance();
+    public AuthenticationManager(ConfigView config, AuditLogger auditLogger) {
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
+        }
+        if (auditLogger == null) {
+            throw new IllegalArgumentException("auditLogger is required");
+        }
+        this.config = config;
+        this.auditLogger = auditLogger;
 
         // Schedule cleanup of expired sessions
         ensureSessionCleanupTaskRunning();
-    }
-
-    public static synchronized AuthenticationManager getInstance() {
-        if (instance == null) {
-            instance = new AuthenticationManager();
-        } else {
-            instance.ensureSessionCleanupTaskRunning();
-        }
-        return instance;
-    }
-
-    public static synchronized void shutdownInstance() {
-        AuthenticationManager inst = instance;
-        if (inst == null) {
-            return;
-        }
-        try {
-            inst.shutdown();
-        } catch (Exception ignore) {
-            // ignore
-        } finally {
-            instance = null;
-        }
     }
 
     /**
@@ -441,12 +422,27 @@ public class AuthenticationManager {
         if (!shutdown.compareAndSet(false, true)) {
             return;
         }
+        try {
+            activeSessions.clear();
+        } catch (Exception ignore) {
+            // ignore
+        }
+        try {
+            loginAttempts.clear();
+        } catch (Exception ignore) {
+            // ignore
+        }
         ScheduledExecutorService ex;
         synchronized (lifecycleLock) {
             ex = sessionCleanupExecutor;
             sessionCleanupExecutor = null;
         }
         SleuthExecutors.shutdownAndAwait(ex, "session-cleanup", 5, TimeUnit.SECONDS);
+    }
+
+    @Override
+    public void close() {
+        shutdown();
     }
 
     /**

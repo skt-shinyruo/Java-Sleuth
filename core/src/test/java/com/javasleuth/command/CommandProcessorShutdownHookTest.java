@@ -20,7 +20,7 @@ public class CommandProcessorShutdownHookTest {
     @Test
     public void shutdownForDetachRemovesJvmShutdownHook() throws Exception {
         Instrumentation inst = fakeInstrumentation();
-        SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(ProductionConfig.getInstance());
+        SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(ProductionConfig.createDefault());
         CommandProcessor processor = new CommandProcessor(inst, transformer);
 
         Field f = CommandProcessor.class.getDeclaredField("jvmShutdownHook");

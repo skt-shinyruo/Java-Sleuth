@@ -30,7 +30,7 @@ public final class AgentAttacher {
 
         System.out.println("Attaching to JVM: " + (displayName != null ? displayName : "") + " (PID: " + pid + ")");
 
-        ProductionConfig config = ProductionConfig.getInstance();
+        ProductionConfig config = ProductionConfig.createDefault();
         try {
             SleuthLogger.setConfigProvider(new SleuthLogger.ConfigProvider() {
                 @Override

@@ -1,6 +1,7 @@
 package com.javasleuth.bootstrap.monitor;
 
 import com.javasleuth.core.command.impl.SysPropCommand;
+import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.test.SleuthTestState;
 import org.junit.After;
 import org.junit.Assert;
@@ -22,7 +23,8 @@ public class SysPropMonitoringStoreSyncTest {
         SleuthTestState.resetAll("SysPropMonitoringStoreSyncTest_before");
         BootstrapMonitorConfigStore.clear();
 
-        SysPropCommand cmd = new SysPropCommand(null);
+        ProductionConfig config = ProductionConfig.createDefault();
+        SysPropCommand cmd = new SysPropCommand(null, config);
         cmd.execute(new String[] {"sysprop", "set", "sleuth.monitoring.watch.drop.on.full", "false"});
         cmd.execute(new String[] {"sysprop", "set", "sleuth.monitoring.trace.drop.on.full", "false"});
 

@@ -31,6 +31,7 @@ public final class SleuthAgentRuntime implements AutoCloseable {
     private final ClientSessionRegistry clientSessionRegistry;
     private final JobManager jobManager;
     private final VmToolSessionRegistry vmToolSessionRegistry;
+    private final SleuthAgentServices services;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final Thread commandThread;
     private final AtomicBoolean commandThreadStarted = new AtomicBoolean(false);
@@ -42,6 +43,7 @@ public final class SleuthAgentRuntime implements AutoCloseable {
         ClientSessionRegistry clientSessionRegistry,
         JobManager jobManager,
         VmToolSessionRegistry vmToolSessionRegistry,
+        SleuthAgentServices services,
         Thread commandThread
     ) {
         this.instrumentation = instrumentation;
@@ -50,6 +52,7 @@ public final class SleuthAgentRuntime implements AutoCloseable {
         this.clientSessionRegistry = clientSessionRegistry;
         this.jobManager = jobManager;
         this.vmToolSessionRegistry = vmToolSessionRegistry;
+        this.services = services;
         this.commandThread = commandThread;
     }
 
@@ -69,7 +72,8 @@ public final class SleuthAgentRuntime implements AutoCloseable {
             throw new IllegalArgumentException("instrumentation is required");
         }
 
-        ProductionConfig config = ProductionConfig.getInstance();
+        SleuthAgentServices services = SleuthAgentServices.createDefault();
+        ProductionConfig config = services.getConfig();
         SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(config);
         ClientSessionRegistry clientSessionRegistry = null;
         MetricsCollector metricsCollector = null;
@@ -91,11 +95,11 @@ public final class SleuthAgentRuntime implements AutoCloseable {
                 SleuthLogger.warn(msg);
             }
 
-            AuditLogger auditLogger = AuditLogger.getInstance();
-            AuthenticationManager authenticationManager = AuthenticationManager.getInstance();
+            AuditLogger auditLogger = services.getAuditLogger();
+            AuthenticationManager authenticationManager = services.getAuthenticationManager();
             AuthorizationManager authorizationManager = new AuthorizationManager(config, auditLogger, authenticationManager);
             RequestSecurityManager requestSecurityManager = new RequestSecurityManager(config, auditLogger);
-            DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
+            DangerousCommandConfirmationManager dangerousConfirm = services.getDangerousConfirm();
 
             // Per-runtime state (avoid permanent singleton for tests/detach→re-attach).
             clientSessionRegistry = new ClientSessionRegistry();
@@ -116,7 +120,8 @@ public final class SleuthAgentRuntime implements AutoCloseable {
                 clientSessionRegistry,
                 metricsCollector,
                 jobManager,
-                vmToolSessionRegistry
+                vmToolSessionRegistry,
+                services.getPerformanceOptimizer()
             );
 
             commandThread =
@@ -129,6 +134,7 @@ public final class SleuthAgentRuntime implements AutoCloseable {
                 clientSessionRegistry,
                 jobManager,
                 vmToolSessionRegistry,
+                services,
                 commandThread
             );
         } catch (Exception e) {
@@ -164,6 +170,13 @@ public final class SleuthAgentRuntime implements AutoCloseable {
             try {
                 if (clientSessionRegistry != null) {
                     clientSessionRegistry.shutdown("startup_failed");
+                }
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                if (services != null) {
+                    services.close();
                 }
             } catch (Exception ignore) {
                 // ignore
@@ -330,6 +343,15 @@ public final class SleuthAgentRuntime implements AutoCloseable {
             } catch (Exception ignore) {
                 // ignore
             }
+        }
+
+        try {
+            SleuthAgentServices svcs = services;
+            if (svcs != null) {
+                svcs.close();
+            }
+        } catch (Exception ignore) {
+            // best-effort
         }
     }
 }

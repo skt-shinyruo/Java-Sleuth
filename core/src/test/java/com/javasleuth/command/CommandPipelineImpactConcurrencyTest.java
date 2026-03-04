@@ -30,13 +30,16 @@ public class CommandPipelineImpactConcurrencyTest {
             System.setProperty("sleuth.security.impact.high.confirm.enabled", "false");
             System.setProperty("sleuth.security.impact.high.concurrent.limit", "1");
 
-            ProductionConfig config = ProductionConfig.getInstance();
-            AuditLogger auditLogger = AuditLogger.getInstance();
-            AuthenticationManager authn = AuthenticationManager.getInstance();
-            AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
-            DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
-            InputValidator validator = new InputValidator(config, auditLogger);
-            CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (
+                AuditLogger auditLogger = new AuditLogger(config);
+                AuthenticationManager authn = new AuthenticationManager(config, auditLogger);
+                DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger)
+            ) {
+                AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
+                InputValidator validator = new InputValidator(config, auditLogger);
+                CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+                try {
 
             CountDownLatch started = new CountDownLatch(1);
             CountDownLatch release = new CountDownLatch(1);
@@ -81,6 +84,10 @@ public class CommandPipelineImpactConcurrencyTest {
             assertNotNull(r1.get());
             assertTrue(r1.get().isSuccess());
             assertEquals("ok", r1.get().getOutput());
+                } finally {
+                    pipeline.shutdown();
+                }
+            }
         } finally {
             setOrClearProperty("sleuth.security.authorization.enabled", oldAuthz);
             setOrClearProperty("sleuth.security.input.validation", oldValidation);

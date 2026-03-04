@@ -21,11 +21,9 @@ import java.util.jar.JarFile;
  */
 public final class SleuthAgent {
     private static final String CONTAINER_ENTRYPOINT_CLASS = "com.javasleuth.container.SleuthAgentContainerEntrypoint";
-    private static final String CORE_LOADER_REGISTRY_CLASS = "com.javasleuth.bootstrap.agent.CoreClassLoaderRegistry";
+    private static final String BOOTSTRAP_AGENT_LIFECYCLE_CLASS = "com.javasleuth.bootstrap.agent.AgentLifecycle";
 
     private static final String BOOTSTRAP_JAR_LOCATOR_CLASS = "com.javasleuth.bootstrap.util.JarLocator";
-    private static final String BOOTSTRAP_SYSPROP_ROLLBACK_REGISTRY_CLASS =
-        "com.javasleuth.bootstrap.util.SystemPropertyRollbackRegistry";
 
     private static final String LOCATOR_DEBUG_PROPERTY = "sleuth.locator.debug";
     private static final String LOCATOR_ALLOW_CWD_SCAN_PROPERTY = "sleuth.locator.allowCwdScan";
@@ -53,10 +51,8 @@ public final class SleuthAgent {
 
     private static void bootstrap(String agentArgs, Instrumentation inst, boolean failFast) {
         URLClassLoader isolated = null;
-        boolean registered = false;
-        boolean registryAvailable = false;
-        boolean legacyGateEntered = false;
-        boolean syspropsRegistered = false;
+        long sessionId = 0L;
+        boolean sessionBegun = false;
         try {
             File bridgeJar = locateBootstrapBridgeJar(agentArgs);
             if (bridgeJar != null && bridgeJar.isFile() && inst != null) {
@@ -89,25 +85,19 @@ public final class SleuthAgent {
                 return;
             }
 
-            // Prefer the bootstrap-visible ClassLoader registry as SSOT attach gate.
-            // If registry indicates "already attached", rollback local gate and return early.
-            Boolean alreadyAttached = bridgeIsRegisteredOrNull();
-            registryAvailable = alreadyAttached != null;
-            if (Boolean.TRUE.equals(alreadyAttached)) {
-                System.err.println("Java-Sleuth: Agent is already attached to this JVM (registry gate)");
+            // SSOT: acquire lifecycle session before any global side effects (sysprops, classloader, transformers...).
+            sessionId = bridgeTryBeginAttachOrZero();
+            if (sessionId == 0L) {
+                System.err.println("Java-Sleuth: Agent is already attached to this JVM (lifecycle gate)");
                 return;
             }
+            sessionBegun = true;
 
-            if (!registryAvailable) {
-                // Fallback: if registry bridge is unavailable, use legacy CAS gate to avoid duplicate attach.
-                if (!BootstrapAttachGate.tryEnter()) {
-                    return;
-                }
-                legacyGateEntered = true;
+            if (!bridgeApplyAgentArgsIfAbsent(sessionId, agentArgs)) {
+                System.err.println("Java-Sleuth: Failed to apply agent args (lifecycle gate); aborting agent startup.");
+                bridgeFailBestEffort(sessionId, null);
+                return;
             }
-
-            // Apply agentArgs only after passing attach gates, to avoid polluting sysprop state on "already attached" paths.
-            syspropsRegistered = applyAndRegisterAgentArgsBestEffort(agentArgs);
 
             File containerJar = locateAgentContainerJarBestEffort();
             if (containerJar == null) {
@@ -121,38 +111,20 @@ public final class SleuthAgent {
                     "  - Or set -D" + AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY + "=<path> / env " + AGENT_CONTAINER_JAR_OVERRIDE_ENV
                 );
                 System.err.println("  - Or place container jar near bootstrap jar: java-sleuth-container*");
-                // 启动失败：回滚闩锁，允许修复参数后重试 attach。
-                if (legacyGateEntered) {
-                    BootstrapAttachGate.releaseOnFailure();
-                }
-                if (syspropsRegistered) {
-                    rollbackAgentArgsBestEffort();
-                }
+                // 启动失败：回滚生命周期 session，允许修复参数后重试 attach。
+                bridgeFailBestEffort(sessionId, null);
                 return;
             }
 
             URL containerUrl = containerJar.toURI().toURL();
             isolated = new URLClassLoader(new URL[] { containerUrl }, null);
 
-            // Register core/container ClassLoader into bootstrap-visible registry.
-            // This becomes the lifecycle boundary for detach → re-attach and JAR handle release.
-            if (registryAvailable) {
-                Boolean ok = bridgeTryRegisterOrNull(isolated);
-                if (ok == null) {
-                    // Degrade gracefully: fall back to legacy gate and continue without registry.
-                    registryAvailable = false;
-                    if (!BootstrapAttachGate.tryEnter()) {
-                        closeQuietly(isolated);
-                        return;
-                    }
-                    legacyGateEntered = true;
-                } else if (!ok) {
-                    System.err.println("Java-Sleuth: Agent is already attached to this JVM (registry CAS)");
-                    closeQuietly(isolated);
-                    return;
-                } else {
-                    registered = true;
-                }
+            // Bind this attach lifecycle boundary to the isolated ClassLoader (detach will close it).
+            if (!bridgeCommitIsolatedClassLoader(sessionId, isolated)) {
+                System.err.println("Java-Sleuth: Failed to commit isolated ClassLoader into lifecycle registry; aborting.");
+                bridgeFailBestEffort(sessionId, isolated);
+                closeQuietly(isolated);
+                return;
             }
 
             Thread current = Thread.currentThread();
@@ -170,21 +142,14 @@ public final class SleuthAgent {
             if (Boolean.getBoolean("sleuth.agent.bootstrap.debug")) {
                 e.printStackTrace(System.err);
             }
-            // 启动失败：回滚闩锁 + 回滚 registry，允许重试 attach。
             try {
-                if (registryAvailable && registered) {
-                    bridgeReleaseOnFailure(isolated);
+                if (sessionBegun) {
+                    bridgeFailBestEffort(sessionId, isolated);
                 }
             } catch (Throwable ignore) {
                 // ignore
             }
             closeQuietly(isolated);
-            if (legacyGateEntered) {
-                BootstrapAttachGate.releaseOnFailure();
-            }
-            if (syspropsRegistered) {
-                rollbackAgentArgsBestEffort();
-            }
             if (failFast) {
                 if (e instanceof RuntimeException) {
                     throw (RuntimeException) e;
@@ -586,23 +551,44 @@ public final class SleuthAgent {
         return false;
     }
 
-    private static boolean applyAndRegisterAgentArgsBestEffort(String agentArgs) {
+    private static long bridgeTryBeginAttachOrZero() {
         try {
-            Class<?> c = Class.forName(BOOTSTRAP_SYSPROP_ROLLBACK_REGISTRY_CLASS, false, null);
-            java.lang.reflect.Method m = c.getMethod("applyAndRegisterIfAbsent", String.class);
-            m.invoke(null, agentArgs);
-            return true;
+            Class<?> c = Class.forName(BOOTSTRAP_AGENT_LIFECYCLE_CLASS, false, null);
+            java.lang.reflect.Method m = c.getMethod("tryBeginAttach");
+            Object r = m.invoke(null);
+            return (r instanceof Number) ? ((Number) r).longValue() : 0L;
         } catch (Throwable ignore) {
-            // ignore
+            return 0L;
+        }
+    }
+
+    private static boolean bridgeApplyAgentArgsIfAbsent(long sessionId, String agentArgs) {
+        try {
+            Class<?> c = Class.forName(BOOTSTRAP_AGENT_LIFECYCLE_CLASS, false, null);
+            java.lang.reflect.Method m = c.getMethod("applyAgentArgsIfAbsent", long.class, String.class);
+            Object r = m.invoke(null, sessionId, agentArgs);
+            return Boolean.TRUE.equals(r);
+        } catch (Throwable ignore) {
             return false;
         }
     }
 
-    private static void rollbackAgentArgsBestEffort() {
+    private static boolean bridgeCommitIsolatedClassLoader(long sessionId, ClassLoader loader) {
         try {
-            Class<?> c = Class.forName(BOOTSTRAP_SYSPROP_ROLLBACK_REGISTRY_CLASS, false, null);
-            java.lang.reflect.Method m = c.getMethod("rollbackAndClearBestEffort");
-            m.invoke(null);
+            Class<?> c = Class.forName(BOOTSTRAP_AGENT_LIFECYCLE_CLASS, false, null);
+            java.lang.reflect.Method m = c.getMethod("commitIsolatedClassLoader", long.class, ClassLoader.class);
+            Object r = m.invoke(null, sessionId, loader);
+            return Boolean.TRUE.equals(r);
+        } catch (Throwable ignore) {
+            return false;
+        }
+    }
+
+    private static void bridgeFailBestEffort(long sessionId, ClassLoader loaderOrNull) {
+        try {
+            Class<?> c = Class.forName(BOOTSTRAP_AGENT_LIFECYCLE_CLASS, false, null);
+            java.lang.reflect.Method m = c.getMethod("failBestEffort", long.class, ClassLoader.class);
+            m.invoke(null, sessionId, loaderOrNull);
         } catch (Throwable ignore) {
             // ignore
         }
@@ -630,51 +616,13 @@ public final class SleuthAgent {
         }
     }
 
-    private static Boolean bridgeIsRegisteredOrNull() {
-        try {
-            Class<?> c = Class.forName(CORE_LOADER_REGISTRY_CLASS, false, null);
-            java.lang.reflect.Method m = c.getMethod("isRegistered");
-            Object r = m.invoke(null);
-            return Boolean.TRUE.equals(r);
-        } catch (Throwable ignore) {
-            return null;
-        }
-    }
-
-    private static Boolean bridgeTryRegisterOrNull(ClassLoader loader) {
-        try {
-            Class<?> c = Class.forName(CORE_LOADER_REGISTRY_CLASS, false, null);
-            java.lang.reflect.Method m = c.getMethod("tryRegister", ClassLoader.class);
-            Object r = m.invoke(null, loader);
-            return Boolean.TRUE.equals(r);
-        } catch (Throwable ignore) {
-            return null;
-        }
-    }
-
-    private static void bridgeReleaseOnFailure(ClassLoader loader) {
-        if (loader == null) {
-            return;
-        }
-        try {
-            Class<?> c = Class.forName(CORE_LOADER_REGISTRY_CLASS, false, null);
-            java.lang.reflect.Method m = c.getMethod("releaseOnFailure", ClassLoader.class);
-            m.invoke(null, loader);
-        } catch (Throwable ignore) {
-            // ignore
-        }
-    }
-
     private static boolean isBootstrapBridgeAvailableBestEffort() {
-        // Registry gate is one required bootstrap-visible bridge.
-        if (!isBootstrapClassAvailable(CORE_LOADER_REGISTRY_CLASS)) {
+        // Lifecycle SSOT must be bootstrap-visible (used as attach gate and cleanup registry).
+        if (!isBootstrapClassAvailable(BOOTSTRAP_AGENT_LIFECYCLE_CLASS)) {
             return false;
         }
         // Bootstrap-only utilities required by SleuthAgent bootstrap flow.
         if (!isBootstrapClassAvailable(BOOTSTRAP_JAR_LOCATOR_CLASS)) {
-            return false;
-        }
-        if (!isBootstrapClassAvailable(BOOTSTRAP_SYSPROP_ROLLBACK_REGISTRY_CLASS)) {
             return false;
         }
         // Interceptors are required for any bytecode enhancement that injects bootstrap calls.

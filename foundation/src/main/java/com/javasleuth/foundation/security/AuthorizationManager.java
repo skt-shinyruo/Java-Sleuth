@@ -76,10 +76,13 @@ public class AuthorizationManager {
      * 默认装配（显式列出依赖来源，避免构造器内部隐式 getInstance 回退）。
      */
     public static AuthorizationManager createDefault() {
+        ProductionConfig config = ProductionConfig.createDefault();
+        AuditLogger auditLogger = new AuditLogger(config);
+        AuthenticationManager authn = new AuthenticationManager(config, auditLogger);
         return new AuthorizationManager(
-            ProductionConfig.getInstance(),
-            AuditLogger.getInstance(),
-            AuthenticationManager.getInstance()
+            config,
+            auditLogger,
+            authn
         );
     }
 

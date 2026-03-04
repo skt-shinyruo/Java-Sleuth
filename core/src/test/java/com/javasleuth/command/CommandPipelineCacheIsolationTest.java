@@ -27,13 +27,16 @@ public class CommandPipelineCacheIsolationTest {
 
             PerformanceOptimizer.clearCache();
 
-            ProductionConfig config = ProductionConfig.getInstance();
-            AuditLogger auditLogger = AuditLogger.getInstance();
-            AuthenticationManager authn = AuthenticationManager.getInstance();
-            AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
-            DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
-            InputValidator validator = new InputValidator(config, auditLogger);
-            CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (
+                AuditLogger auditLogger = new AuditLogger(config);
+                AuthenticationManager authn = new AuthenticationManager(config, auditLogger);
+                DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger)
+            ) {
+                AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
+                InputValidator validator = new InputValidator(config, auditLogger);
+                CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+                try {
 
             AtomicInteger seq = new AtomicInteger(0);
             Command cmd = new Command() {
@@ -62,6 +65,10 @@ public class CommandPipelineCacheIsolationTest {
             assertNotEquals(r1.getOutput(), r3.getOutput());
             assertEquals("v=1", r1.getOutput());
             assertEquals("v=2", r3.getOutput());
+                } finally {
+                    pipeline.shutdown();
+                }
+            }
         } finally {
             setOrClearProperty("sleuth.security.authorization.enabled", oldAuthz);
             setOrClearProperty("sleuth.security.input.validation", oldValidation);
@@ -79,13 +86,16 @@ public class CommandPipelineCacheIsolationTest {
 
             PerformanceOptimizer.clearCache();
 
-            ProductionConfig config = ProductionConfig.getInstance();
-            AuditLogger auditLogger = AuditLogger.getInstance();
-            AuthenticationManager authn = AuthenticationManager.getInstance();
-            AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
-            DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
-            InputValidator validator = new InputValidator(config, auditLogger);
-            CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (
+                AuditLogger auditLogger = new AuditLogger(config);
+                AuthenticationManager authn = new AuthenticationManager(config, auditLogger);
+                DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger)
+            ) {
+                AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
+                InputValidator validator = new InputValidator(config, auditLogger);
+                CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+                try {
 
             AtomicInteger seq = new AtomicInteger(0);
             Command cmd = new Command() {
@@ -112,6 +122,10 @@ public class CommandPipelineCacheIsolationTest {
             assertNotEquals("realtime should bypass cache", r1.getOutput(), r2.getOutput());
             assertEquals("v=1", r1.getOutput());
             assertEquals("v=2", r2.getOutput());
+                } finally {
+                    pipeline.shutdown();
+                }
+            }
         } finally {
             setOrClearProperty("sleuth.security.authorization.enabled", oldAuthz);
             setOrClearProperty("sleuth.security.input.validation", oldValidation);

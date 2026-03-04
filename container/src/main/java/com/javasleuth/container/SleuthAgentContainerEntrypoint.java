@@ -11,9 +11,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * Java-Sleuth container 入口（composition root）。
  *
  * <p>该入口运行在 bootstrap agent 创建的隔离 ClassLoader 中（URLClassLoader parent=null），负责：
- * 1) 解析/应用 agentArgs
- * 2) 启动每次 attach 对应的 runtime（可关闭、幂等）
- * 3) detach/shutdown 时收口资源回收与全局状态清理，并重置 bootstrap 入口闩锁以支持 re-attach
+ * 1) 启动每次 attach 对应的 runtime（可关闭、幂等）
+ * 2) detach/shutdown 时收口资源回收与全局状态清理（包括通知 bootstrap 侧生命周期对象回滚 sysprop、关闭隔离 ClassLoader）
  */
 public final class SleuthAgentContainerEntrypoint {
     private static final AtomicBoolean ATTACHED = new AtomicBoolean(false);

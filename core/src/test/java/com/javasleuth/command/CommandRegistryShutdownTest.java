@@ -30,24 +30,24 @@ public class CommandRegistryShutdownTest {
 
     @Test
     public void shutdown_closesPluginClassLoader() {
-        ProductionConfig config = ProductionConfig.getInstance();
-        AuditLogger auditLogger = AuditLogger.getInstance();
-        CloseTrackingURLClassLoader pluginCl = new CloseTrackingURLClassLoader(new URL[0], null);
+        ProductionConfig config = ProductionConfig.createDefault();
+        try (AuditLogger auditLogger = new AuditLogger(config)) {
+            CloseTrackingURLClassLoader pluginCl = new CloseTrackingURLClassLoader(new URL[0], null);
 
-        CommandRegistry registry = new CommandRegistry(
-            config,
-            null,
-            auditLogger,
-            Collections.<CommandProvider>emptyList(),
-            pluginCl
-        );
+            CommandRegistry registry = new CommandRegistry(
+                config,
+                null,
+                auditLogger,
+                Collections.<CommandProvider>emptyList(),
+                pluginCl
+            );
 
-        registry.shutdown();
-        Assert.assertTrue(pluginCl.isClosed());
+            registry.shutdown();
+            Assert.assertTrue(pluginCl.isClosed());
 
-        // Idempotent.
-        registry.shutdown();
-        Assert.assertTrue(pluginCl.isClosed());
+            // Idempotent.
+            registry.shutdown();
+            Assert.assertTrue(pluginCl.isClosed());
+        }
     }
 }
-

@@ -49,25 +49,6 @@ public final class SleuthTestState {
             // ignore
         }
 
-        // Security-related singletons
-        try {
-            com.javasleuth.foundation.security.AuthenticationManager.shutdownInstance();
-        } catch (Exception ignore) {
-            // ignore
-        }
-        try {
-            com.javasleuth.foundation.security.DangerousCommandConfirmationManager.shutdownInstance();
-        } catch (Exception ignore) {
-            // ignore
-        }
-
-        // Config singleton (detach -> re-attach semantics)
-        try {
-            com.javasleuth.foundation.config.ProductionConfig.resetInstanceForDetach();
-        } catch (Exception ignore) {
-            // ignore
-        }
-
         // Runtime optimizers (MBeans / caches)
         try {
             com.javasleuth.foundation.util.PerformanceOptimizer.shutdown();

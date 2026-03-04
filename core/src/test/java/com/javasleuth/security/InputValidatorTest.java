@@ -13,15 +13,18 @@ public class InputValidatorTest {
         try {
             System.setProperty("sleuth.security.input.validation", "true");
 
-            InputValidator validator = new InputValidator(ProductionConfig.getInstance(), AuditLogger.getInstance());
-            InputValidator.ValidationResult ok = validator.validateCommand(
-                "s1",
-                "test-client",
-                "redefine",
-                new String[]{"redefine", "com.example.TestService", "TestService.class"}
-            );
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (AuditLogger auditLogger = new AuditLogger(config)) {
+                InputValidator validator = new InputValidator(config, auditLogger);
+                InputValidator.ValidationResult ok = validator.validateCommand(
+                    "s1",
+                    "test-client",
+                    "redefine",
+                    new String[]{"redefine", "com.example.TestService", "TestService.class"}
+                );
 
-            assertTrue(ok.isValid());
+                assertTrue(ok.isValid());
+            }
         } finally {
             setOrClearProperty("sleuth.security.input.validation", oldValidation);
         }
@@ -33,16 +36,19 @@ public class InputValidatorTest {
         try {
             System.setProperty("sleuth.security.input.validation", "true");
 
-            InputValidator validator = new InputValidator(ProductionConfig.getInstance(), AuditLogger.getInstance());
-            InputValidator.ValidationResult bad = validator.validateCommand(
-                "s1",
-                "test-client",
-                "redefine",
-                new String[]{"redefine", "com.example.Bad Class", "Bad.class"}
-            );
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (AuditLogger auditLogger = new AuditLogger(config)) {
+                InputValidator validator = new InputValidator(config, auditLogger);
+                InputValidator.ValidationResult bad = validator.validateCommand(
+                    "s1",
+                    "test-client",
+                    "redefine",
+                    new String[]{"redefine", "com.example.Bad Class", "Bad.class"}
+                );
 
-            assertFalse(bad.isValid());
-            assertNotNull(bad.getMessage());
+                assertFalse(bad.isValid());
+                assertNotNull(bad.getMessage());
+            }
         } finally {
             setOrClearProperty("sleuth.security.input.validation", oldValidation);
         }
@@ -54,23 +60,26 @@ public class InputValidatorTest {
         try {
             System.setProperty("sleuth.security.input.validation", "true");
 
-            InputValidator validator = new InputValidator(ProductionConfig.getInstance(), AuditLogger.getInstance());
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (AuditLogger auditLogger = new AuditLogger(config)) {
+                InputValidator validator = new InputValidator(config, auditLogger);
 
-            InputValidator.ValidationResult ok = validator.validateCommand(
-                "s1",
-                "test-client",
-                "mc",
-                new String[]{"mc", "Test.java"}
-            );
-            assertTrue(ok.isValid());
+                InputValidator.ValidationResult ok = validator.validateCommand(
+                    "s1",
+                    "test-client",
+                    "mc",
+                    new String[]{"mc", "Test.java"}
+                );
+                assertTrue(ok.isValid());
 
-            InputValidator.ValidationResult bad = validator.validateCommand(
-                "s1",
-                "test-client",
-                "mc",
-                new String[]{"mc", "Test.class"}
-            );
-            assertFalse(bad.isValid());
+                InputValidator.ValidationResult bad = validator.validateCommand(
+                    "s1",
+                    "test-client",
+                    "mc",
+                    new String[]{"mc", "Test.class"}
+                );
+                assertFalse(bad.isValid());
+            }
         } finally {
             setOrClearProperty("sleuth.security.input.validation", oldValidation);
         }
@@ -82,15 +91,18 @@ public class InputValidatorTest {
         try {
             System.setProperty("sleuth.security.input.validation", "true");
 
-            InputValidator validator = new InputValidator(ProductionConfig.getInstance(), AuditLogger.getInstance());
-            InputValidator.ValidationResult bad = validator.validateCommand(
-                "s1",
-                "test-client",
-                "heapdump",
-                new String[]{"heapdump", "/etc/passwd"}
-            );
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (AuditLogger auditLogger = new AuditLogger(config)) {
+                InputValidator validator = new InputValidator(config, auditLogger);
+                InputValidator.ValidationResult bad = validator.validateCommand(
+                    "s1",
+                    "test-client",
+                    "heapdump",
+                    new String[]{"heapdump", "/etc/passwd"}
+                );
 
-            assertFalse(bad.isValid());
+                assertFalse(bad.isValid());
+            }
         } finally {
             setOrClearProperty("sleuth.security.input.validation", oldValidation);
         }

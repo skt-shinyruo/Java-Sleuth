@@ -2,7 +2,6 @@ package com.javasleuth.foundation.security;
 
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.foundation.config.LogPathResolver;
-import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import com.javasleuth.foundation.util.SleuthLogger;
 import com.javasleuth.foundation.util.SleuthThreadFactory;
@@ -17,7 +16,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class AuditLogger {
+public class AuditLogger implements AutoCloseable {
     private static final DateTimeFormatter TIMESTAMP_FORMATTER =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
 
@@ -25,6 +24,7 @@ public class AuditLogger {
     private final LogPathResolver logPathResolver = new LogPathResolver();
     private final BlockingQueue<AuditEvent> auditQueue;
     private final AtomicBoolean running;
+    private final AtomicBoolean closed;
     private final AtomicLong eventCounter;
     private final AtomicLong droppedCounter;
     private final Thread auditThread;
@@ -32,25 +32,20 @@ public class AuditLogger {
     private PrintWriter auditWriter;
     private PrintWriter securityWriter;
 
-    private static AuditLogger instance;
-
-    private AuditLogger() {
-        this.config = ProductionConfig.getInstance();
+    public AuditLogger(ConfigView config) {
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
+        }
+        this.config = config;
         this.auditQueue = new LinkedBlockingQueue<>(1000);
         this.running = new AtomicBoolean(false);
+        this.closed = new AtomicBoolean(false);
         this.eventCounter = new AtomicLong(0);
         this.droppedCounter = new AtomicLong(0);
         this.auditThread = SleuthThreadFactory.daemonFixed("sleuth-audit-logger").newThread(this::processAuditEvents);
 
         initializeWriters();
         start();
-    }
-
-    public static synchronized AuditLogger getInstance() {
-        if (instance == null) {
-            instance = new AuditLogger();
-        }
-        return instance;
     }
 
     private void initializeWriters() {
@@ -112,6 +107,9 @@ public class AuditLogger {
     }
 
     private void start() {
+        if (closed.get()) {
+            return;
+        }
         if (!running.compareAndSet(false, true)) {
             return;
         }
@@ -448,11 +446,14 @@ public class AuditLogger {
     }
 
     public void shutdown() {
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
         logSystemEvent("AUDIT_SHUTDOWN", "Audit logger shutting down");
         running.set(false);
 
         // Process remaining events
-        while (!auditQueue.isEmpty() && auditThread.isAlive()) {
+        while (Thread.currentThread() != auditThread && !auditQueue.isEmpty() && auditThread.isAlive()) {
             try {
                 Thread.sleep(100);
             } catch (InterruptedException e) {
@@ -463,10 +464,12 @@ public class AuditLogger {
 
         auditThread.interrupt();
 
-        try {
-            auditThread.join(5000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        if (Thread.currentThread() != auditThread) {
+            try {
+                auditThread.join(5000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
 
         if (auditWriter != null) {
@@ -477,14 +480,11 @@ public class AuditLogger {
             securityWriter.flush();
             securityWriter.close();
         }
+    }
 
-        // Allow detach → re-attach in the same JVM to reinitialize audit logging.
-        // Note: existing references should not be used after shutdown.
-        synchronized (AuditLogger.class) {
-            if (instance == this) {
-                instance = null;
-            }
-        }
+    @Override
+    public void close() {
+        shutdown();
     }
 
     public String getAuditStatus() {
