@@ -51,8 +51,11 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
         }
     }
 
-    private PerformanceOptimizer() {
-        this.config = ProductionConfig.getInstance();
+    private PerformanceOptimizer(ConfigView config) {
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
+        }
+        this.config = config;
 
         // Create optimized thread pool
         int coreSize = SleuthConfigSchema.PERFORMANCE_THREAD_POOL_CORE.read(config);
@@ -83,11 +86,15 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
         return SleuthConfigSchema.LOGGING_PERFORMANCE_ENABLED.read(config);
     }
 
-    public static synchronized PerformanceOptimizer getInstance() {
+    public static synchronized PerformanceOptimizer getInstance(ConfigView config) {
         if (instance == null) {
-            instance = new PerformanceOptimizer();
+            instance = new PerformanceOptimizer(config);
         }
         return instance;
+    }
+
+    public static synchronized PerformanceOptimizer getInstance() {
+        return getInstance(ProductionConfig.createDefault());
     }
 
     private <T> CompletableFuture<T> executeAsyncInternal(Supplier<T> operation, String operationName) {

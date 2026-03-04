@@ -1,5 +1,6 @@
 package com.javasleuth.foundation.security;
 
+import com.javasleuth.foundation.config.ProductionConfig;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -13,15 +14,18 @@ public class RequestSecurityManagerTest {
         System.setProperty("sleuth.security.hmac.secret", "test-secret");
         System.setProperty("sleuth.security.hmac.timestamp.window.ms", "600000");
 
-        RequestSecurityManager mgr = RequestSecurityManager.createDefault();
+        ProductionConfig config = ProductionConfig.createDefault();
+        try (AuditLogger auditLogger = new AuditLogger(config)) {
+            RequestSecurityManager mgr = new RequestSecurityManager(config, auditLogger);
 
-        String signed = mgr.signCommand("help", System.currentTimeMillis(), "nonce1", "connA");
-        assertTrue(signed.startsWith("SIG "));
+            String signed = mgr.signCommand("help", System.currentTimeMillis(), "nonce1", "connA");
+            assertTrue(signed.startsWith("SIG "));
 
-        // Same wrapper but different sid should fail verification.
-        String tampered = signed.replace(" sid=connA ", " sid=connB ");
-        RequestSecurityManager.VerificationResult r = mgr.verifyAndExtract("session", tampered);
-        assertFalse(r.isOk());
+            // Same wrapper but different sid should fail verification.
+            String tampered = signed.replace(" sid=connA ", " sid=connB ");
+            RequestSecurityManager.VerificationResult r = mgr.verifyAndExtract("session", tampered);
+            assertFalse(r.isOk());
+        }
     }
 
     @Test
@@ -30,12 +34,15 @@ public class RequestSecurityManagerTest {
         System.setProperty("sleuth.security.hmac.secret", "test-secret");
         System.setProperty("sleuth.security.hmac.timestamp.window.ms", "600000");
 
-        RequestSecurityManager mgr = RequestSecurityManager.createDefault();
+        ProductionConfig config = ProductionConfig.createDefault();
+        try (AuditLogger auditLogger = new AuditLogger(config)) {
+            RequestSecurityManager mgr = new RequestSecurityManager(config, auditLogger);
 
-        String signed1 = mgr.signCommand("help", System.currentTimeMillis(), "nonce2", "connC");
-        assertTrue(mgr.verifyAndExtract("session", signed1).isOk());
+            String signed1 = mgr.signCommand("help", System.currentTimeMillis(), "nonce2", "connC");
+            assertTrue(mgr.verifyAndExtract("session", signed1).isOk());
 
-        String signed2 = mgr.signCommand("help", System.currentTimeMillis(), "nonce2", "connC");
-        assertFalse(mgr.verifyAndExtract("session", signed2).isOk());
+            String signed2 = mgr.signCommand("help", System.currentTimeMillis(), "nonce2", "connC");
+            assertFalse(mgr.verifyAndExtract("session", signed2).isOk());
+        }
     }
 }

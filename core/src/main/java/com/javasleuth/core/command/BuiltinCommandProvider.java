@@ -98,7 +98,7 @@ public class BuiltinCommandProvider implements CommandProvider {
         commands.put("reset", new ResetCommand(instrumentation, transformer, jobManager, vmToolSessionRegistry));
 
         commands.put("jvm", new JvmCommand(instrumentation));
-        commands.put("sysprop", new SysPropCommand(instrumentation));
+        commands.put("sysprop", new SysPropCommand(instrumentation, config));
         commands.put("sysenv", new SysEnvCommand(instrumentation));
         commands.put("vmoption", new VmOptionCommand(instrumentation));
         commands.put("memory", new MemoryCommand(instrumentation));

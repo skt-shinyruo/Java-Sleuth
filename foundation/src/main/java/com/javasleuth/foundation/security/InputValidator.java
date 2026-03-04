@@ -56,7 +56,8 @@ public class InputValidator {
      * 默认装配（显式列出依赖来源，避免构造器内部隐式 getInstance 回退）。
      */
     public static InputValidator createDefault() {
-        return new InputValidator(ProductionConfig.getInstance(), AuditLogger.getInstance());
+        ProductionConfig config = ProductionConfig.createDefault();
+        return new InputValidator(config, new AuditLogger(config));
     }
 
     public ValidationResult validateCommand(String sessionId, String clientInfo, String command, String[] args) {

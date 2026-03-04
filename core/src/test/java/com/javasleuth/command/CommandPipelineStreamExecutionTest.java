@@ -45,13 +45,16 @@ public class CommandPipelineStreamExecutionTest {
         try {
             System.setProperty("sleuth.security.input.validation", "true");
 
-            ProductionConfig config = ProductionConfig.getInstance();
-            AuditLogger auditLogger = AuditLogger.getInstance();
-            AuthenticationManager authn = AuthenticationManager.getInstance();
-            AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
-            DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
-            InputValidator validator = new InputValidator(config, auditLogger);
-            CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (
+                AuditLogger auditLogger = new AuditLogger(config);
+                AuthenticationManager authn = new AuthenticationManager(config, auditLogger);
+                DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger)
+            ) {
+                AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
+                InputValidator validator = new InputValidator(config, auditLogger);
+                CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+                try {
 
             StreamCommand cmd = new StreamCommand() {
                 @Override
@@ -80,6 +83,10 @@ public class CommandPipelineStreamExecutionTest {
             assertEquals("ab", sink.sent.get(0));
             assertEquals(1, sink.closeCount);
             assertEquals(0, sink.errorCount);
+                } finally {
+                    pipeline.shutdown();
+                }
+            }
         } finally {
             setOrClearProperty("sleuth.security.input.validation", oldValidation);
         }
@@ -93,13 +100,16 @@ public class CommandPipelineStreamExecutionTest {
             System.setProperty("sleuth.performance.command.timeout", "50");
             System.setProperty("sleuth.performance.command.timeout.max", "50");
 
-            ProductionConfig config = ProductionConfig.getInstance();
-            AuditLogger auditLogger = AuditLogger.getInstance();
-            AuthenticationManager authn = AuthenticationManager.getInstance();
-            AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
-            DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
-            InputValidator validator = new InputValidator(config, auditLogger);
-            CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (
+                AuditLogger auditLogger = new AuditLogger(config);
+                AuthenticationManager authn = new AuthenticationManager(config, auditLogger);
+                DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger)
+            ) {
+                AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
+                InputValidator validator = new InputValidator(config, auditLogger);
+                CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+                try {
 
             StreamCommand cmd = new StreamCommand() {
                 @Override
@@ -128,6 +138,10 @@ public class CommandPipelineStreamExecutionTest {
             assertEquals(1, sink.errorCount);
             assertNotNull(sink.lastError);
             assertTrue(sink.lastError.toLowerCase().contains("timed out"));
+                } finally {
+                    pipeline.shutdown();
+                }
+            }
         } finally {
             setOrClearProperty("sleuth.performance.command.timeout", oldTimeout);
             setOrClearProperty("sleuth.performance.command.timeout.max", oldTimeoutMax);

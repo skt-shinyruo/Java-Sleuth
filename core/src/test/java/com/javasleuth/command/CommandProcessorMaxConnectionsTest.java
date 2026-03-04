@@ -17,15 +17,18 @@ public class CommandProcessorMaxConnectionsTest {
 
     @Test
     public void testRejectsNewConnectionsWhenMaxConnectionsReached() throws Exception {
-        ProductionConfig config = ProductionConfig.getInstance();
-        config.clearRuntimeConfig();
+        CommandProcessor processor = new CommandProcessor(
+            fakeInstrumentation(),
+            new SleuthClassFileTransformer(ProductionConfig.createDefault())
+        );
+        ProductionConfig config = processor.getConfig();
         try {
+            config.clearRuntimeConfig();
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", "0");
             config.setRuntimeConfig("security.mode", "off");
             config.setRuntimeConfig("server.max.connections", "1");
 
-            CommandProcessor processor = new CommandProcessor(fakeInstrumentation(), new SleuthClassFileTransformer(config));
             Thread serverThread = new Thread(processor::start, "test-cp-start-maxconn");
             serverThread.setDaemon(true);
             serverThread.start();

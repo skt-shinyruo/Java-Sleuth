@@ -1,13 +1,10 @@
 package com.javasleuth.core.agent.core;
 
-import com.javasleuth.bootstrap.agent.CoreClassLoaderRegistry;
+import com.javasleuth.bootstrap.agent.AgentLifecycle;
 import com.javasleuth.bootstrap.monitor.BootstrapMonitorConfigStore;
 import com.javasleuth.bootstrap.monitor.VmToolInterceptor;
-import com.javasleuth.bootstrap.util.SystemPropertyRollbackRegistry;
 import com.javasleuth.core.agent.runtime.AgentGlobalState;
-import com.javasleuth.core.agent.runtime.BootstrapMonitoringConfigSync;
 import com.javasleuth.core.agent.runtime.SleuthAgentRuntime;
-import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.util.SleuthLogger;
 import java.lang.instrument.Instrumentation;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -46,10 +43,8 @@ public final class SleuthAgentEntrypointSupport {
         }
 
         try {
-            // bootstrap agent 与 container/core 需要对 agentArgs 的解释保持一致。
-            SystemPropertyRollbackRegistry.applyAndRegisterIfAbsent(agentArgs);
-            syncBootstrapMonitoringConfig();
-
+            // agentArgs 对 System properties 的应用由 bootstrap 侧的 AgentLifecycle 负责（SSOT）。
+            // isolated 侧入口不重复 apply，避免跨 attach 基线漂移。
             SleuthAgentRuntime runtime = SleuthAgentRuntime.start(inst, shutdownHook);
             runtimeRef.set(runtime);
             if (attachedOkInfo != null && !attachedOkInfo.trim().isEmpty()) {
@@ -107,7 +102,6 @@ public final class SleuthAgentEntrypointSupport {
         }
 
         SleuthAgentRuntime runtime = runtimeRef.getAndSet(null);
-        Instrumentation instrumentation = runtime != null ? runtime.getInstrumentation() : null;
         try {
             if (runtime != null) {
                 runtime.close();
@@ -125,20 +119,10 @@ public final class SleuthAgentEntrypointSupport {
             } catch (Exception ignore) {
                 // best-effort
             }
-            // 回滚本次 attach 写入的 sysprop，避免跨 attach 漂移。
-            SystemPropertyRollbackRegistry.rollbackAndClearBestEffort();
-            // 重置 ProductionConfig 单例：确保 detach→re-attach 时能重新加载 configFile/sysprop 基线。
-            try {
-                ProductionConfig.resetInstanceForDetach();
-            } catch (Exception ignore) {
-                // best-effort
-            }
-            // 重置 bootstrap 入口闩锁：允许同 JVM detach 后 re-attach。
-            BootstrapAttachGateReset.resetBestEffort(instrumentation);
-            // 通知 bootstrap registry 释放/关闭本次 attach 的隔离 ClassLoader（best-effort）。
+            // 通知 bootstrap 生命周期对象：回滚 sysprop + 释放/关闭本次 attach 的隔离 ClassLoader（best-effort）。
             try {
                 if (selfClassLoader != null) {
-                    CoreClassLoaderRegistry.onCoreShutdown(selfClassLoader);
+                    AgentLifecycle.detachBestEffort(selfClassLoader);
                 }
             } catch (Throwable ignore) {
                 // best-effort
@@ -165,14 +149,5 @@ public final class SleuthAgentEntrypointSupport {
             // best-effort
         }
         AgentGlobalState.resetInterceptorsBestEffort();
-    }
-
-    private static void syncBootstrapMonitoringConfig() {
-        try {
-            ProductionConfig cfg = ProductionConfig.getInstance();
-            BootstrapMonitoringConfigSync.syncFromProductionConfigBestEffort(cfg);
-        } catch (Exception ignore) {
-            // best-effort
-        }
     }
 }

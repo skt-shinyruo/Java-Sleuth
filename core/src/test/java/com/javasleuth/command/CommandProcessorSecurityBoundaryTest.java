@@ -50,7 +50,7 @@ public class CommandProcessorSecurityBoundaryTest {
 
     @Test
     public void testStartBlockedWhenNonLoopbackBindAndSecurityOff() throws Exception {
-        ProductionConfig cfg = ProductionConfig.getInstance();
+        ProductionConfig cfg = ProductionConfig.createDefault();
         CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(cfg));
         ProductionConfig config = processor.getConfig();
         config.clearRuntimeConfig();
@@ -89,7 +89,7 @@ public class CommandProcessorSecurityBoundaryTest {
 
     @Test
     public void testLoopbackAutogeneratesSecretWhenHmacModeButSecretEmpty() throws Exception {
-        ProductionConfig cfg = ProductionConfig.getInstance();
+        ProductionConfig cfg = ProductionConfig.createDefault();
         CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(cfg));
         ProductionConfig config = processor.getConfig();
         config.clearRuntimeConfig();

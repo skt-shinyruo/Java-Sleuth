@@ -86,14 +86,49 @@ public final class CommandProcessorFactory {
         return new CommandProcessor(components);
     }
 
+    public static CommandProcessor create(
+        java.lang.instrument.Instrumentation instrumentation,
+        com.javasleuth.core.enhancement.SleuthClassFileTransformer transformer,
+        Runnable shutdownHook,
+        com.javasleuth.foundation.config.ProductionConfig config,
+        com.javasleuth.foundation.security.AuditLogger auditLogger,
+        com.javasleuth.foundation.security.AuthenticationManager authenticationManager,
+        com.javasleuth.foundation.security.AuthorizationManager authorizationManager,
+        com.javasleuth.foundation.security.RequestSecurityManager requestSecurityManager,
+        com.javasleuth.foundation.security.DangerousCommandConfirmationManager dangerousConfirm,
+        com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry,
+        com.javasleuth.core.monitoring.MetricsCollector metricsCollector,
+        JobManager jobManager,
+        com.javasleuth.core.vmtool.VmToolSessionRegistry vmToolSessionRegistry,
+        com.javasleuth.foundation.util.PerformanceOptimizer performanceOptimizer
+    ) {
+        CommandProcessorComponents components = createComponents(
+            instrumentation,
+            transformer,
+            shutdownHook,
+            config,
+            auditLogger,
+            authenticationManager,
+            authorizationManager,
+            requestSecurityManager,
+            dangerousConfirm,
+            clientSessionRegistry,
+            metricsCollector,
+            jobManager,
+            vmToolSessionRegistry,
+            performanceOptimizer
+        );
+        return new CommandProcessor(components);
+    }
+
     public static CommandProcessorComponents createComponents(
         java.lang.instrument.Instrumentation instrumentation,
         com.javasleuth.core.enhancement.SleuthClassFileTransformer transformer,
         Runnable shutdownHook
     ) {
-        com.javasleuth.foundation.config.ProductionConfig config = com.javasleuth.foundation.config.ProductionConfig.getInstance();
-        com.javasleuth.foundation.security.AuditLogger auditLogger = com.javasleuth.foundation.security.AuditLogger.getInstance();
-        com.javasleuth.foundation.security.AuthenticationManager authenticationManager = com.javasleuth.foundation.security.AuthenticationManager.getInstance();
+        com.javasleuth.foundation.config.ProductionConfig config = com.javasleuth.foundation.config.ProductionConfig.createDefault();
+        com.javasleuth.foundation.security.AuditLogger auditLogger = new com.javasleuth.foundation.security.AuditLogger(config);
+        com.javasleuth.foundation.security.AuthenticationManager authenticationManager = new com.javasleuth.foundation.security.AuthenticationManager(config, auditLogger);
         return createComponents(
             instrumentation,
             transformer,
@@ -103,11 +138,12 @@ public final class CommandProcessorFactory {
             authenticationManager,
             new com.javasleuth.foundation.security.AuthorizationManager(config, auditLogger, authenticationManager),
             new com.javasleuth.foundation.security.RequestSecurityManager(config, auditLogger),
-            com.javasleuth.foundation.security.DangerousCommandConfirmationManager.getInstance(),
+            new com.javasleuth.foundation.security.DangerousCommandConfirmationManager(config, auditLogger),
             new com.javasleuth.core.command.session.ClientSessionRegistry(),
             new com.javasleuth.core.monitoring.MetricsCollector(config),
             new JobManager(),
-            new com.javasleuth.core.vmtool.VmToolSessionRegistry()
+            new com.javasleuth.core.vmtool.VmToolSessionRegistry(),
+            null
         );
     }
 
@@ -156,6 +192,40 @@ public final class CommandProcessorFactory {
         JobManager jobManager,
         com.javasleuth.core.vmtool.VmToolSessionRegistry vmToolSessionRegistry
     ) {
+        return createComponents(
+            instrumentation,
+            transformer,
+            shutdownHook,
+            config,
+            auditLogger,
+            authenticationManager,
+            authorizationManager,
+            requestSecurityManager,
+            dangerousConfirm,
+            clientSessionRegistry,
+            metricsCollector,
+            jobManager,
+            vmToolSessionRegistry,
+            null
+        );
+    }
+
+    public static CommandProcessorComponents createComponents(
+        java.lang.instrument.Instrumentation instrumentation,
+        com.javasleuth.core.enhancement.SleuthClassFileTransformer transformer,
+        Runnable shutdownHook,
+        com.javasleuth.foundation.config.ProductionConfig config,
+        com.javasleuth.foundation.security.AuditLogger auditLogger,
+        com.javasleuth.foundation.security.AuthenticationManager authenticationManager,
+        com.javasleuth.foundation.security.AuthorizationManager authorizationManager,
+        com.javasleuth.foundation.security.RequestSecurityManager requestSecurityManager,
+        com.javasleuth.foundation.security.DangerousCommandConfirmationManager dangerousConfirm,
+        com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry,
+        com.javasleuth.core.monitoring.MetricsCollector metricsCollector,
+        JobManager jobManager,
+        com.javasleuth.core.vmtool.VmToolSessionRegistry vmToolSessionRegistry,
+        com.javasleuth.foundation.util.PerformanceOptimizer performanceOptimizer
+    ) {
         if (instrumentation == null) {
             throw new IllegalArgumentException("instrumentation is required");
         }
@@ -164,24 +234,29 @@ public final class CommandProcessorFactory {
         }
 
         com.javasleuth.foundation.config.ProductionConfig cfg =
-            config != null ? config : com.javasleuth.foundation.config.ProductionConfig.getInstance();
+            config != null ? config : com.javasleuth.foundation.config.ProductionConfig.createDefault();
         com.javasleuth.foundation.security.AuditLogger audit =
-            auditLogger != null ? auditLogger : com.javasleuth.foundation.security.AuditLogger.getInstance();
+            auditLogger != null ? auditLogger : new com.javasleuth.foundation.security.AuditLogger(cfg);
         com.javasleuth.foundation.security.AuthenticationManager authn =
-            authenticationManager != null ? authenticationManager : com.javasleuth.foundation.security.AuthenticationManager.getInstance();
+            authenticationManager != null
+                ? authenticationManager
+                : new com.javasleuth.foundation.security.AuthenticationManager(cfg, audit);
         com.javasleuth.foundation.security.AuthorizationManager authz =
             authorizationManager != null ? authorizationManager : new com.javasleuth.foundation.security.AuthorizationManager(cfg, audit, authn);
         com.javasleuth.foundation.security.RequestSecurityManager reqSec =
             requestSecurityManager != null ? requestSecurityManager : new com.javasleuth.foundation.security.RequestSecurityManager(cfg, audit);
         com.javasleuth.foundation.security.DangerousCommandConfirmationManager dc =
-            dangerousConfirm != null ? dangerousConfirm : com.javasleuth.foundation.security.DangerousCommandConfirmationManager.getInstance();
+            dangerousConfirm != null
+                ? dangerousConfirm
+                : new com.javasleuth.foundation.security.DangerousCommandConfirmationManager(cfg, audit);
         com.javasleuth.core.command.session.ClientSessionRegistry csr =
             clientSessionRegistry != null ? clientSessionRegistry : new com.javasleuth.core.command.session.ClientSessionRegistry();
 
         JobManager jm = jobManager != null ? jobManager : new JobManager();
         com.javasleuth.core.vmtool.VmToolSessionRegistry vmsr =
             vmToolSessionRegistry != null ? vmToolSessionRegistry : new com.javasleuth.core.vmtool.VmToolSessionRegistry();
-        com.javasleuth.foundation.util.PerformanceOptimizer perf = com.javasleuth.foundation.util.PerformanceOptimizer.getInstance();
+        com.javasleuth.foundation.util.PerformanceOptimizer perf =
+            performanceOptimizer != null ? performanceOptimizer : com.javasleuth.foundation.util.PerformanceOptimizer.getInstance(cfg);
 
         com.javasleuth.foundation.config.model.SleuthConfig typedConfig =
             com.javasleuth.foundation.config.model.SleuthConfigParser.parse(cfg.snapshot());
@@ -269,10 +344,8 @@ public final class CommandProcessorFactory {
             audit,
             registry,
             pipeline,
-            authn,
             authz,
-            reqSec,
-            dc
+            reqSec
         );
 
         try {

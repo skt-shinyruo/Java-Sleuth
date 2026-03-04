@@ -17,15 +17,15 @@ public class ProtocolClientIntegrationTest {
 
     @Test
     public void testHandshakeAndVersionCommandOverBinary() throws Exception {
-        ProductionConfig config = ProductionConfig.getInstance();
-        config.clearRuntimeConfig();
+        CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(ProductionConfig.createDefault()));
+        ProductionConfig config = processor.getConfig();
         try {
+            config.clearRuntimeConfig();
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", "0");
             config.setRuntimeConfig("security.mode", "off");
             config.setRuntimeConfig("protocol.streaming.enabled", "true");
 
-            CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(config));
             Thread serverThread = new Thread(processor::start, "test-cp-start");
             serverThread.setDaemon(true);
             serverThread.start();
@@ -56,15 +56,15 @@ public class ProtocolClientIntegrationTest {
 
     @Test
     public void testHandshakeNegotiatesStreamingDisabledOverridesClientHint() throws Exception {
-        ProductionConfig config = ProductionConfig.getInstance();
-        config.clearRuntimeConfig();
+        CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(ProductionConfig.createDefault()));
+        ProductionConfig config = processor.getConfig();
         try {
+            config.clearRuntimeConfig();
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", "0");
             config.setRuntimeConfig("security.mode", "off");
             config.setRuntimeConfig("protocol.streaming.enabled", "false");
 
-            CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(config));
             Thread serverThread = new Thread(processor::start, "test-cp-start-streaming-disabled");
             serverThread.setDaemon(true);
             serverThread.start();
@@ -100,15 +100,14 @@ public class ProtocolClientIntegrationTest {
 
     @Test
     public void testConnectWithRetry_succeedsWhenServerStartsLate() throws Exception {
-        ProductionConfig config = ProductionConfig.getInstance();
-        config.clearRuntimeConfig();
+        CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(ProductionConfig.createDefault()));
+        ProductionConfig config = processor.getConfig();
         try {
+            config.clearRuntimeConfig();
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", "0");
             config.setRuntimeConfig("security.mode", "off");
             config.setRuntimeConfig("protocol.streaming.enabled", "true");
-
-            CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(config));
 
             Thread serverThread = new Thread(() -> {
                 try {

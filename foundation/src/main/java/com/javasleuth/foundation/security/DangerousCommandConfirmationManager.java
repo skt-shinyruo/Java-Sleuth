@@ -1,7 +1,6 @@
 package com.javasleuth.foundation.security;
 
 import com.javasleuth.foundation.config.ConfigView;
-import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -11,6 +10,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 危险命令二次确认管理器。
@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>可审计：challenge/confirm 都会记录到审计日志</li>
  * </ul>
  */
-public class DangerousCommandConfirmationManager {
+public class DangerousCommandConfirmationManager implements AutoCloseable {
     public static class ConfirmationResult {
         private final boolean allowed;
         private final String error;
@@ -70,29 +70,30 @@ public class DangerousCommandConfirmationManager {
         }
     }
 
-    private static DangerousCommandConfirmationManager instance;
-
     private final ConfigView config;
     private final AuditLogger auditLogger;
     private final SecureRandom random;
+    private final AtomicBoolean shutdown = new AtomicBoolean(false);
 
     // key: sessionId:hash(normalizedArgs) -> Pending
     private final Map<String, Pending> pending = new ConcurrentHashMap<>();
 
-    private DangerousCommandConfirmationManager() {
-        this.config = ProductionConfig.getInstance();
-        this.auditLogger = AuditLogger.getInstance();
+    public DangerousCommandConfirmationManager(ConfigView config, AuditLogger auditLogger) {
+        if (config == null) {
+            throw new IllegalArgumentException("config is required");
+        }
+        if (auditLogger == null) {
+            throw new IllegalArgumentException("auditLogger is required");
+        }
+        this.config = config;
+        this.auditLogger = auditLogger;
         this.random = new SecureRandom();
     }
 
-    public static synchronized DangerousCommandConfirmationManager getInstance() {
-        if (instance == null) {
-            instance = new DangerousCommandConfirmationManager();
-        }
-        return instance;
-    }
-
     public void shutdown() {
+        if (!shutdown.compareAndSet(false, true)) {
+            return;
+        }
         try {
             pending.clear();
         } catch (Exception ignore) {
@@ -100,18 +101,9 @@ public class DangerousCommandConfirmationManager {
         }
     }
 
-    public static synchronized void shutdownInstance() {
-        DangerousCommandConfirmationManager inst = instance;
-        if (inst == null) {
-            return;
-        }
-        try {
-            inst.shutdown();
-        } catch (Exception ignore) {
-            // ignore
-        } finally {
-            instance = null;
-        }
+    @Override
+    public void close() {
+        shutdown();
     }
 
     public ConfirmationResult confirmIfRequired(String sessionId,

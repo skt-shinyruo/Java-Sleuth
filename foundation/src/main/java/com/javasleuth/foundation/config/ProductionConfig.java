@@ -16,8 +16,6 @@ public class ProductionConfig implements ConfigView, MutableConfig {
     private final ConfigLoader loader;
     private final ConfigPersister persister;
 
-    private static ProductionConfig instance;
-
     private static final class LoadedConfigState {
         private final Properties properties;
         private final Properties defaultProperties;
@@ -38,7 +36,7 @@ public class ProductionConfig implements ConfigView, MutableConfig {
         }
     }
 
-    private ProductionConfig() {
+    public ProductionConfig() {
         this.masker = new SensitiveKeyMasker();
         this.runtimeStore = new RuntimeConfigStore(masker);
         this.loader = new ConfigLoader();
@@ -48,22 +46,14 @@ public class ProductionConfig implements ConfigView, MutableConfig {
         applyLoadedConfig(loaded);
     }
 
-    public static synchronized ProductionConfig getInstance() {
-        if (instance == null) {
-            instance = new ProductionConfig();
-        }
-        return instance;
-    }
-
     /**
-     * Detach/shutdown helper: reset the global singleton so a future attach can reload configuration
-     * (including {@code sleuth.config.file} and other sysprop baselines).
+     * Create a new ProductionConfig instance using the default load/persist behavior.
      *
-     * <p>Note: existing references to the previous instance should not be used after reset.
-     * This method is intended to be invoked on agent detach/shutdown boundaries.</p>
+     * <p>Note: This returns a NEW instance every time; configuration is attach-scope and must be owned
+     * by the agent runtime lifecycle rather than a global singleton.</p>
      */
-    public static synchronized void resetInstanceForDetach() {
-        instance = null;
+    public static ProductionConfig createDefault() {
+        return new ProductionConfig();
     }
 
     /**

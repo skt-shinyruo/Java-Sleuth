@@ -186,7 +186,7 @@ public class SleuthLauncher {
         System.out.println("Connecting to Java-Sleuth agent...");
 
         try {
-            ProductionConfig config = ProductionConfig.getInstance();
+            ProductionConfig config = ProductionConfig.createDefault();
             SleuthConfig typed = SleuthConfigParser.parse(config.snapshot());
             int port = typed.server().getPort();
             boolean streamingEnabled = typed.protocol().isStreamingEnabled();
@@ -219,7 +219,7 @@ public class SleuthLauncher {
     }
 
     private int runHeadless(LauncherArgs parsed) {
-        ProductionConfig config = ProductionConfig.getInstance();
+        ProductionConfig config = ProductionConfig.createDefault();
         SleuthConfig typed = SleuthConfigParser.parse(config.snapshot());
         int port = typed.server().getPort();
         boolean streamingEnabled = typed.protocol().isStreamingEnabled();

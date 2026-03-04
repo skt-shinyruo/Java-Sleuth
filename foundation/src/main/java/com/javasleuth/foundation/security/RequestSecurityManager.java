@@ -84,7 +84,8 @@ public class RequestSecurityManager implements CommandSigner {
      * 默认装配（显式列出依赖来源，避免构造器内部隐式 getInstance 回退）。
      */
     public static RequestSecurityManager createDefault() {
-        return new RequestSecurityManager(ProductionConfig.getInstance(), AuditLogger.getInstance());
+        ProductionConfig config = ProductionConfig.createDefault();
+        return new RequestSecurityManager(config, new AuditLogger(config));
     }
 
     public void shutdown() {

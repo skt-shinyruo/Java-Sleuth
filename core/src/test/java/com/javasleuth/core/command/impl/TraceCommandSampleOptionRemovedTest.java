@@ -16,7 +16,7 @@ public class TraceCommandSampleOptionRemovedTest {
 
     @Test
     public void shouldRejectRemovedSampleOptions() throws Exception {
-        TraceCommand cmd = new TraceCommand(null, null, ProductionConfig.getInstance(), new JobManager());
+        TraceCommand cmd = new TraceCommand(null, null, ProductionConfig.createDefault(), new JobManager());
         try {
             String out = cmd.execute(new String[] {"trace", "C", "m", "--sample", "0.1"});
             Assert.assertNotNull(out);
@@ -28,4 +28,3 @@ public class TraceCommandSampleOptionRemovedTest {
         }
     }
 }
-

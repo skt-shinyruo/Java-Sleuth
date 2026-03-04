@@ -69,10 +69,11 @@ public class TtCommandReplayTemplateTest {
             Assert.assertFalse(records.isEmpty());
 
             long id = records.get(0).getRecordId();
+            ProductionConfig config = ProductionConfig.createDefault();
             TtCommand cmd = new TtCommand(
                 dummyInstrumentation(),
-                new SleuthClassFileTransformer(ProductionConfig.getInstance()),
-                ProductionConfig.getInstance(),
+                new SleuthClassFileTransformer(config),
+                config,
                 new JobManager()
             );
             String out = cmd.execute(new String[] { "tt", "replay", String.valueOf(id) });

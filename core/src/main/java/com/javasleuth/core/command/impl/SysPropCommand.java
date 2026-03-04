@@ -2,7 +2,7 @@ package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.agent.runtime.BootstrapMonitoringConfigSync;
 import com.javasleuth.core.command.Command;
-import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.foundation.security.SecurityValidator;
 import java.lang.instrument.Instrumentation;
 import java.util.Map;
@@ -13,9 +13,11 @@ import java.util.regex.Pattern;
 public class SysPropCommand implements Command {
     @SuppressWarnings("unused")
     private final Instrumentation instrumentation;
+    private final ConfigView config;
 
-    public SysPropCommand(Instrumentation instrumentation) {
+    public SysPropCommand(Instrumentation instrumentation, ConfigView config) {
         this.instrumentation = instrumentation;
+        this.config = config;
     }
 
     @Override
@@ -166,12 +168,12 @@ public class SysPropCommand implements Command {
         }
     }
 
-    private static void syncBootstrapMonitorConfigStoreBestEffort(String sysPropKey) {
+    private void syncBootstrapMonitorConfigStoreBestEffort(String sysPropKey) {
         if (!isMonitoringSysPropKey(sysPropKey)) {
             return;
         }
         try {
-            BootstrapMonitoringConfigSync.syncFromProductionConfigBestEffort(ProductionConfig.getInstance());
+            BootstrapMonitoringConfigSync.syncFromConfigViewBestEffort(config);
         } catch (Exception ignore) {
             // best-effort
         }

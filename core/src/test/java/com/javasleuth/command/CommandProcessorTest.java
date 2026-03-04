@@ -113,13 +113,16 @@ public class CommandProcessorTest {
             System.setProperty("sleuth.security.input.validation", "false");
             System.setProperty("sleuth.performance.command.timeout", "50");
 
-            ProductionConfig config = ProductionConfig.getInstance();
-            AuditLogger auditLogger = AuditLogger.getInstance();
-            AuthenticationManager authn = AuthenticationManager.getInstance();
-            AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
-            DangerousCommandConfirmationManager dangerousConfirm = DangerousCommandConfirmationManager.getInstance();
-            InputValidator validator = new InputValidator(config, auditLogger);
-            CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (
+                AuditLogger auditLogger = new AuditLogger(config);
+                AuthenticationManager authn = new AuthenticationManager(config, auditLogger);
+                DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger)
+            ) {
+                AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
+                InputValidator validator = new InputValidator(config, auditLogger);
+                CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+                try {
 
             Command slow = new Command() {
                 @Override
@@ -140,6 +143,10 @@ public class CommandProcessorTest {
             assertFalse(result.isSuccess());
             assertNotNull(result.getError());
             assertTrue(result.getError().toLowerCase().contains("timed out"));
+                } finally {
+                    pipeline.shutdown();
+                }
+            }
         } finally {
             setOrClearProperty("sleuth.security.authorization.enabled", oldAuthz);
             setOrClearProperty("sleuth.security.input.validation", oldValidation);
@@ -150,22 +157,27 @@ public class CommandProcessorTest {
     @Test
     public void testAuthorizationManagerDynamicPermissionRegistration() {
         String oldAnon = System.getProperty("sleuth.security.anonymous.viewer");
-        AuthorizationManager authorizationManager = AuthorizationManager.createDefault();
-        AuthenticationManager authenticationManager = AuthenticationManager.getInstance();
+        ProductionConfig config = ProductionConfig.createDefault();
+        try (
+            AuditLogger auditLogger = new AuditLogger(config);
+            AuthenticationManager authenticationManager = new AuthenticationManager(config, auditLogger)
+        ) {
+            AuthorizationManager authorizationManager = new AuthorizationManager(config, auditLogger, authenticationManager);
 
-        try {
-            System.setProperty("sleuth.security.anonymous.viewer", "true");
+            try {
+                System.setProperty("sleuth.security.anonymous.viewer", "true");
 
-            AuthenticationManager.AuthenticationResult session =
-                authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test-client");
-            assertTrue(session.isSuccess());
+                AuthenticationManager.AuthenticationResult session =
+                    authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test-client");
+                assertTrue(session.isSuccess());
 
-            CommandMeta meta = CommandMeta.viewer(false, false);
-            AuthorizationManager.AuthorizationResult result =
-                authorizationManager.authorize(session.getSessionId(), "plugin_cmd", new String[]{"plugin_cmd"}, meta);
-            assertTrue(result.isAllowed());
-        } finally {
-            setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
+                CommandMeta meta = CommandMeta.viewer(false, false);
+                AuthorizationManager.AuthorizationResult result =
+                    authorizationManager.authorize(session.getSessionId(), "plugin_cmd", new String[]{"plugin_cmd"}, meta);
+                assertTrue(result.isAllowed());
+            } finally {
+                setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
+            }
         }
     }
 
@@ -173,24 +185,29 @@ public class CommandProcessorTest {
     public void testAuthorizationManagerDangerousCommandUpgradesToAdmin() {
         String oldAnon = System.getProperty("sleuth.security.anonymous.viewer");
         String oldAuthz = System.getProperty("sleuth.security.authorization.enabled");
-        AuthorizationManager authorizationManager = AuthorizationManager.createDefault();
-        AuthenticationManager authenticationManager = AuthenticationManager.getInstance();
+        ProductionConfig config = ProductionConfig.createDefault();
+        try (
+            AuditLogger auditLogger = new AuditLogger(config);
+            AuthenticationManager authenticationManager = new AuthenticationManager(config, auditLogger)
+        ) {
+            AuthorizationManager authorizationManager = new AuthorizationManager(config, auditLogger, authenticationManager);
 
-        try {
-            System.setProperty("sleuth.security.anonymous.viewer", "true");
-            System.setProperty("sleuth.security.authorization.enabled", "true");
+            try {
+                System.setProperty("sleuth.security.anonymous.viewer", "true");
+                System.setProperty("sleuth.security.authorization.enabled", "true");
 
-            AuthenticationManager.AuthenticationResult session =
-                authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test-client");
-            assertTrue(session.isSuccess());
+                AuthenticationManager.AuthenticationResult session =
+                    authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test-client");
+                assertTrue(session.isSuccess());
 
-            CommandMeta meta = CommandMeta.viewer(false, false).withDangerous(true);
-            AuthorizationManager.AuthorizationResult result =
-                authorizationManager.authorize(session.getSessionId(), "dangerous_plugin_cmd", new String[]{"dangerous_plugin_cmd"}, meta);
-            assertFalse(result.isAllowed());
-        } finally {
-            setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
-            setOrClearProperty("sleuth.security.authorization.enabled", oldAuthz);
+                CommandMeta meta = CommandMeta.viewer(false, false).withDangerous(true);
+                AuthorizationManager.AuthorizationResult result =
+                    authorizationManager.authorize(session.getSessionId(), "dangerous_plugin_cmd", new String[]{"dangerous_plugin_cmd"}, meta);
+                assertFalse(result.isAllowed());
+            } finally {
+                setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
+                setOrClearProperty("sleuth.security.authorization.enabled", oldAuthz);
+            }
         }
     }
 
@@ -205,19 +222,22 @@ public class CommandProcessorTest {
             System.setProperty("sleuth.security.hmac.secret", "test-secret");
             System.setProperty("sleuth.security.hmac.timestamp.window.ms", "60000");
 
-            RequestSecurityManager mgr = RequestSecurityManager.createDefault();
-            String nonce = "nonce123";
-            long ts = System.currentTimeMillis();
-            String signed = mgr.signCommand("help", ts, nonce, "test-sid");
-            assertNotNull(signed);
-            assertTrue(signed.startsWith("SIG "));
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (AuditLogger auditLogger = new AuditLogger(config)) {
+                RequestSecurityManager mgr = new RequestSecurityManager(config, auditLogger);
+                String nonce = "nonce123";
+                long ts = System.currentTimeMillis();
+                String signed = mgr.signCommand("help", ts, nonce, "test-sid");
+                assertNotNull(signed);
+                assertTrue(signed.startsWith("SIG "));
 
-            RequestSecurityManager.VerificationResult ok = mgr.verifyAndExtract("s1", signed);
-            assertTrue(ok.isOk());
-            assertEquals("help", ok.getCommand());
+                RequestSecurityManager.VerificationResult ok = mgr.verifyAndExtract("s1", signed);
+                assertTrue(ok.isOk());
+                assertEquals("help", ok.getCommand());
 
-            RequestSecurityManager.VerificationResult replay = mgr.verifyAndExtract("s1", signed);
-            assertFalse(replay.isOk());
+                RequestSecurityManager.VerificationResult replay = mgr.verifyAndExtract("s1", signed);
+                assertFalse(replay.isOk());
+            }
         } finally {
             setOrClearProperty("sleuth.security.mode", oldMode);
             setOrClearProperty("sleuth.security.hmac.secret", oldSecret);

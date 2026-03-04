@@ -1,5 +1,6 @@
 package com.javasleuth.foundation.security;
 
+import com.javasleuth.foundation.config.ProductionConfig;
 import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -13,44 +14,47 @@ public class AuditLoggerTest {
 
     @Test
     public void testAuthArgsAreMaskedInAuditFormatting() throws Exception {
-        AuditLogger logger = AuditLogger.getInstance();
-        String formatted = formatArgsForAudit(logger, "auth", new String[]{"auth", "admin", "my_password"});
-        assertNotNull(formatted);
-        assertFalse(formatted.contains("my_password"));
-        assertTrue(formatted.contains("***"));
+        try (AuditLogger logger = new AuditLogger(ProductionConfig.createDefault())) {
+            String formatted = formatArgsForAudit(logger, "auth", new String[]{"auth", "admin", "my_password"});
+            assertNotNull(formatted);
+            assertFalse(formatted.contains("my_password"));
+            assertTrue(formatted.contains("***"));
+        }
     }
 
     @Test
     public void testConfigSetSensitiveValueIsMaskedInAuditFormatting() throws Exception {
-        AuditLogger logger = AuditLogger.getInstance();
-        String formatted = formatArgsForAudit(logger, "config", new String[]{"config", "set", "security.hmac.secret", "supersecret"});
-        assertNotNull(formatted);
-        assertFalse(formatted.contains("supersecret"));
-        assertTrue(formatted.contains("***"));
+        try (AuditLogger logger = new AuditLogger(ProductionConfig.createDefault())) {
+            String formatted = formatArgsForAudit(logger, "config", new String[]{"config", "set", "security.hmac.secret", "supersecret"});
+            assertNotNull(formatted);
+            assertFalse(formatted.contains("supersecret"));
+            assertTrue(formatted.contains("***"));
+        }
     }
 
     @Test
     public void testSyspropSetSensitiveValueIsMaskedInAuditFormatting() throws Exception {
-        AuditLogger logger = AuditLogger.getInstance();
-        String formatted = formatArgsForAudit(logger, "sysprop", new String[]{"sysprop", "set", "api.token", "tok_123456"});
-        assertNotNull(formatted);
-        assertFalse(formatted.contains("tok_123456"));
-        assertTrue(formatted.contains("***"));
+        try (AuditLogger logger = new AuditLogger(ProductionConfig.createDefault())) {
+            String formatted = formatArgsForAudit(logger, "sysprop", new String[]{"sysprop", "set", "api.token", "tok_123456"});
+            assertNotNull(formatted);
+            assertFalse(formatted.contains("tok_123456"));
+            assertTrue(formatted.contains("***"));
+        }
     }
 
     @Test
     public void testSessionIdIsMasked() throws Exception {
-        AuditLogger logger = AuditLogger.getInstance();
+        try (AuditLogger logger = new AuditLogger(ProductionConfig.createDefault())) {
+            Method m = AuditLogger.class.getDeclaredMethod("maskSessionId", String.class);
+            m.setAccessible(true);
 
-        Method m = AuditLogger.class.getDeclaredMethod("maskSessionId", String.class);
-        m.setAccessible(true);
-
-        String token = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        String masked = (String) m.invoke(logger, token);
-        assertNotNull(masked);
-        assertNotEquals(token, masked);
-        assertFalse(masked.contains(token));
-        assertTrue(masked.contains("***"));
+            String token = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            String masked = (String) m.invoke(logger, token);
+            assertNotNull(masked);
+            assertNotEquals(token, masked);
+            assertFalse(masked.contains(token));
+            assertTrue(masked.contains("***"));
+        }
     }
 
     @Test
@@ -70,23 +74,24 @@ public class AuditLoggerTest {
             System.setOut(new PrintStream(outBuf));
             System.setErr(new PrintStream(errBuf));
 
-            AuditLogger logger = AuditLogger.getInstance();
+            try (AuditLogger logger = new AuditLogger(ProductionConfig.createDefault())) {
 
-            Class<?> eventClass = Class.forName("com.javasleuth.foundation.security.AuditLogger$AuditEvent");
-            Constructor<?> ctor = eventClass.getDeclaredConstructor(
-                String.class,
-                String.class,
-                String.class,
-                String.class,
-                String.class,
-                String.class
-            );
-            ctor.setAccessible(true);
-            Object event = ctor.newInstance("INFO", "SYSTEM", "TEST", "hello", null, "system");
+                Class<?> eventClass = Class.forName("com.javasleuth.foundation.security.AuditLogger$AuditEvent");
+                Constructor<?> ctor = eventClass.getDeclaredConstructor(
+                    String.class,
+                    String.class,
+                    String.class,
+                    String.class,
+                    String.class,
+                    String.class
+                );
+                ctor.setAccessible(true);
+                Object event = ctor.newInstance("INFO", "SYSTEM", "TEST", "hello", null, "system");
 
-            Method write = AuditLogger.class.getDeclaredMethod("writeAuditEvent", eventClass);
-            write.setAccessible(true);
-            write.invoke(logger, event);
+                Method write = AuditLogger.class.getDeclaredMethod("writeAuditEvent", eventClass);
+                write.setAccessible(true);
+                write.invoke(logger, event);
+            }
         } finally {
             System.setOut(oldOut);
             System.setErr(oldErr);

@@ -40,7 +40,8 @@ public class SessionCleanupOnDisconnectTest {
         registry.close(clientId, "test_setup_cleanup");
 
         Instrumentation inst = fakeInstrumentationWithLoadedClasses(DummyTarget.class);
-        SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(ProductionConfig.getInstance());
+        ProductionConfig config = ProductionConfig.createDefault();
+        SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(config);
         JobManager jobManager = new JobManager();
 
         Thread watchThread = null;
@@ -52,21 +53,21 @@ public class SessionCleanupOnDisconnectTest {
 
             watchThread = startInThreadWithContext(context, () -> {
                 try {
-                    new WatchCommand(inst, transformer, ProductionConfig.getInstance(), jobManager)
+                    new WatchCommand(inst, transformer, config, jobManager)
                         .execute(new String[]{"watch", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
             });
             traceThread = startInThreadWithContext(context, () -> {
                 try {
-                    new TraceCommand(inst, transformer, ProductionConfig.getInstance(), jobManager)
+                    new TraceCommand(inst, transformer, config, jobManager)
                         .execute(new String[]{"trace", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
             });
             ttThread = startInThreadWithContext(context, () -> {
                 try {
-                    new TtCommand(inst, transformer, ProductionConfig.getInstance(), jobManager)
+                    new TtCommand(inst, transformer, config, jobManager)
                         .execute(new String[]{"tt", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }

@@ -7,12 +7,8 @@ package com.javasleuth.core.command.server;
  */
 import com.javasleuth.core.monitoring.MetricsCollector;
 import com.javasleuth.foundation.security.AuditLogger;
-import com.javasleuth.foundation.security.AuthenticationManager;
 import com.javasleuth.foundation.security.AuthorizationManager;
-import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.foundation.security.RequestSecurityManager;
-import com.javasleuth.foundation.util.MemoryOptimizer;
-import com.javasleuth.foundation.util.PerformanceOptimizer;
 import com.javasleuth.foundation.util.SleuthLogger;
 import com.javasleuth.core.command.CommandPipeline;
 import com.javasleuth.core.command.CommandRegistry;
@@ -30,10 +26,8 @@ public final class ShutdownCoordinator {
     private final AuditLogger auditLogger;
     private final CommandRegistry registry;
     private final CommandPipeline pipeline;
-    private final AuthenticationManager authenticationManager;
     private final AuthorizationManager authorizationManager;
     private final RequestSecurityManager requestSecurityManager;
-    private final DangerousCommandConfirmationManager dangerousConfirm;
 
     public ShutdownCoordinator(
         AtomicBoolean running,
@@ -42,10 +36,8 @@ public final class ShutdownCoordinator {
         AuditLogger auditLogger,
         CommandRegistry registry,
         CommandPipeline pipeline,
-        AuthenticationManager authenticationManager,
         AuthorizationManager authorizationManager,
-        RequestSecurityManager requestSecurityManager,
-        DangerousCommandConfirmationManager dangerousConfirm
+        RequestSecurityManager requestSecurityManager
     ) {
         this.running = running;
         this.clientExecutor = clientExecutor;
@@ -53,10 +45,8 @@ public final class ShutdownCoordinator {
         this.auditLogger = auditLogger;
         this.registry = registry;
         this.pipeline = pipeline;
-        this.authenticationManager = authenticationManager;
         this.authorizationManager = authorizationManager;
         this.requestSecurityManager = requestSecurityManager;
-        this.dangerousConfirm = dangerousConfirm;
     }
 
     public void shutdownGracefully(ServerSocket serverSocket, int timeoutSeconds) {
@@ -93,12 +83,6 @@ public final class ShutdownCoordinator {
             }
 
             try {
-                // AuthenticationManager 是 singleton，并持有 AuditLogger 引用；detach→re-attach 必须允许其重建。
-                AuthenticationManager.shutdownInstance();
-            } catch (Exception ignore) {
-                // ignore
-            }
-            try {
                 if (authorizationManager != null) {
                     authorizationManager.shutdown();
                 }
@@ -112,26 +96,12 @@ public final class ShutdownCoordinator {
             } catch (Exception ignore) {
                 // ignore
             }
-            try {
-                // DangerousCommandConfirmationManager 也是 singleton；避免跨 attach 持有旧 AuditLogger 引用。
-                DangerousCommandConfirmationManager.shutdownInstance();
-            } catch (Exception ignore) {
-                // ignore
-            }
-
-            PerformanceOptimizer.shutdown();
-            try {
-                MemoryOptimizer.shutdownInstance();
-            } catch (Exception ignore) {
-                // ignore
-            }
 
             metricsCollector.recordServerShutdown();
             metricsCollector.shutdown();
 
             long shutdownDuration = System.currentTimeMillis() - shutdownStart;
             auditLogger.logSystemEvent("SHUTDOWN_COMPLETE", "Graceful shutdown completed in " + shutdownDuration + "ms");
-            auditLogger.shutdown();
 
             SleuthLogger.info("🎉 Command processor shutdown complete in " + shutdownDuration + "ms");
         } finally {
@@ -169,11 +139,6 @@ public final class ShutdownCoordinator {
                 // ignore
             }
             try {
-                AuthenticationManager.shutdownInstance();
-            } catch (Exception ignore) {
-                // ignore
-            }
-            try {
                 if (authorizationManager != null) {
                     authorizationManager.shutdown();
                 }
@@ -188,27 +153,7 @@ public final class ShutdownCoordinator {
                 // ignore
             }
             try {
-                DangerousCommandConfirmationManager.shutdownInstance();
-            } catch (Exception ignore) {
-                // ignore
-            }
-            try {
-                PerformanceOptimizer.shutdown();
-            } catch (Exception ignore) {
-                // ignore
-            }
-            try {
-                MemoryOptimizer.shutdownInstance();
-            } catch (Exception ignore) {
-                // ignore
-            }
-            try {
                 metricsCollector.shutdown();
-            } catch (Exception ignore) {
-                // ignore
-            }
-            try {
-                auditLogger.shutdown();
             } catch (Exception ignore) {
                 // ignore
             }

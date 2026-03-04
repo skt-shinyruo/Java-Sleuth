@@ -18,7 +18,7 @@ public class BootstrapMonitoringConfigSyncTest {
 
     @Test
     public void configSetRemoveClearShouldSyncBootstrapMonitorConfigStore() throws Exception {
-        ProductionConfig config = ProductionConfig.getInstance();
+        ProductionConfig config = ProductionConfig.createDefault();
         BootstrapMonitorConfigStore.clear();
 
         ConfigCommand cmd = new ConfigCommand(config);

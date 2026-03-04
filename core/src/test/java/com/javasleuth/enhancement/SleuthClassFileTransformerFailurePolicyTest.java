@@ -36,7 +36,7 @@ public class SleuthClassFileTransformerFailurePolicyTest {
             BytesClassLoader loader = new BytesClassLoader(bytes);
             Class<?> clazz = loader.define("com.example.Dup3");
 
-            SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(ProductionConfig.getInstance());
+            SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(ProductionConfig.createDefault());
             ClassEnhancer badEnhancer = new ClassEnhancer() {
                 @Override
                 public org.objectweb.asm.ClassVisitor createClassVisitor(org.objectweb.asm.ClassVisitor delegate, String className) {

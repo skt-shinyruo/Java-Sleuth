@@ -16,12 +16,11 @@ public class CommandProcessorExecutorQueueTest {
 
     @Test
     public void testClientExecutorQueueIsBoundedAndCallerRunsEnabled() throws Exception {
-        ProductionConfig config = ProductionConfig.getInstance();
-
-        config.setRuntimeConfig("server.executor.queue.capacity", "1");
+        String oldCap = System.getProperty("sleuth.server.executor.queue.capacity");
         try {
+            System.setProperty("sleuth.server.executor.queue.capacity", "1");
             Instrumentation inst = fakeInstrumentation();
-            SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(config);
+            SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(ProductionConfig.createDefault());
 
             CommandProcessor processor = new CommandProcessor(inst, transformer);
 
@@ -34,7 +33,11 @@ public class CommandProcessorExecutorQueueTest {
             Assert.assertTrue(queue instanceof LinkedBlockingQueue);
             Assert.assertEquals(1, queue.remainingCapacity());
         } finally {
-            config.removeRuntimeConfig("server.executor.queue.capacity");
+            if (oldCap == null) {
+                System.clearProperty("sleuth.server.executor.queue.capacity");
+            } else {
+                System.setProperty("sleuth.server.executor.queue.capacity", oldCap);
+            }
         }
     }
 

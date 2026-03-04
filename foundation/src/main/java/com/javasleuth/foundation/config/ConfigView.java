@@ -3,8 +3,8 @@ package com.javasleuth.foundation.config;
 /**
  * Read-only view for configuration access.
  *
- * <p>This interface exists to reduce implicit dependencies on {@link ProductionConfig#getInstance()} and
- * to make configuration semantics (priority/origin) explicit.</p>
+ * <p>This interface exists to reduce implicit dependencies on global configuration state and to make
+ * configuration semantics (priority/origin) explicit.</p>
  */
 public interface ConfigView {
     String getString(String key, String defaultValue);
