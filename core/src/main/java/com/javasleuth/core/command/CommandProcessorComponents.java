@@ -34,6 +34,7 @@ public final class CommandProcessorComponents {
     private final com.javasleuth.core.command.server.ServerBootstrapper bootstrapper;
     private final com.javasleuth.core.command.server.ConnectionAcceptor acceptor;
     private final com.javasleuth.core.command.server.ShutdownCoordinator shutdownCoordinator;
+    private final AutoCloseable ownedResources;
 
     CommandProcessorComponents(
         java.lang.instrument.Instrumentation instrumentation,
@@ -57,7 +58,8 @@ public final class CommandProcessorComponents {
         com.javasleuth.core.command.server.CommandClientHandler clientHandler,
         com.javasleuth.core.command.server.ServerBootstrapper bootstrapper,
         com.javasleuth.core.command.server.ConnectionAcceptor acceptor,
-        com.javasleuth.core.command.server.ShutdownCoordinator shutdownCoordinator
+        com.javasleuth.core.command.server.ShutdownCoordinator shutdownCoordinator,
+        AutoCloseable ownedResources
     ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
@@ -81,6 +83,7 @@ public final class CommandProcessorComponents {
         this.bootstrapper = bootstrapper;
         this.acceptor = acceptor;
         this.shutdownCoordinator = shutdownCoordinator;
+        this.ownedResources = ownedResources;
     }
 
     public java.lang.instrument.Instrumentation getInstrumentation() {
@@ -169,5 +172,9 @@ public final class CommandProcessorComponents {
 
     public com.javasleuth.core.command.server.ShutdownCoordinator getShutdownCoordinator() {
         return shutdownCoordinator;
+    }
+
+    public AutoCloseable getOwnedResources() {
+        return ownedResources;
     }
 }

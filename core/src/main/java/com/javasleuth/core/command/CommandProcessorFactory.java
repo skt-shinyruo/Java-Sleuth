@@ -126,23 +126,20 @@ public final class CommandProcessorFactory {
         com.javasleuth.core.enhancement.SleuthClassFileTransformer transformer,
         Runnable shutdownHook
     ) {
-        com.javasleuth.foundation.config.ProductionConfig config = com.javasleuth.foundation.config.ProductionConfig.createDefault();
-        com.javasleuth.foundation.security.AuditLogger auditLogger = new com.javasleuth.foundation.security.AuditLogger(config);
-        com.javasleuth.foundation.security.AuthenticationManager authenticationManager = new com.javasleuth.foundation.security.AuthenticationManager(config, auditLogger);
         return createComponents(
             instrumentation,
             transformer,
             shutdownHook,
-            config,
-            auditLogger,
-            authenticationManager,
-            new com.javasleuth.foundation.security.AuthorizationManager(config, auditLogger, authenticationManager),
-            new com.javasleuth.foundation.security.RequestSecurityManager(config, auditLogger),
-            new com.javasleuth.foundation.security.DangerousCommandConfirmationManager(config, auditLogger),
-            new com.javasleuth.core.command.session.ClientSessionRegistry(),
-            new com.javasleuth.core.monitoring.MetricsCollector(config),
-            new JobManager(),
-            new com.javasleuth.core.vmtool.VmToolSessionRegistry(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
             null
         );
     }
@@ -233,10 +230,18 @@ public final class CommandProcessorFactory {
             throw new IllegalArgumentException("transformer is required");
         }
 
+        boolean ownsJobManager = jobManager == null;
+        boolean ownsVmToolSessionRegistry = vmToolSessionRegistry == null;
+        boolean ownsPerformanceOptimizer = performanceOptimizer == null;
+
         com.javasleuth.foundation.config.ProductionConfig cfg =
             config != null ? config : com.javasleuth.foundation.config.ProductionConfig.createDefault();
+
+        boolean ownsAuditLogger = auditLogger == null;
         com.javasleuth.foundation.security.AuditLogger audit =
             auditLogger != null ? auditLogger : new com.javasleuth.foundation.security.AuditLogger(cfg);
+
+        boolean ownsAuthenticationManager = authenticationManager == null;
         com.javasleuth.foundation.security.AuthenticationManager authn =
             authenticationManager != null
                 ? authenticationManager
@@ -245,10 +250,14 @@ public final class CommandProcessorFactory {
             authorizationManager != null ? authorizationManager : new com.javasleuth.foundation.security.AuthorizationManager(cfg, audit, authn);
         com.javasleuth.foundation.security.RequestSecurityManager reqSec =
             requestSecurityManager != null ? requestSecurityManager : new com.javasleuth.foundation.security.RequestSecurityManager(cfg, audit);
+
+        boolean ownsDangerousConfirm = dangerousConfirm == null;
         com.javasleuth.foundation.security.DangerousCommandConfirmationManager dc =
             dangerousConfirm != null
                 ? dangerousConfirm
                 : new com.javasleuth.foundation.security.DangerousCommandConfirmationManager(cfg, audit);
+
+        boolean ownsClientSessionRegistry = clientSessionRegistry == null;
         com.javasleuth.core.command.session.ClientSessionRegistry csr =
             clientSessionRegistry != null ? clientSessionRegistry : new com.javasleuth.core.command.session.ClientSessionRegistry();
 
@@ -348,6 +357,42 @@ public final class CommandProcessorFactory {
             reqSec
         );
 
+        AutoCloseable ownedResources = null;
+        if (ownsAuditLogger
+            || ownsAuthenticationManager
+            || ownsDangerousConfirm
+            || ownsClientSessionRegistry
+            || ownsJobManager
+            || ownsVmToolSessionRegistry
+            || ownsPerformanceOptimizer) {
+            java.util.ArrayList<AutoCloseable> closeables = new java.util.ArrayList<>();
+
+            // Close order is reversed: add dependencies first so they close last.
+            if (ownsAuditLogger) {
+                closeables.add(audit);
+            }
+            if (ownsAuthenticationManager) {
+                closeables.add(authn);
+            }
+            if (ownsDangerousConfirm) {
+                closeables.add(dc);
+            }
+            if (ownsPerformanceOptimizer) {
+                closeables.add(() -> com.javasleuth.foundation.util.PerformanceOptimizer.shutdown());
+            }
+            if (ownsVmToolSessionRegistry) {
+                closeables.add(() -> vmsr.shutdown(instrumentation, transformer, "shutdown"));
+            }
+            if (ownsClientSessionRegistry) {
+                closeables.add(() -> csr.shutdown("shutdown"));
+            }
+            if (ownsJobManager) {
+                closeables.add(() -> jm.shutdown("shutdown"));
+            }
+
+            ownedResources = new CommandProcessorOwnedResources(closeables.toArray(new AutoCloseable[0]));
+        }
+
         try {
             audit.logSystemEvent(
                 "COMMAND_PROCESSOR_INIT",
@@ -379,7 +424,8 @@ public final class CommandProcessorFactory {
             clientHandler,
             bootstrapper,
             acceptor,
-            shutdownCoordinator
+            shutdownCoordinator,
+            ownedResources
         );
     }
 }

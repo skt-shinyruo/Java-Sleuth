@@ -49,9 +49,9 @@ public final class ShutdownCoordinator {
         this.requestSecurityManager = requestSecurityManager;
     }
 
-    public void shutdownGracefully(ServerSocket serverSocket, int timeoutSeconds) {
+    public boolean shutdownGracefully(ServerSocket serverSocket, int timeoutSeconds) {
         if (!shuttingDown.compareAndSet(false, true)) {
-            return;
+            return false;
         }
 
         try {
@@ -107,11 +107,12 @@ public final class ShutdownCoordinator {
         } finally {
             shuttingDown.set(false);
         }
+        return true;
     }
 
-    public void emergencyShutdown(ServerSocket serverSocket) {
+    public boolean emergencyShutdown(ServerSocket serverSocket) {
         if (!shuttingDown.compareAndSet(false, true)) {
-            return;
+            return false;
         }
 
         try {
@@ -162,6 +163,7 @@ public final class ShutdownCoordinator {
         } finally {
             shuttingDown.set(false);
         }
+        return true;
     }
 
     private void closeServerSocket(ServerSocket serverSocket) {
