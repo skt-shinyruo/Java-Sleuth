@@ -36,6 +36,7 @@ public class CommandProcessor {
     private final ServerBootstrapper bootstrapper;
     private final ConnectionAcceptor acceptor;
     private final ShutdownCoordinator shutdownCoordinator;
+    private final AutoCloseable ownedResources;
     private ServerSocket serverSocket;
     private final AtomicBoolean shutdownHookRegistered = new AtomicBoolean(false);
     private volatile Thread jvmShutdownHook;
@@ -89,6 +90,7 @@ public class CommandProcessor {
         this.bootstrapper = components.getBootstrapper();
         this.acceptor = components.getAcceptor();
         this.shutdownCoordinator = components.getShutdownCoordinator();
+        this.ownedResources = components.getOwnedResources();
     }
 
     public void start() {
@@ -136,14 +138,20 @@ public class CommandProcessor {
      * Graceful shutdown with configurable timeout
      */
     public void shutdownGracefully(int timeoutSeconds) {
-        shutdownCoordinator.shutdownGracefully(serverSocket, timeoutSeconds);
+        boolean executed = shutdownCoordinator.shutdownGracefully(serverSocket, timeoutSeconds);
+        if (executed) {
+            closeOwnedResourcesBestEffort();
+        }
     }
 
     /**
      * Emergency shutdown - immediate termination
      */
     public void emergencyShutdown() {
-        shutdownCoordinator.emergencyShutdown(serverSocket);
+        boolean executed = shutdownCoordinator.emergencyShutdown(serverSocket);
+        if (executed) {
+            closeOwnedResourcesBestEffort();
+        }
     }
 
     /**
@@ -207,6 +215,18 @@ public class CommandProcessor {
             // best-effort
         } finally {
             jvmShutdownHook = null;
+        }
+    }
+
+    private void closeOwnedResourcesBestEffort() {
+        AutoCloseable closeable = ownedResources;
+        if (closeable == null) {
+            return;
+        }
+        try {
+            closeable.close();
+        } catch (Exception ignore) {
+            // best-effort
         }
     }
 
