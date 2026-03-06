@@ -173,17 +173,17 @@ public final class PrecheckPipeline {
             }
             switch (cmd) {
                 case "watch":
-                    return BootstrapBridge.WATCH_INTERCEPTOR;
+                    return BootstrapBridge.SPY_API;
                 case "trace":
-                    return BootstrapBridge.TRACE_INTERCEPTOR;
+                    return BootstrapBridge.SPY_API;
                 case "monitor":
-                    return BootstrapBridge.MONITOR_INTERCEPTOR;
+                    return BootstrapBridge.SPY_API;
                 case "tt":
-                    return BootstrapBridge.TT_INTERCEPTOR;
+                    return BootstrapBridge.SPY_API;
                 case "stack":
-                    return BootstrapBridge.STACK_INTERCEPTOR;
+                    return BootstrapBridge.SPY_API;
                 case "vmtool":
-                    return BootstrapBridge.VMTOOL_INTERCEPTOR;
+                    return BootstrapBridge.SPY_API;
                 default:
                     return null;
             }

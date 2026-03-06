@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class StackInterceptor {
     private static final ConcurrentHashMap<String, BlockingQueue<StackTraceResult>> queues = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Integer> maxDepthById = new ConcurrentHashMap<>();
     private static volatile boolean enabled = false;
 
     private static final AtomicLong publishedEvents = new AtomicLong(0);
@@ -21,11 +22,18 @@ public final class StackInterceptor {
 
     private StackInterceptor() {}
 
+    private static final int DEFAULT_MAX_DEPTH = 20;
+
     public static void register(String stackId, BlockingQueue<StackTraceResult> queue) {
+        register(stackId, queue, DEFAULT_MAX_DEPTH);
+    }
+
+    public static void register(String stackId, BlockingQueue<StackTraceResult> queue, int maxDepth) {
         if (stackId == null || stackId.isEmpty() || queue == null) {
             return;
         }
         queues.put(stackId, queue);
+        maxDepthById.put(stackId, maxDepth);
         enabled = true;
     }
 
@@ -34,11 +42,13 @@ public final class StackInterceptor {
             return;
         }
         queues.remove(stackId);
+        maxDepthById.remove(stackId);
         enabled = !queues.isEmpty();
     }
 
     public static void unregisterAll() {
         queues.clear();
+        maxDepthById.clear();
         enabled = false;
     }
 
@@ -87,6 +97,24 @@ public final class StackInterceptor {
 
     public static long getEvictedEventCount() {
         return evictedEvents.get();
+    }
+
+    /**
+     * Stack sampling entrypoint with per-stackId maxDepth resolved from registration.
+     *
+     * <p>Used by SpyAPI so enhanced bytecode does not need to bake maxDepth into the injected call site.</p>
+     */
+    public static void onMethodEnter(String stackId, String className, String methodName, String methodDesc) {
+        int depth = DEFAULT_MAX_DEPTH;
+        try {
+            Integer d = maxDepthById.get(stackId);
+            if (d != null) {
+                depth = d.intValue();
+            }
+        } catch (Throwable ignore) {
+            depth = DEFAULT_MAX_DEPTH;
+        }
+        onMethodEnter(stackId, className, methodName, methodDesc, depth);
     }
 
     public static void onMethodEnter(String stackId, String className, String methodName, String methodDesc, int maxDepth) {

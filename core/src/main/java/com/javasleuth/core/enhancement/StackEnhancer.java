@@ -13,17 +13,17 @@ import org.objectweb.asm.commons.AdviceAdapter;
  */
 public final class StackEnhancer implements BootstrapDependentEnhancer {
     private final String targetClassName;
+    private final String targetClassInternalName;
     private final String targetMethodPattern;
     private final String targetMethodDesc;
     private final String stackId;
-    private final int maxDepth;
 
-    public StackEnhancer(String className, String methodPattern, String methodDesc, String stackId, int maxDepth) {
+    public StackEnhancer(String className, String methodPattern, String methodDesc, String stackId) {
         this.targetClassName = className;
+        this.targetClassInternalName = className == null ? null : className.replace('.', '/');
         this.targetMethodPattern = methodPattern;
         this.targetMethodDesc = methodDesc;
         this.stackId = stackId;
-        this.maxDepth = maxDepth;
     }
 
     @Override
@@ -38,7 +38,7 @@ public final class StackEnhancer implements BootstrapDependentEnhancer {
 
     @Override
     public String requiredBootstrapClassName() {
-        return "com.javasleuth.bootstrap.monitor.StackInterceptor";
+        return "com.javasleuth.bootstrap.spy.SleuthSpyAPI";
     }
 
     private final class StackClassVisitor extends ClassVisitor {
@@ -79,21 +79,36 @@ public final class StackEnhancer implements BootstrapDependentEnhancer {
 
         @Override
         protected void onMethodEnter() {
-            // stackId
+            // listenerId (stackId)
             mv.visitLdcInsn(stackId);
-            // className
-            mv.visitLdcInsn(targetClassName);
-            // methodName
-            mv.visitLdcInsn(methodName);
-            // methodDesc
-            mv.visitLdcInsn(methodDesc);
-            // maxDepth
-            push(maxDepth);
+
+            // clazz
+            if (targetClassInternalName != null) {
+                mv.visitLdcInsn(org.objectweb.asm.Type.getObjectType(targetClassInternalName));
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+
+            // methodInfo: methodName|methodDesc
+            mv.visitLdcInsn(methodName + "|" + methodDesc);
+
+            // target (this or null)
+            if ((methodAccess & ACC_STATIC) == 0) {
+                mv.visitVarInsn(ALOAD, 0);
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+
+            // args
+            mv.visitInsn(ACONST_NULL);
+
+            // startNanos (not used by stack)
+            mv.visitInsn(LCONST_0);
 
             mv.visitMethodInsn(INVOKESTATIC,
-                "com/javasleuth/bootstrap/monitor/StackInterceptor",
-                "onMethodEnter",
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V",
+                "com/javasleuth/bootstrap/spy/SleuthSpyAPI",
+                "atEnter",
+                "(Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/Object;[Ljava/lang/Object;J)V",
                 false
             );
         }

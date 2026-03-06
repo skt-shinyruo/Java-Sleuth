@@ -11,6 +11,7 @@ import com.javasleuth.foundation.security.AuthenticationManager.UserRole;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.foundation.util.PerformanceOptimizer;
 import com.javasleuth.core.vmtool.VmToolSessionRegistry;
+import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import java.lang.instrument.Instrumentation;
 import java.util.HashMap;
 import java.util.Map;
@@ -27,6 +28,7 @@ public class BuiltinCommandProvider implements CommandProvider {
     private final JobManager jobManager;
     private final VmToolSessionRegistry vmToolSessionRegistry;
     private final PerformanceOptimizer performanceOptimizer;
+    private final SleuthSpyDispatcher spyDispatcher;
 
     public BuiltinCommandProvider(Instrumentation instrumentation,
                                   SleuthClassFileTransformer transformer,
@@ -38,7 +40,8 @@ public class BuiltinCommandProvider implements CommandProvider {
                                   DangerousCommandConfirmationManager dangerousConfirm,
                                   JobManager jobManager,
                                   VmToolSessionRegistry vmToolSessionRegistry,
-                                  PerformanceOptimizer performanceOptimizer) {
+                                  PerformanceOptimizer performanceOptimizer,
+                                  SleuthSpyDispatcher spyDispatcher) {
         if (authenticationManager == null) {
             throw new IllegalArgumentException("authenticationManager is required");
         }
@@ -54,6 +57,9 @@ public class BuiltinCommandProvider implements CommandProvider {
         if (performanceOptimizer == null) {
             throw new IllegalArgumentException("performanceOptimizer is required");
         }
+        if (spyDispatcher == null) {
+            throw new IllegalArgumentException("spyDispatcher is required");
+        }
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.metricsCollector = metricsCollector;
@@ -65,6 +71,7 @@ public class BuiltinCommandProvider implements CommandProvider {
         this.jobManager = jobManager;
         this.vmToolSessionRegistry = vmToolSessionRegistry;
         this.performanceOptimizer = performanceOptimizer;
+        this.spyDispatcher = spyDispatcher;
     }
 
     @Override
@@ -79,22 +86,23 @@ public class BuiltinCommandProvider implements CommandProvider {
         JobManager jobManager = this.jobManager;
         VmToolSessionRegistry vmToolSessionRegistry = this.vmToolSessionRegistry;
         PerformanceOptimizer performanceOptimizer = this.performanceOptimizer;
+        SleuthSpyDispatcher spyDispatcher = this.spyDispatcher;
 
         commands.put("dashboard", new DashboardCommand(instrumentation));
         commands.put("thread", new ThreadCommand(instrumentation));
         commands.put("sc", new SearchClassCommand(instrumentation));
         commands.put("sm", new SearchMethodCommand(instrumentation));
-        commands.put("watch", new WatchCommand(instrumentation, transformer, config, jobManager));
-        commands.put("trace", new TraceCommand(instrumentation, transformer, config, jobManager));
-        commands.put("tt", new TtCommand(instrumentation, transformer, config, jobManager));
+        commands.put("watch", new WatchCommand(instrumentation, transformer, config, jobManager, spyDispatcher));
+        commands.put("trace", new TraceCommand(instrumentation, transformer, config, jobManager, spyDispatcher));
+        commands.put("tt", new TtCommand(instrumentation, transformer, config, jobManager, spyDispatcher));
         commands.put("jobs", new JobsCommand(jobManager));
         commands.put("redefine", new RedefineCommand(instrumentation));
         commands.put("mc", new MemoryCompilerCommand());
         commands.put("retransform", new RetransformCommand(instrumentation));
 
         commands.put("profiler", new ProfilerCommand(instrumentation));
-        commands.put("monitor", new MonitorCommand(instrumentation, transformer, jobManager));
-        commands.put("stack", new StackCommand(instrumentation, transformer, config, jobManager));
+        commands.put("monitor", new MonitorCommand(instrumentation, transformer, jobManager, spyDispatcher));
+        commands.put("stack", new StackCommand(instrumentation, transformer, config, jobManager, spyDispatcher));
         commands.put("reset", new ResetCommand(instrumentation, transformer, jobManager, vmToolSessionRegistry));
 
         commands.put("jvm", new JvmCommand(instrumentation));
@@ -114,7 +122,7 @@ public class BuiltinCommandProvider implements CommandProvider {
 
         commands.put("health", new HealthCommand(metricsCollector, performanceOptimizer));
         commands.put("metrics", new MetricsCommand(metricsCollector));
-        commands.put("status", new StatusCommand(instrumentation, metricsCollector, transformer, config, performanceOptimizer));
+        commands.put("status", new StatusCommand(instrumentation, metricsCollector, transformer, config, performanceOptimizer, spyDispatcher));
         commands.put("config", new ConfigCommand(config));
         commands.put("audit", new AuditCommand(auditLogger));
         commands.put("session", new SessionCommand(authenticationManager));

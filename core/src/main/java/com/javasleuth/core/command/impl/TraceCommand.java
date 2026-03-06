@@ -14,6 +14,8 @@ import com.javasleuth.bootstrap.monitor.TraceAggregator;
 import com.javasleuth.bootstrap.monitor.TraceInterceptor;
 import com.javasleuth.bootstrap.data.TraceResult;
 import com.javasleuth.core.command.session.ClientSession;
+import com.javasleuth.core.spy.SleuthSpyDispatcher;
+import com.javasleuth.core.spy.listener.TraceAdviceListener;
 import com.javasleuth.foundation.util.LoadedClassResolver;
 import com.javasleuth.core.command.util.SleuthConditionEvaluator;
 import com.javasleuth.foundation.util.SleuthLogger;
@@ -36,6 +38,7 @@ public class TraceCommand implements StreamCommand {
     private final SleuthClassFileTransformer transformer;
     private final ConfigView config;
     private final JobManager jobManager;
+    private final SleuthSpyDispatcher spyDispatcher;
     private final ConcurrentHashMap<String, TraceSession> activeSessions = new ConcurrentHashMap<>();
 
     public TraceCommand(
@@ -44,6 +47,16 @@ public class TraceCommand implements StreamCommand {
         ConfigView config,
         JobManager jobManager
     ) {
+        this(instrumentation, transformer, config, jobManager, null);
+    }
+
+    public TraceCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        JobManager jobManager,
+        SleuthSpyDispatcher spyDispatcher
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.config = config;
@@ -51,6 +64,7 @@ public class TraceCommand implements StreamCommand {
             throw new IllegalArgumentException("jobManager");
         }
         this.jobManager = jobManager;
+        this.spyDispatcher = spyDispatcher;
     }
 
     @Override
@@ -220,9 +234,22 @@ public class TraceCommand implements StreamCommand {
         boolean interceptorRegistered = false;
         boolean enhancerAdded = false;
         try {
-            // Register the trace
-            TraceInterceptor.registerTrace(traceId, resultQueue);
-            interceptorRegistered = true;
+            boolean registered = false;
+            SleuthSpyDispatcher dispatcher = this.spyDispatcher;
+            if (dispatcher != null && isDispatcherInstalled(dispatcher)) {
+                boolean dropOnFull = config.getBoolean("monitoring.trace.drop.on.full", true);
+                dispatcher.register(
+                    traceId,
+                    SleuthSpyDispatcher.ListenerKind.TRACE,
+                    new TraceAdviceListener(traceId, resultQueue, dropOnFull)
+                );
+                registered = true;
+            } else {
+                // Fallback to legacy bootstrap interceptor path.
+                TraceInterceptor.registerTrace(traceId, resultQueue);
+                registered = true;
+            }
+            interceptorRegistered = registered;
 
             // Create and register enhancer
             transformer.addEnhancer(targetClass, enhancer);
@@ -251,6 +278,14 @@ public class TraceCommand implements StreamCommand {
             if (interceptorRegistered) {
                 try {
                     TraceInterceptor.unregisterTrace(traceId);
+                } catch (Exception ignore) {
+                    // ignore
+                }
+                try {
+                    SleuthSpyDispatcher d = this.spyDispatcher;
+                    if (d != null) {
+                        d.unregister(traceId);
+                    }
                 } catch (Exception ignore) {
                     // ignore
                 }
@@ -361,10 +396,29 @@ public class TraceCommand implements StreamCommand {
 
                 // Unregister trace
                 TraceInterceptor.unregisterTrace(traceId);
+                try {
+                    SleuthSpyDispatcher d = this.spyDispatcher;
+                    if (d != null) {
+                        d.unregister(traceId);
+                    }
+                } catch (Exception ignore) {
+                    // ignore
+                }
 
             } catch (Exception e) {
                 SleuthLogger.warn("Error stopping trace: " + e.getMessage(), e);
             }
+        }
+    }
+
+    private static boolean isDispatcherInstalled(SleuthSpyDispatcher dispatcher) {
+        try {
+            if (!com.javasleuth.bootstrap.spy.SleuthSpyAPI.isInited()) {
+                return false;
+            }
+            return com.javasleuth.bootstrap.spy.SleuthSpyAPI.getSpy() == dispatcher;
+        } catch (Throwable t) {
+            return false;
         }
     }
 

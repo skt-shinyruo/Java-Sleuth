@@ -42,7 +42,7 @@ public class TraceEnhancerDedupTest {
                 return new MethodVisitor(Opcodes.ASM9, mv) {
                     @Override
                     public void visitMethodInsn(int opcode, String owner, String methodName, String desc, boolean itf) {
-                        if ("com/javasleuth/bootstrap/monitor/TraceInterceptor".equals(owner) && "onSubMethodCall".equals(methodName)) {
+                        if ("com/javasleuth/bootstrap/spy/SleuthSpyAPI".equals(owner) && "atBeforeInvoke".equals(methodName)) {
                             subCallCountInA.incrementAndGet();
                         }
                         super.visitMethodInsn(opcode, owner, methodName, desc, itf);

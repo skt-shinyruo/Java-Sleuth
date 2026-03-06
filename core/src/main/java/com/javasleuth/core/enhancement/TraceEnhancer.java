@@ -31,7 +31,7 @@ public class TraceEnhancer implements BootstrapDependentEnhancer {
 
     @Override
     public String requiredBootstrapClassName() {
-        return "com.javasleuth.bootstrap.monitor.TraceInterceptor";
+        return "com.javasleuth.bootstrap.spy.SleuthSpyAPI";
     }
 
     private class TraceClassVisitor extends ClassVisitor {
@@ -70,6 +70,7 @@ public class TraceEnhancer implements BootstrapDependentEnhancer {
         private final String methodName;
         private final String methodDesc;
         private int startTimeVar;
+        private int currentLine = -1;
         private final Label tryStart = new Label();
         private final Label tryEnd = new Label();
 
@@ -98,17 +99,24 @@ public class TraceEnhancer implements BootstrapDependentEnhancer {
         @Override
         protected void onMethodExit(int opcode) {
             if (opcode != ATHROW) {
-                generateTraceExitCall(false);
+                generateTraceExitCall();
             }
         }
 
         @Override
-        public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
-            // Trace method calls within the target method
-            if (opcode == INVOKEVIRTUAL || opcode == INVOKESPECIAL || opcode == INVOKESTATIC || opcode == INVOKEINTERFACE) {
-                generateSubMethodCall(owner, name, descriptor);
-            }
+        public void visitLineNumber(int line, Label start) {
+            currentLine = line;
+            super.visitLineNumber(line, start);
+        }
 
+        @Override
+        public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
+            if (opcode == INVOKEVIRTUAL || opcode == INVOKESPECIAL || opcode == INVOKESTATIC || opcode == INVOKEINTERFACE) {
+                if (shouldTraceInvoke(owner, name, descriptor)) {
+                    generateInvokeEventsAround(opcode, owner, name, descriptor, isInterface, currentLine);
+                    return;
+                }
+            }
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
         }
 
@@ -122,45 +130,73 @@ public class TraceEnhancer implements BootstrapDependentEnhancer {
             mv.visitLabel(handlerLabel);
             int exceptionVar = newLocal(Type.getType(Throwable.class));
             mv.visitVarInsn(ASTORE, exceptionVar);
-            generateTraceExitCall(true);
+            generateTraceExceptionExitCall(exceptionVar);
             mv.visitVarInsn(ALOAD, exceptionVar);
             mv.visitInsn(ATHROW);
             super.visitMaxs(maxStack + 10, maxLocals + 3);
         }
 
         private void generateTraceEntryCall() {
-            // Push trace ID
+            // listenerId (traceId)
             mv.visitLdcInsn(traceId);
 
-            // Push class name
-            mv.visitLdcInsn(targetClassName);
+            // clazz
+            if (targetClassInternalName != null) {
+                mv.visitLdcInsn(Type.getObjectType(targetClassInternalName));
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
 
-            // Push method name
-            mv.visitLdcInsn(methodName);
+            // methodInfo: methodName|methodDesc
+            mv.visitLdcInsn(methodName + "|" + methodDesc);
 
-            // Push method descriptor
-            mv.visitLdcInsn(methodDesc);
+            // target (this or null)
+            if ((methodAccess & ACC_STATIC) == 0) {
+                mv.visitVarInsn(ALOAD, 0);
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+
+            // args (trace does not capture args for now)
+            mv.visitInsn(ACONST_NULL);
 
             // Push start time
             mv.visitVarInsn(LLOAD, startTimeVar);
 
-            // Call TraceInterceptor.onMethodEntry
-            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/monitor/TraceInterceptor",
-                "onMethodEntry", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V", false);
+            // SleuthSpyAPI.atEnter
+            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/spy/SleuthSpyAPI",
+                "atEnter", "(Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/Object;[Ljava/lang/Object;J)V", false);
         }
 
-        private void generateTraceExitCall(boolean isException) {
-            // Push trace ID
+        private void generateTraceExitCall() {
+            // listenerId (traceId)
             mv.visitLdcInsn(traceId);
 
-            // Push class name
-            mv.visitLdcInsn(targetClassName);
+            // clazz
+            if (targetClassInternalName != null) {
+                mv.visitLdcInsn(Type.getObjectType(targetClassInternalName));
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
 
-            // Push method name
-            mv.visitLdcInsn(methodName);
+            // methodInfo: methodName|methodDesc
+            mv.visitLdcInsn(methodName + "|" + methodDesc);
 
-            // Push method descriptor
-            mv.visitLdcInsn(methodDesc);
+            // target (this or null)
+            if ((methodAccess & ACC_STATIC) == 0) {
+                mv.visitVarInsn(ALOAD, 0);
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+
+            // args (trace does not capture args for now)
+            mv.visitInsn(ACONST_NULL);
+
+            // returnObject (trace ignores return value)
+            mv.visitInsn(ACONST_NULL);
+
+            // returnCaptured (true; return value is not used)
+            push(true);
 
             // Push start time
             mv.visitVarInsn(LLOAD, startTimeVar);
@@ -170,19 +206,67 @@ public class TraceEnhancer implements BootstrapDependentEnhancer {
             mv.visitVarInsn(LLOAD, startTimeVar);
             mv.visitInsn(LSUB);
 
-            // Push exception flag
-            push(isException);
-
-            // Call TraceInterceptor.onMethodExit
-            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/monitor/TraceInterceptor",
-                "onMethodExit", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJZ)V", false);
+            // SleuthSpyAPI.atExit
+            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/spy/SleuthSpyAPI",
+                "atExit", "(Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/Object;[Ljava/lang/Object;Ljava/lang/Object;ZJJ)V", false);
         }
 
-        private void generateSubMethodCall(String owner, String name, String descriptor) {
-            // Don't trace calls to system classes or our own classes
+        private void generateTraceExceptionExitCall(int exceptionVar) {
+            // listenerId (traceId)
+            mv.visitLdcInsn(traceId);
+
+            // clazz
+            if (targetClassInternalName != null) {
+                mv.visitLdcInsn(Type.getObjectType(targetClassInternalName));
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+
+            // methodInfo: methodName|methodDesc
+            mv.visitLdcInsn(methodName + "|" + methodDesc);
+
+            // target (this or null)
+            if ((methodAccess & ACC_STATIC) == 0) {
+                mv.visitVarInsn(ALOAD, 0);
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+
+            // args (trace does not capture args for now)
+            mv.visitInsn(ACONST_NULL);
+
+            // throwable
+            mv.visitVarInsn(ALOAD, exceptionVar);
+
+            // start time
+            mv.visitVarInsn(LLOAD, startTimeVar);
+
+            // duration = nanoTime - startTimeVar
+            mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
+            mv.visitVarInsn(LLOAD, startTimeVar);
+            mv.visitInsn(LSUB);
+
+            // SleuthSpyAPI.atExceptionExit
+            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/spy/SleuthSpyAPI",
+                "atExceptionExit", "(Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/Object;[Ljava/lang/Object;Ljava/lang/Throwable;JJ)V", false);
+        }
+
+        private boolean shouldTraceInvoke(String owner, String name, String descriptor) {
+            if (owner == null) {
+                return false;
+            }
+            if (name == null) {
+                return false;
+            }
             if (owner.startsWith("java/") || owner.startsWith("javax/") ||
                 owner.startsWith("sun/") || owner.startsWith("com/javasleuth/")) {
-                return;
+                return false;
+            }
+
+            // Constructor invokes have an uninitialized object on the stack. Injecting any method call before
+            // invokespecial <init> may cause VerifyError. For safety, skip constructor invokes.
+            if ("<init>".equals(name)) {
+                return false;
             }
 
             // Avoid duplicate events when the callee method is also traced by this enhancer.
@@ -190,29 +274,147 @@ public class TraceEnhancer implements BootstrapDependentEnhancer {
                 boolean nameMatches = WildcardMatcher.matches(name, targetMethodName);
                 if (nameMatches) {
                     if (targetMethodDesc == null || "*".equals(targetMethodDesc) || targetMethodDesc.equals(descriptor)) {
-                        return;
+                        return false;
                     }
                 }
             }
+            return true;
+        }
 
-            // Push trace ID
+        private void generateInvokeEventsAround(
+            int opcode,
+            String owner,
+            String name,
+            String descriptor,
+            boolean isInterface,
+            int lineNumber
+        ) {
+            generateBeforeInvoke(owner, name, descriptor, lineNumber);
+
+            Label invokeStart = new Label();
+            Label invokeEnd = new Label();
+            Label invokeHandler = new Label();
+            Label afterHandler = new Label();
+
+            mv.visitTryCatchBlock(invokeStart, invokeEnd, invokeHandler, "java/lang/Throwable");
+            mv.visitLabel(invokeStart);
+            super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+            mv.visitLabel(invokeEnd);
+
+            Type returnType = Type.getReturnType(descriptor);
+            int returnVar = -1;
+            if (returnType.getSort() != Type.VOID) {
+                returnVar = newLocal(returnType);
+                mv.visitVarInsn(returnType.getOpcode(ISTORE), returnVar);
+            }
+
+            // Skip the exception handler on the normal path.
+            mv.visitJumpInsn(GOTO, afterHandler);
+
+            // Exception handler for the invoke instruction only.
+            mv.visitLabel(invokeHandler);
+            int exceptionVar = newLocal(Type.getType(Throwable.class));
+            mv.visitVarInsn(ASTORE, exceptionVar);
+            generateInvokeException(owner, name, descriptor, lineNumber, exceptionVar);
+            mv.visitVarInsn(ALOAD, exceptionVar);
+            mv.visitInsn(ATHROW);
+
+            // Normal completion: emit after-invoke and restore return value.
+            mv.visitLabel(afterHandler);
+            generateAfterInvoke(owner, name, descriptor, lineNumber);
+            if (returnVar >= 0) {
+                mv.visitVarInsn(returnType.getOpcode(ILOAD), returnVar);
+            }
+        }
+
+        private void generateBeforeInvoke(String owner, String name, String descriptor, int lineNumber) {
+            // listenerId (traceId)
             mv.visitLdcInsn(traceId);
 
-            // Push target class
-            mv.visitLdcInsn(owner.replace('/', '.'));
+            // clazz (enclosing class)
+            if (targetClassInternalName != null) {
+                mv.visitLdcInsn(Type.getObjectType(targetClassInternalName));
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
 
-            // Push method name
-            mv.visitLdcInsn(name);
+            // invokeInfo: owner|name|desc|line
+            mv.visitLdcInsn(owner + "|" + name + "|" + descriptor + "|" + lineNumber);
 
-            // Push method descriptor
-            mv.visitLdcInsn(descriptor);
+            // target (this or null)
+            if ((methodAccess & ACC_STATIC) == 0) {
+                mv.visitVarInsn(ALOAD, 0);
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
 
-            // Push current time
+            // whenNanos
             mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
 
-            // Call TraceInterceptor.onSubMethodCall
-            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/monitor/TraceInterceptor",
-                "onSubMethodCall", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V", false);
+            // SleuthSpyAPI.atBeforeInvoke
+            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/spy/SleuthSpyAPI",
+                "atBeforeInvoke", "(Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/Object;J)V", false);
+        }
+
+        private void generateAfterInvoke(String owner, String name, String descriptor, int lineNumber) {
+            // listenerId (traceId)
+            mv.visitLdcInsn(traceId);
+
+            // clazz (enclosing class)
+            if (targetClassInternalName != null) {
+                mv.visitLdcInsn(Type.getObjectType(targetClassInternalName));
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+
+            // invokeInfo: owner|name|desc|line
+            mv.visitLdcInsn(owner + "|" + name + "|" + descriptor + "|" + lineNumber);
+
+            // target (this or null)
+            if ((methodAccess & ACC_STATIC) == 0) {
+                mv.visitVarInsn(ALOAD, 0);
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+
+            // whenNanos
+            mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
+
+            // SleuthSpyAPI.atAfterInvoke
+            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/spy/SleuthSpyAPI",
+                "atAfterInvoke", "(Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/Object;J)V", false);
+        }
+
+        private void generateInvokeException(String owner, String name, String descriptor, int lineNumber, int exceptionVar) {
+            // listenerId (traceId)
+            mv.visitLdcInsn(traceId);
+
+            // clazz (enclosing class)
+            if (targetClassInternalName != null) {
+                mv.visitLdcInsn(Type.getObjectType(targetClassInternalName));
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+
+            // invokeInfo: owner|name|desc|line
+            mv.visitLdcInsn(owner + "|" + name + "|" + descriptor + "|" + lineNumber);
+
+            // target (this or null)
+            if ((methodAccess & ACC_STATIC) == 0) {
+                mv.visitVarInsn(ALOAD, 0);
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+
+            // throwable
+            mv.visitVarInsn(ALOAD, exceptionVar);
+
+            // whenNanos
+            mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
+
+            // SleuthSpyAPI.atInvokeException
+            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/spy/SleuthSpyAPI",
+                "atInvokeException", "(Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Throwable;J)V", false);
         }
     }
 }

@@ -95,7 +95,8 @@ public final class CommandProcessorFactory {
         com.javasleuth.core.monitoring.MetricsCollector metricsCollector,
         JobManager jobManager,
         com.javasleuth.core.vmtool.VmToolSessionRegistry vmToolSessionRegistry,
-        com.javasleuth.foundation.util.PerformanceOptimizer performanceOptimizer
+        com.javasleuth.foundation.util.PerformanceOptimizer performanceOptimizer,
+        com.javasleuth.core.spy.SleuthSpyDispatcher spyDispatcher
     ) {
         CommandProcessorComponents components = createComponents(
             instrumentation,
@@ -110,7 +111,8 @@ public final class CommandProcessorFactory {
             metricsCollector,
             jobManager,
             vmToolSessionRegistry,
-            performanceOptimizer
+            performanceOptimizer,
+            spyDispatcher
         );
         return new CommandProcessor(components);
     }
@@ -124,6 +126,7 @@ public final class CommandProcessorFactory {
             instrumentation,
             transformer,
             shutdownHook,
+            null,
             null,
             null,
             null,
@@ -161,6 +164,8 @@ public final class CommandProcessorFactory {
             clientSessionRegistry,
             metricsCollector,
             null,
+            null,
+            null,
             null
         );
     }
@@ -192,6 +197,7 @@ public final class CommandProcessorFactory {
             metricsCollector,
             jobManager,
             vmToolSessionRegistry,
+            null,
             null
         );
     }
@@ -209,7 +215,8 @@ public final class CommandProcessorFactory {
         com.javasleuth.core.monitoring.MetricsCollector metricsCollector,
         JobManager jobManager,
         com.javasleuth.core.vmtool.VmToolSessionRegistry vmToolSessionRegistry,
-        com.javasleuth.foundation.util.PerformanceOptimizer performanceOptimizer
+        com.javasleuth.foundation.util.PerformanceOptimizer performanceOptimizer,
+        com.javasleuth.core.spy.SleuthSpyDispatcher spyDispatcher
     ) {
         if (instrumentation == null) {
             throw new IllegalArgumentException("instrumentation is required");
@@ -252,6 +259,8 @@ public final class CommandProcessorFactory {
             vmToolSessionRegistry != null ? vmToolSessionRegistry : new com.javasleuth.core.vmtool.VmToolSessionRegistry();
         com.javasleuth.foundation.util.PerformanceOptimizer perf =
             performanceOptimizer != null ? performanceOptimizer : com.javasleuth.foundation.util.PerformanceOptimizer.getInstance(cfg);
+        com.javasleuth.core.spy.SleuthSpyDispatcher dispatcher =
+            spyDispatcher != null ? spyDispatcher : new com.javasleuth.core.spy.SleuthSpyDispatcher();
 
         com.javasleuth.foundation.config.model.SleuthConfig typedConfig =
             com.javasleuth.foundation.config.model.SleuthConfigParser.parse(cfg.snapshot());
@@ -296,7 +305,8 @@ public final class CommandProcessorFactory {
             dc,
             jm,
             vmsr,
-            perf
+            perf,
+            dispatcher
         );
 
         com.javasleuth.core.command.plugin.CommandProviderLoader providerLoader =

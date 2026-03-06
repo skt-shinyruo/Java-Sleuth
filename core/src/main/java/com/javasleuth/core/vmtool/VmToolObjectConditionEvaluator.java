@@ -2,7 +2,6 @@ package com.javasleuth.core.vmtool;
 
 import com.javasleuth.foundation.util.ReflectionUtils;
 import com.javasleuth.bootstrap.util.SleuthValueFormatter;
-import com.javasleuth.bootstrap.monitor.VmToolInterceptor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -109,7 +108,7 @@ public final class VmToolObjectConditionEvaluator {
         return new Condition(lhs, op, rhs);
     }
 
-    public static boolean matches(VmToolInterceptor.TrackedInstanceInfo info,
+    public static boolean matches(VmToolTracker.TrackedInstanceInfo info,
                                   Object instance,
                                   List<Condition> conditions) {
         if (conditions == null || conditions.isEmpty()) {
@@ -123,14 +122,14 @@ public final class VmToolObjectConditionEvaluator {
         return true;
     }
 
-    private static boolean matchesOne(VmToolInterceptor.TrackedInstanceInfo info,
+    private static boolean matchesOne(VmToolTracker.TrackedInstanceInfo info,
                                       Object instance,
                                       Condition c) {
         Object lhsValue = resolveLhs(info, instance, c.getLhs());
         return compare(lhsValue, c.getOp(), c.getRhs());
     }
 
-    private static Object resolveLhs(VmToolInterceptor.TrackedInstanceInfo info, Object instance, String lhs) {
+    private static Object resolveLhs(VmToolTracker.TrackedInstanceInfo info, Object instance, String lhs) {
         if (lhs == null) {
             return null;
         }
@@ -139,7 +138,7 @@ public final class VmToolObjectConditionEvaluator {
             case "class":
                 return info != null ? info.getClassName() : null;
             case "id":
-                return info != null ? VmToolInterceptor.formatIdentity(info.getIdentityHash()) : null;
+                return info != null ? VmToolTracker.formatIdentity(info.getIdentityHash()) : null;
             case "thread":
                 return info != null ? info.getCapturedThread() : null;
             case "ageMs":

@@ -6,6 +6,7 @@ import com.javasleuth.core.command.JobManager;
 import com.javasleuth.core.command.session.ClientSessionRegistry;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.monitoring.MetricsCollector;
 import com.javasleuth.foundation.security.AuditLogger;
 import com.javasleuth.foundation.security.AuthenticationManager;
@@ -31,6 +32,7 @@ public final class SleuthAgentRuntime implements AutoCloseable {
     private final JobManager jobManager;
     private final VmToolSessionRegistry vmToolSessionRegistry;
     private final SleuthAgentServices services;
+    private final SleuthSpyDispatcher spyDispatcher;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final Thread commandThread;
     private final AtomicBoolean commandThreadStarted = new AtomicBoolean(false);
@@ -43,6 +45,7 @@ public final class SleuthAgentRuntime implements AutoCloseable {
         JobManager jobManager,
         VmToolSessionRegistry vmToolSessionRegistry,
         SleuthAgentServices services,
+        SleuthSpyDispatcher spyDispatcher,
         Thread commandThread
     ) {
         this.instrumentation = instrumentation;
@@ -52,6 +55,7 @@ public final class SleuthAgentRuntime implements AutoCloseable {
         this.jobManager = jobManager;
         this.vmToolSessionRegistry = vmToolSessionRegistry;
         this.services = services;
+        this.spyDispatcher = spyDispatcher;
         this.commandThread = commandThread;
     }
 
@@ -79,6 +83,7 @@ public final class SleuthAgentRuntime implements AutoCloseable {
         JobManager jobManager = null;
         VmToolSessionRegistry vmToolSessionRegistry = null;
         CommandProcessor commandProcessor = null;
+        SleuthSpyDispatcher spyDispatcher = null;
         Thread commandThread = null;
         try {
             inst.addTransformer(transformer, true);
@@ -86,12 +91,22 @@ public final class SleuthAgentRuntime implements AutoCloseable {
             // Bootstrap bridge is a hard precondition for starting the agent in isolated mode.
             // If the bridge is missing, any bytecode enhancement that injects com.javasleuth.bootstrap.* calls
             // may crash the target application at runtime (NoClassDefFoundError/LinkageError).
-            if (!BootstrapBridge.canEnableEnhancement(BootstrapBridge.TRACE_INTERCEPTOR, null)) {
-                String msg = "Java-Sleuth: " + BootstrapBridge.formatDisabledMessage("enhancement commands", BootstrapBridge.TRACE_INTERCEPTOR);
+            if (!BootstrapBridge.canEnableEnhancement(BootstrapBridge.SPY_API, null)) {
+                String msg = "Java-Sleuth: " + BootstrapBridge.formatDisabledMessage("enhancement commands", BootstrapBridge.SPY_API);
                 if (BootstrapBridge.isStrictMode()) {
                     throw new IllegalStateException(msg);
                 }
                 SleuthLogger.warn(msg);
+            }
+
+            // Install core spy dispatcher (best-effort). If SpyAPI is missing, continue but disable listener-based features.
+            spyDispatcher = new SleuthSpyDispatcher();
+            try {
+                com.javasleuth.bootstrap.spy.SleuthSpyAPI.setSpy(spyDispatcher);
+                com.javasleuth.bootstrap.spy.SleuthSpyAPI.init();
+            } catch (Throwable t) {
+                // Don't fail runtime startup solely due to missing/blocked SpyAPI.
+                SleuthLogger.warn("Java-Sleuth: Failed to install SpyAPI dispatcher: " + t.getMessage(), t);
             }
 
             AuditLogger auditLogger = services.getAuditLogger();
@@ -103,7 +118,7 @@ public final class SleuthAgentRuntime implements AutoCloseable {
             clientSessionRegistry = new ClientSessionRegistry();
             metricsCollector = new MetricsCollector(config);
             jobManager = new JobManager();
-            vmToolSessionRegistry = new VmToolSessionRegistry();
+            vmToolSessionRegistry = new VmToolSessionRegistry(spyDispatcher);
 
             commandProcessor = CommandProcessorFactory.create(
                 inst,
@@ -118,7 +133,8 @@ public final class SleuthAgentRuntime implements AutoCloseable {
                 metricsCollector,
                 jobManager,
                 vmToolSessionRegistry,
-                services.getPerformanceOptimizer()
+                services.getPerformanceOptimizer(),
+                spyDispatcher
             );
 
             commandThread =
@@ -132,6 +148,7 @@ public final class SleuthAgentRuntime implements AutoCloseable {
                 jobManager,
                 vmToolSessionRegistry,
                 services,
+                spyDispatcher,
                 commandThread
             );
         } catch (Exception e) {
@@ -176,6 +193,18 @@ public final class SleuthAgentRuntime implements AutoCloseable {
                     services.close();
                 }
             } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                if (spyDispatcher != null) {
+                    spyDispatcher.clear();
+                }
+            } catch (Exception ignore) {
+                // ignore
+            }
+            try {
+                com.javasleuth.bootstrap.spy.SleuthSpyAPI.destroy();
+            } catch (Throwable ignore) {
                 // ignore
             }
             try {
@@ -225,6 +254,21 @@ public final class SleuthAgentRuntime implements AutoCloseable {
     public void close() {
         if (!closed.compareAndSet(false, true)) {
             return;
+        }
+
+        // Stop SpyAPI callbacks early to avoid keeping isolated ClassLoader referenced by bootstrap.
+        try {
+            SleuthSpyDispatcher d = spyDispatcher;
+            if (d != null) {
+                d.clear();
+            }
+        } catch (Exception ignore) {
+            // best-effort
+        }
+        try {
+            com.javasleuth.bootstrap.spy.SleuthSpyAPI.destroy();
+        } catch (Throwable ignore) {
+            // best-effort
         }
 
         Instrumentation inst = instrumentation;
