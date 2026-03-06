@@ -10,12 +10,14 @@ import org.objectweb.asm.commons.AdviceAdapter;
 
 public final class MonitorEnhancer implements BootstrapDependentEnhancer {
     private final String targetClassName;
+    private final String targetClassInternalName;
     private final String targetMethodPattern;
     private final String targetMethodDesc;
     private final String monitorId;
 
     public MonitorEnhancer(String className, String methodPattern, String methodDesc, String monitorId) {
         this.targetClassName = className;
+        this.targetClassInternalName = className == null ? null : className.replace('.', '/');
         this.targetMethodPattern = methodPattern;
         this.targetMethodDesc = methodDesc;
         this.monitorId = monitorId;
@@ -33,7 +35,7 @@ public final class MonitorEnhancer implements BootstrapDependentEnhancer {
 
     @Override
     public String requiredBootstrapClassName() {
-        return "com.javasleuth.bootstrap.monitor.MonitorInterceptor";
+        return "com.javasleuth.bootstrap.spy.SleuthSpyAPI";
     }
 
     private final class MonitorClassVisitor extends ClassVisitor {
@@ -93,7 +95,7 @@ public final class MonitorEnhancer implements BootstrapDependentEnhancer {
         @Override
         protected void onMethodExit(int opcode) {
             if (opcode != ATHROW) {
-                generateExitCall(false);
+                generateNormalExitCall();
             }
         }
 
@@ -107,27 +109,81 @@ public final class MonitorEnhancer implements BootstrapDependentEnhancer {
             mv.visitLabel(handlerLabel);
             int exceptionVar = newLocal(Type.getType(Throwable.class));
             mv.visitVarInsn(ASTORE, exceptionVar);
-            generateExitCall(true);
+            generateExceptionExitCall(exceptionVar);
             mv.visitVarInsn(ALOAD, exceptionVar);
             mv.visitInsn(ATHROW);
             super.visitMaxs(maxStack + 10, maxLocals + 3);
         }
 
-        private void generateExitCall(boolean isException) {
+        private void generateNormalExitCall() {
             mv.visitLdcInsn(monitorId);
-            mv.visitLdcInsn(targetClassName);
-            mv.visitLdcInsn(methodName);
-            mv.visitLdcInsn(methodDesc);
+
+            if (targetClassInternalName != null) {
+                mv.visitLdcInsn(Type.getObjectType(targetClassInternalName));
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+            mv.visitLdcInsn(methodName + "|" + methodDesc);
+
+            // target (this or null)
+            if ((methodAccess & ACC_STATIC) == 0) {
+                mv.visitVarInsn(ALOAD, 0);
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+
+            // args
+            mv.visitInsn(ACONST_NULL);
+            // returnObject
+            mv.visitInsn(ACONST_NULL);
+            // returnCaptured
+            push(true);
+
+            // start time
+            mv.visitVarInsn(LLOAD, startTimeVar);
 
             // duration = nanoTime - startTimeVar
             mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
             mv.visitVarInsn(LLOAD, startTimeVar);
             mv.visitInsn(LSUB);
 
-            push(isException);
+            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/spy/SleuthSpyAPI",
+                "atExit", "(Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/Object;[Ljava/lang/Object;Ljava/lang/Object;ZJJ)V", false);
+        }
 
-            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/monitor/MonitorInterceptor",
-                "onMethodExit", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JZ)V", false);
+        private void generateExceptionExitCall(int exceptionVar) {
+            mv.visitLdcInsn(monitorId);
+
+            if (targetClassInternalName != null) {
+                mv.visitLdcInsn(Type.getObjectType(targetClassInternalName));
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+            mv.visitLdcInsn(methodName + "|" + methodDesc);
+
+            // target (this or null)
+            if ((methodAccess & ACC_STATIC) == 0) {
+                mv.visitVarInsn(ALOAD, 0);
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+
+            // args
+            mv.visitInsn(ACONST_NULL);
+
+            // throwable
+            mv.visitVarInsn(ALOAD, exceptionVar);
+
+            // start time
+            mv.visitVarInsn(LLOAD, startTimeVar);
+
+            // duration = nanoTime - startTimeVar
+            mv.visitMethodInsn(INVOKESTATIC, "java/lang/System", "nanoTime", "()J", false);
+            mv.visitVarInsn(LLOAD, startTimeVar);
+            mv.visitInsn(LSUB);
+
+            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/spy/SleuthSpyAPI",
+                "atExceptionExit", "(Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/Object;[Ljava/lang/Object;Ljava/lang/Throwable;JJ)V", false);
         }
     }
 }

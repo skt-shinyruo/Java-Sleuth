@@ -7,9 +7,11 @@ import com.javasleuth.core.command.session.ClientSessionRegistry;
 import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.bootstrap.monitor.TraceInterceptor;
 import com.javasleuth.bootstrap.monitor.TtInterceptor;
 import com.javasleuth.bootstrap.monitor.WatchInterceptor;
+import com.javasleuth.bootstrap.spy.SleuthSpyAPI;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -31,6 +33,7 @@ public class SessionCleanupOnDisconnectTest {
         WatchInterceptor.unregisterAllWatches();
         TraceInterceptor.unregisterAllTraces();
         TtInterceptor.unregisterAll();
+        SleuthSpyAPI.destroy();
 
         String clientId = "test-client-" + UUID.randomUUID();
         String clientInfo = "unit-test";
@@ -43,6 +46,9 @@ public class SessionCleanupOnDisconnectTest {
         ProductionConfig config = ProductionConfig.createDefault();
         SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(config);
         JobManager jobManager = new JobManager();
+        SleuthSpyDispatcher dispatcher = new SleuthSpyDispatcher();
+        SleuthSpyAPI.setSpy(dispatcher);
+        SleuthSpyAPI.init();
 
         Thread watchThread = null;
         Thread traceThread = null;
@@ -53,40 +59,41 @@ public class SessionCleanupOnDisconnectTest {
 
             watchThread = startInThreadWithContext(context, () -> {
                 try {
-                    new WatchCommand(inst, transformer, config, jobManager)
+                    new WatchCommand(inst, transformer, config, jobManager, dispatcher)
                         .execute(new String[]{"watch", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
             });
             traceThread = startInThreadWithContext(context, () -> {
                 try {
-                    new TraceCommand(inst, transformer, config, jobManager)
+                    new TraceCommand(inst, transformer, config, jobManager, dispatcher)
                         .execute(new String[]{"trace", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
             });
             ttThread = startInThreadWithContext(context, () -> {
                 try {
-                    new TtCommand(inst, transformer, config, jobManager)
+                    new TtCommand(inst, transformer, config, jobManager, dispatcher)
                         .execute(new String[]{"tt", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
             });
 
-            awaitAtLeast("watch", WatchInterceptor::getActiveWatchCount, 1, 5000);
-            awaitAtLeast("trace", TraceInterceptor::getActiveTraceCount, 1, 5000);
-            awaitAtLeast("tt", TtInterceptor::getActiveTtCount, 1, 5000);
+            awaitAtLeast("watch", dispatcher::getActiveWatchCount, 1, 5000);
+            awaitAtLeast("trace", dispatcher::getActiveTraceCount, 1, 5000);
+            awaitAtLeast("tt", dispatcher::getActiveTtCount, 1, 5000);
 
             registry.close(clientId, "disconnect");
 
-            awaitEquals("watch", WatchInterceptor::getActiveWatchCount, 0, 5000);
-            awaitEquals("trace", TraceInterceptor::getActiveTraceCount, 0, 5000);
-            awaitEquals("tt", TtInterceptor::getActiveTtCount, 0, 5000);
+            awaitEquals("watch", dispatcher::getActiveWatchCount, 0, 5000);
+            awaitEquals("trace", dispatcher::getActiveTraceCount, 0, 5000);
+            awaitEquals("tt", dispatcher::getActiveTtCount, 0, 5000);
         } finally {
             registry.close(clientId, "test_teardown_cleanup");
             WatchInterceptor.unregisterAllWatches();
             TraceInterceptor.unregisterAllTraces();
             TtInterceptor.unregisterAll();
+            SleuthSpyAPI.destroy();
             stopThread(watchThread);
             stopThread(traceThread);
             stopThread(ttThread);

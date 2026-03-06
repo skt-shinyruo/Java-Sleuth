@@ -8,6 +8,7 @@ import com.javasleuth.foundation.util.WildcardMatcher;
 
 public class WatchEnhancer implements BootstrapDependentEnhancer {
     private final String targetClassName;
+    private final String targetClassInternalName;
     private final String targetMethodName;
     private final String targetMethodDesc;
     private final boolean captureParameters;
@@ -18,6 +19,7 @@ public class WatchEnhancer implements BootstrapDependentEnhancer {
     public WatchEnhancer(String className, String methodName, String methodDesc,
                         boolean captureParams, boolean captureReturn, boolean captureException, String watchId) {
         this.targetClassName = className;
+        this.targetClassInternalName = className == null ? null : className.replace('.', '/');
         this.targetMethodName = methodName;
         this.targetMethodDesc = methodDesc;
         this.captureParameters = captureParams;
@@ -38,7 +40,7 @@ public class WatchEnhancer implements BootstrapDependentEnhancer {
 
     @Override
     public String requiredBootstrapClassName() {
-        return "com.javasleuth.bootstrap.monitor.WatchInterceptor";
+        return "com.javasleuth.bootstrap.spy.SleuthSpyAPI";
     }
 
     private class WatchClassVisitor extends ClassVisitor {
@@ -147,17 +149,25 @@ public class WatchEnhancer implements BootstrapDependentEnhancer {
         }
 
         private void generateMethodEntryCall(boolean parametersCaptured) {
-            // Push watch ID
+            // listenerId (watchId)
             mv.visitLdcInsn(watchId);
 
-            // Push class name
-            mv.visitLdcInsn(targetClassName);
+            // clazz
+            if (targetClassInternalName != null) {
+                mv.visitLdcInsn(Type.getObjectType(targetClassInternalName));
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
 
-            // Push method name
-            mv.visitLdcInsn(methodName);
+            // methodInfo: methodName|methodDesc
+            mv.visitLdcInsn(methodName + "|" + methodDesc);
 
-            // Push method descriptor
-            mv.visitLdcInsn(methodDesc);
+            // target (this or null)
+            if ((methodAccess & ACC_STATIC) == 0) {
+                mv.visitVarInsn(ALOAD, 0);
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
 
             // Push parameters array (or null if not captured)
             if (parametersCaptured) {
@@ -169,12 +179,9 @@ public class WatchEnhancer implements BootstrapDependentEnhancer {
             // Push start time
             mv.visitVarInsn(LLOAD, startTimeVar);
 
-            // Push capture flag
-            push(parametersCaptured);
-
-            // Call WatchInterceptor.onMethodEntry
-            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/monitor/WatchInterceptor",
-                "onMethodEntry", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/Object;JZ)V", false);
+            // SleuthSpyAPI.atEnter
+            mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/spy/SleuthSpyAPI",
+                "atEnter", "(Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/Object;[Ljava/lang/Object;J)V", false);
         }
 
         private void generateMethodExitCall(boolean isException) {
@@ -182,24 +189,34 @@ public class WatchEnhancer implements BootstrapDependentEnhancer {
         }
 
         private void generateMethodExitCall(boolean isException, Type returnType, int returnVar, boolean returnCaptured) {
-            // Push watch ID
+            // listenerId (watchId)
             mv.visitLdcInsn(watchId);
 
-            // Push class name
-            mv.visitLdcInsn(targetClassName);
+            // clazz
+            if (targetClassInternalName != null) {
+                mv.visitLdcInsn(Type.getObjectType(targetClassInternalName));
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
 
-            // Push method name
-            mv.visitLdcInsn(methodName);
+            // methodInfo: methodName|methodDesc
+            mv.visitLdcInsn(methodName + "|" + methodDesc);
 
-            // Push method descriptor
-            mv.visitLdcInsn(methodDesc);
+            // target (this or null)
+            if ((methodAccess & ACC_STATIC) == 0) {
+                mv.visitVarInsn(ALOAD, 0);
+            } else {
+                mv.visitInsn(ACONST_NULL);
+            }
+
+            // args (watch exit/exception does not include args; entry carries args when enabled)
+            mv.visitInsn(ACONST_NULL);
 
             if (isException) {
-                // Push exception
+                // throwable
                 mv.visitVarInsn(ALOAD, exceptionVar);
             } else {
-                // Push return value (boxed) without breaking original stack semantics,
-                // or null if return capture is disabled.
+                // returnObject (boxed) or null if return capture is disabled.
                 if (!returnCaptured) {
                     mv.visitInsn(ACONST_NULL);
                 } else {
@@ -215,6 +232,11 @@ public class WatchEnhancer implements BootstrapDependentEnhancer {
                 }
             }
 
+            if (!isException) {
+                // returnCaptured must be pushed before start/duration (method signature contract).
+                push(returnCaptured);
+            }
+
             // Push start time
             mv.visitVarInsn(LLOAD, startTimeVar);
 
@@ -224,15 +246,13 @@ public class WatchEnhancer implements BootstrapDependentEnhancer {
             mv.visitInsn(LSUB);
 
             if (isException) {
-                // Call WatchInterceptor.onMethodException
-                mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/monitor/WatchInterceptor",
-                    "onMethodException", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;JJ)V", false);
+                // SleuthSpyAPI.atExceptionExit
+                mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/spy/SleuthSpyAPI",
+                    "atExceptionExit", "(Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/Object;[Ljava/lang/Object;Ljava/lang/Throwable;JJ)V", false);
             } else {
-                // Push capture flag
-                push(returnCaptured);
-                // Call WatchInterceptor.onMethodExit
-                mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/monitor/WatchInterceptor",
-                    "onMethodExit", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;JJZ)V", false);
+                // SleuthSpyAPI.atExit
+                mv.visitMethodInsn(INVOKESTATIC, "com/javasleuth/bootstrap/spy/SleuthSpyAPI",
+                    "atExit", "(Ljava/lang/String;Ljava/lang/Class;Ljava/lang/String;Ljava/lang/Object;[Ljava/lang/Object;Ljava/lang/Object;ZJJ)V", false);
             }
         }
 

@@ -12,6 +12,7 @@ package com.javasleuth.core.agent.runtime;
  * attaching a real agent.</p>
  */
 public final class BootstrapBridge {
+    public static final String SPY_API = "com.javasleuth.bootstrap.spy.SleuthSpyAPI";
     public static final String TRACE_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.TraceInterceptor";
     public static final String WATCH_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.WatchInterceptor";
     public static final String MONITOR_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.MonitorInterceptor";
@@ -85,7 +86,7 @@ public final class BootstrapBridge {
 
     public static String describeStatus() {
         boolean strict = isStrictMode();
-        boolean ok = canEnableEnhancement(TRACE_INTERCEPTOR, null);
+        boolean ok = canEnableEnhancement(SPY_API, null);
         if (ok) {
             return strict ? "OK (bootstrap-visible)" : "OK (classpath-visible)";
         }

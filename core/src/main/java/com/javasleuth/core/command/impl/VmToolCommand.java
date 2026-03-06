@@ -7,7 +7,6 @@ import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
-import com.javasleuth.bootstrap.monitor.VmToolInterceptor;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.foundation.security.SecurityValidator;
 import com.javasleuth.foundation.util.LoadedClassResolver;
@@ -17,6 +16,7 @@ import com.javasleuth.foundation.util.WildcardMatcher;
 import com.javasleuth.core.vmtool.VmToolMethodInvoker;
 import com.javasleuth.core.vmtool.VmToolObjectConditionEvaluator;
 import com.javasleuth.core.vmtool.VmToolSessionRegistry;
+import com.javasleuth.core.vmtool.VmToolTracker;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.ManagementFactory;
 import java.lang.reflect.InvocationTargetException;
@@ -177,7 +177,7 @@ public class VmToolCommand implements Command {
             if (s == null) {
                 continue;
             }
-            VmToolInterceptor.TrackStats stats = VmToolInterceptor.getTrackStats(s.getId());
+            VmToolTracker.TrackStats stats = registry.getTrackStats(s.getId());
             int cached = stats != null ? stats.getCached() : 0;
             int alive = stats != null ? stats.getAlive() : 0;
             long total = stats != null ? stats.getCapturedTotal() : 0;
@@ -218,7 +218,7 @@ public class VmToolCommand implements Command {
         List<VmToolObjectConditionEvaluator.Condition> conditions = VmToolObjectConditionEvaluator.parse(rawConditions);
         boolean needInstance = conditions.stream().anyMatch(c -> c != null && c.getLhs() != null && c.getLhs().startsWith("field."));
 
-        List<VmToolInterceptor.TrackedInstanceInfo> scanned = VmToolInterceptor.listInstances(trackId, 500, false);
+        List<VmToolTracker.TrackedInstanceInfo> scanned = registry.listInstances(trackId, 500, false);
         if (scanned.isEmpty()) {
             return "No instances for track: " + trackId;
         }
@@ -226,7 +226,7 @@ public class VmToolCommand implements Command {
         StringBuilder sb = new StringBuilder();
         sb.append("REF_ID\tALIVE\tTYPE\tID\tTHREAD\tAGE_MS\n");
         int out = 0;
-        for (VmToolInterceptor.TrackedInstanceInfo info : scanned) {
+        for (VmToolTracker.TrackedInstanceInfo info : scanned) {
             if (info == null) {
                 continue;
             }
@@ -235,7 +235,7 @@ public class VmToolCommand implements Command {
             }
             Object instance = null;
             if (needInstance) {
-                instance = VmToolInterceptor.getInstance(trackId, info.getRefId());
+                instance = registry.getInstance(trackId, info.getRefId());
             }
             if (!VmToolObjectConditionEvaluator.matches(info, instance, conditions)) {
                 continue;
@@ -244,7 +244,7 @@ public class VmToolCommand implements Command {
             sb.append(info.getRefId()).append("\t")
                 .append(info.isAlive()).append("\t")
                 .append(info.getClassName()).append("\t")
-                .append(VmToolInterceptor.formatIdentity(info.getIdentityHash())).append("\t")
+                .append(VmToolTracker.formatIdentity(info.getIdentityHash())).append("\t")
                 .append(info.getCapturedThread() != null ? info.getCapturedThread() : "-").append("\t")
                 .append(ageMs)
                 .append("\n");
@@ -287,7 +287,7 @@ public class VmToolCommand implements Command {
             }
         }
 
-        Object instance = VmToolInterceptor.getInstance(trackId, refId);
+        Object instance = registry.getInstance(trackId, refId);
         if (instance == null) {
             return "Instance not found or already GC'ed. track=" + trackId + ", refId=" + refId;
         }
@@ -344,7 +344,7 @@ public class VmToolCommand implements Command {
             }
         }
 
-        Object instance = VmToolInterceptor.getInstance(trackId, refId);
+        Object instance = registry.getInstance(trackId, refId);
         if (instance == null) {
             return "Instance not found or already GC'ed. track=" + trackId + ", refId=" + refId;
         }

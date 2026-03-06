@@ -10,6 +10,8 @@ import com.javasleuth.core.enhancement.ClassEnhancer;
 import com.javasleuth.core.enhancement.MonitorEnhancer;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.bootstrap.monitor.MonitorInterceptor;
+import com.javasleuth.core.spy.SleuthSpyDispatcher;
+import com.javasleuth.core.spy.listener.MonitorAdviceListener;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import com.javasleuth.foundation.util.StringUtils;
 import java.lang.instrument.Instrumentation;
@@ -31,6 +33,7 @@ public class MonitorCommand implements StreamCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
     private final JobManager jobManager;
+    private final SleuthSpyDispatcher spyDispatcher;
     private final ConcurrentHashMap<String, MonitorSession> activeSessions = new ConcurrentHashMap<>();
 
     public MonitorCommand(
@@ -38,12 +41,22 @@ public class MonitorCommand implements StreamCommand {
         SleuthClassFileTransformer transformer,
         JobManager jobManager
     ) {
+        this(instrumentation, transformer, jobManager, null);
+    }
+
+    public MonitorCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        JobManager jobManager,
+        SleuthSpyDispatcher spyDispatcher
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         if (jobManager == null) {
             throw new IllegalArgumentException("jobManager");
         }
         this.jobManager = jobManager;
+        this.spyDispatcher = spyDispatcher;
     }
 
     @Override
@@ -141,11 +154,22 @@ public class MonitorCommand implements StreamCommand {
 
         String monitorId = UUID.randomUUID().toString();
         boolean interceptorRegistered = false;
+        MonitorAdviceListener monitorListener = null;
         List<MonitorSession.EnhancedClass> enhanced = new ArrayList<>();
         try {
-            MonitorInterceptor.registerMonitor(monitorId);
-            interceptorRegistered = true;
-            MonitorInterceptor.clear(monitorId);
+            boolean registered = false;
+            SleuthSpyDispatcher dispatcher = this.spyDispatcher;
+            if (dispatcher != null && isDispatcherInstalled(dispatcher)) {
+                monitorListener = new MonitorAdviceListener();
+                dispatcher.register(monitorId, SleuthSpyDispatcher.ListenerKind.MONITOR, monitorListener);
+                monitorListener.clear();
+                registered = true;
+            } else {
+                MonitorInterceptor.registerMonitor(monitorId);
+                MonitorInterceptor.clear(monitorId);
+                registered = true;
+            }
+            interceptorRegistered = registered;
 
             for (Class<?> c : matches) {
                 MonitorEnhancer enhancer = new MonitorEnhancer(c.getName(), methodPattern, null, monitorId);
@@ -193,6 +217,7 @@ public class MonitorCommand implements StreamCommand {
         }
 
         MonitorSession session = new MonitorSession(monitorId, classPattern, methodPattern, enhanced);
+        session.monitorListener = monitorListener;
         activeSessions.put(monitorId, session);
 
         ClientSession clientSession = null;
@@ -230,9 +255,18 @@ public class MonitorCommand implements StreamCommand {
                     break;
                 }
 
-                Map<String, MonitorInterceptor.MethodStatsSnapshot> snap = MonitorInterceptor.snapshot(monitorId);
-                appendOrSend(out, sink, formatSnapshot(snap, i + 1, rounds));
-                MonitorInterceptor.clear(monitorId);
+                Map<String, MonitorAdviceListener.MethodStatsSnapshot> snap;
+                MonitorSession s = activeSessions.get(monitorId);
+                MonitorAdviceListener l = s != null ? s.monitorListener : null;
+                if (l != null) {
+                    snap = l.snapshot();
+                    appendOrSend(out, sink, formatSnapshot(snap, i + 1, rounds));
+                    l.clear();
+                } else {
+                    snap = convertLegacySnapshot(MonitorInterceptor.snapshot(monitorId));
+                    appendOrSend(out, sink, formatSnapshot(snap, i + 1, rounds));
+                    MonitorInterceptor.clear(monitorId);
+                }
                 done++;
             }
         } finally {
@@ -255,6 +289,14 @@ public class MonitorCommand implements StreamCommand {
         MonitorSession session = activeSessions.remove(monitorId);
         if (session == null) {
             MonitorInterceptor.unregisterMonitor(monitorId);
+            try {
+                SleuthSpyDispatcher d = this.spyDispatcher;
+                if (d != null) {
+                    d.unregister(monitorId);
+                }
+            } catch (Exception ignore) {
+                // ignore
+            }
             return;
         }
 
@@ -269,10 +311,44 @@ public class MonitorCommand implements StreamCommand {
             }
         } finally {
             MonitorInterceptor.unregisterMonitor(monitorId);
+            try {
+                SleuthSpyDispatcher d = this.spyDispatcher;
+                if (d != null) {
+                    d.unregister(monitorId);
+                }
+            } catch (Exception ignore) {
+                // ignore
+            }
         }
     }
 
-    private String formatSnapshot(Map<String, MonitorInterceptor.MethodStatsSnapshot> snap, int round, int rounds) {
+    private static Map<String, MonitorAdviceListener.MethodStatsSnapshot> convertLegacySnapshot(
+        Map<String, MonitorInterceptor.MethodStatsSnapshot> snap
+    ) {
+        if (snap == null || snap.isEmpty()) {
+            return java.util.Collections.emptyMap();
+        }
+        Map<String, MonitorAdviceListener.MethodStatsSnapshot> out = new java.util.HashMap<>();
+        for (Map.Entry<String, MonitorInterceptor.MethodStatsSnapshot> e : snap.entrySet()) {
+            MonitorInterceptor.MethodStatsSnapshot s = e.getValue();
+            if (s == null) {
+                continue;
+            }
+            out.put(
+                e.getKey(),
+                new MonitorAdviceListener.MethodStatsSnapshot(
+                    s.getCount(),
+                    s.getExceptionCount(),
+                    s.getTotalNanos(),
+                    s.getMaxNanos(),
+                    s.getMinNanos()
+                )
+            );
+        }
+        return out;
+    }
+
+    private String formatSnapshot(Map<String, MonitorAdviceListener.MethodStatsSnapshot> snap, int round, int rounds) {
         StringBuilder sb = new StringBuilder();
         sb.append("\n=== Monitor Stats === ").append(LocalTime.now()).append(" (").append(round).append("/").append(rounds).append(")\n");
         if (snap == null || snap.isEmpty()) {
@@ -280,18 +356,18 @@ public class MonitorCommand implements StreamCommand {
             return sb.toString().trim();
         }
 
-        List<Map.Entry<String, MonitorInterceptor.MethodStatsSnapshot>> rows = new ArrayList<>(snap.entrySet());
-        rows.sort(Comparator.comparingLong((Map.Entry<String, MonitorInterceptor.MethodStatsSnapshot> e) -> e.getValue().getTotalNanos()).reversed());
+        List<Map.Entry<String, MonitorAdviceListener.MethodStatsSnapshot>> rows = new ArrayList<>(snap.entrySet());
+        rows.sort(Comparator.comparingLong((Map.Entry<String, MonitorAdviceListener.MethodStatsSnapshot> e) -> e.getValue().getTotalNanos()).reversed());
 
         sb.append(String.format("%-60s %8s %8s %10s %10s %10s\n", "METHOD", "COUNT", "EX", "AVG(ms)", "MAX(ms)", "MIN(ms)"));
         sb.append(StringUtils.repeat('=', 120)).append("\n");
 
         int shown = 0;
-        for (Map.Entry<String, MonitorInterceptor.MethodStatsSnapshot> e : rows) {
+        for (Map.Entry<String, MonitorAdviceListener.MethodStatsSnapshot> e : rows) {
             if (shown >= 20) {
                 break;
             }
-            MonitorInterceptor.MethodStatsSnapshot s = e.getValue();
+            MonitorAdviceListener.MethodStatsSnapshot s = e.getValue();
             long count = s.getCount();
             double avgMs = count <= 0 ? 0.0 : (s.getTotalNanos() / 1_000_000.0) / count;
             sb.append(String.format("%-60s %8d %8d %10.2f %10.2f %10.2f\n",
@@ -305,6 +381,20 @@ public class MonitorCommand implements StreamCommand {
             shown++;
         }
         return sb.toString().trim();
+    }
+
+    private static boolean isDispatcherInstalled(SleuthSpyDispatcher dispatcher) {
+        try {
+            if (dispatcher == null) {
+                return false;
+            }
+            if (!com.javasleuth.bootstrap.spy.SleuthSpyAPI.isInited()) {
+                return false;
+            }
+            return com.javasleuth.bootstrap.spy.SleuthSpyAPI.getSpy() == dispatcher;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private void appendOrSend(StringBuilder buf, StreamSink sink, String text) {
@@ -385,6 +475,7 @@ public class MonitorCommand implements StreamCommand {
         private final String classPattern;
         private final String methodPattern;
         private final List<EnhancedClass> enhancedClasses;
+        private MonitorAdviceListener monitorListener;
 
         private MonitorSession(String id, String classPattern, String methodPattern, List<EnhancedClass> enhancedClasses) {
             this.id = id;

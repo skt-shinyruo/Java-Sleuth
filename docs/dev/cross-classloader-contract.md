@@ -24,7 +24,14 @@ Used by the thin agent and/or injected bytecode:
 - `com.javasleuth.bootstrap.util.JarLocator`
   - `locateAgentContainerJar(Class) : File`
   - `locateAgentCoreJar(Class) : File`
-- `com.javasleuth.bootstrap.monitor.TraceInterceptor` (bootstrap-visible callback used by enhanced bytecode)
+- `com.javasleuth.bootstrap.spy.SleuthSpyAPI` (bootstrap-visible callback used by enhanced bytecode)
+  - `atEnter(String, Class, String, Object, Object[], long) : void`
+  - `atExit(String, Class, String, Object, Object[], Object, boolean, long, long) : void`
+  - `atExceptionExit(String, Class, String, Object, Object[], Throwable, long, long) : void`
+  - `atBeforeInvoke(String, Class, String, Object, long) : void`
+  - `atAfterInvoke(String, Class, String, Object, long) : void`
+  - `atInvokeException(String, Class, String, Object, Throwable, long) : void`
+  - `onConstructed(String, Object) : void`
 
 ### Isolated container entrypoint
 
@@ -41,4 +48,3 @@ Unit tests validate the reflection contract so refactors fail fast in CI:
 - `core/src/test/java/com/javasleuth/bootstrap/agent/AgentLifecycleTest.java`
 - `core/src/test/java/com/javasleuth/agent/CrossClassLoaderReflectionContractTest.java`
 - `container/src/test/java/com/javasleuth/container/ContainerEntrypointContractTest.java`
-

@@ -35,7 +35,7 @@ public class InstanceTrackEnhancer implements BootstrapDependentEnhancer {
 
     @Override
     public String requiredBootstrapClassName() {
-        return "com.javasleuth.bootstrap.monitor.VmToolInterceptor";
+        return "com.javasleuth.bootstrap.spy.SleuthSpyAPI";
     }
 
     private class TrackClassVisitor extends ClassVisitor {
@@ -90,11 +90,11 @@ public class InstanceTrackEnhancer implements BootstrapDependentEnhancer {
                 return;
             }
 
-            // Call VmToolInterceptor.onConstructed(trackId, this)
+            // Call SleuthSpyAPI.onConstructed(trackId, this)
             mv.visitLdcInsn(trackId);
             mv.visitVarInsn(ALOAD, 0);
             mv.visitMethodInsn(INVOKESTATIC,
-                "com/javasleuth/bootstrap/monitor/VmToolInterceptor",
+                "com/javasleuth/bootstrap/spy/SleuthSpyAPI",
                 "onConstructed",
                 "(Ljava/lang/String;Ljava/lang/Object;)V",
                 false);

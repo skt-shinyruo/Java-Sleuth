@@ -42,8 +42,79 @@ public class CrossClassLoaderReflectionContractTest {
         Assert.assertEquals(File.class, locateAgentCoreJar.getReturnType());
 
         // Required for bytecode enhancements that inject bootstrap callbacks.
-        Class<?> traceInterceptor = Class.forName("com.javasleuth.bootstrap.monitor.TraceInterceptor");
-        Assert.assertNotNull(traceInterceptor);
+        Class<?> spyApi = Class.forName("com.javasleuth.bootstrap.spy.SleuthSpyAPI");
+        Assert.assertNotNull(spyApi);
+
+        Method atEnter = spyApi.getMethod(
+            "atEnter",
+            String.class,
+            Class.class,
+            String.class,
+            Object.class,
+            Object[].class,
+            long.class
+        );
+        Assert.assertEquals(void.class, atEnter.getReturnType());
+
+        Method atExit = spyApi.getMethod(
+            "atExit",
+            String.class,
+            Class.class,
+            String.class,
+            Object.class,
+            Object[].class,
+            Object.class,
+            boolean.class,
+            long.class,
+            long.class
+        );
+        Assert.assertEquals(void.class, atExit.getReturnType());
+
+        Method atExceptionExit = spyApi.getMethod(
+            "atExceptionExit",
+            String.class,
+            Class.class,
+            String.class,
+            Object.class,
+            Object[].class,
+            Throwable.class,
+            long.class,
+            long.class
+        );
+        Assert.assertEquals(void.class, atExceptionExit.getReturnType());
+
+        Method atBeforeInvoke = spyApi.getMethod(
+            "atBeforeInvoke",
+            String.class,
+            Class.class,
+            String.class,
+            Object.class,
+            long.class
+        );
+        Assert.assertEquals(void.class, atBeforeInvoke.getReturnType());
+
+        Method atAfterInvoke = spyApi.getMethod(
+            "atAfterInvoke",
+            String.class,
+            Class.class,
+            String.class,
+            Object.class,
+            long.class
+        );
+        Assert.assertEquals(void.class, atAfterInvoke.getReturnType());
+
+        Method atInvokeException = spyApi.getMethod(
+            "atInvokeException",
+            String.class,
+            Class.class,
+            String.class,
+            Object.class,
+            Throwable.class,
+            long.class
+        );
+        Assert.assertEquals(void.class, atInvokeException.getReturnType());
+
+        Method onConstructed = spyApi.getMethod("onConstructed", String.class, Object.class);
+        Assert.assertEquals(void.class, onConstructed.getReturnType());
     }
 }
-

@@ -625,8 +625,8 @@ public final class SleuthAgent {
         if (!isBootstrapClassAvailable(BOOTSTRAP_JAR_LOCATOR_CLASS)) {
             return false;
         }
-        // Interceptors are required for any bytecode enhancement that injects bootstrap calls.
-        return isBootstrapClassAvailable("com.javasleuth.bootstrap.monitor.TraceInterceptor");
+        // Spy API is required for any bytecode enhancement that injects bootstrap calls.
+        return isBootstrapClassAvailable("com.javasleuth.bootstrap.spy.SleuthSpyAPI");
     }
 
     private static boolean isBootstrapClassAvailable(String binaryName) {

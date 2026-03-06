@@ -9,6 +9,7 @@ import com.javasleuth.bootstrap.monitor.TraceInterceptor;
 import com.javasleuth.bootstrap.monitor.TtInterceptor;
 import com.javasleuth.bootstrap.monitor.WatchInterceptor;
 import com.javasleuth.core.monitoring.MetricsCollector;
+import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.foundation.util.PerformanceOptimizer;
 import com.javasleuth.foundation.config.ConfigView;
 
@@ -23,13 +24,15 @@ public class StatusCommand implements Command {
     private final SleuthClassFileTransformer transformer;
     private final ConfigView config;
     private final PerformanceOptimizer performanceOptimizer;
+    private final SleuthSpyDispatcher spyDispatcher;
 
     public StatusCommand(
         Instrumentation instrumentation,
         MetricsCollector metricsCollector,
         SleuthClassFileTransformer transformer,
         ConfigView config,
-        PerformanceOptimizer performanceOptimizer
+        PerformanceOptimizer performanceOptimizer,
+        SleuthSpyDispatcher spyDispatcher
     ) {
         this.instrumentation = instrumentation;
         this.metricsCollector = metricsCollector;
@@ -39,6 +42,7 @@ public class StatusCommand implements Command {
             throw new IllegalArgumentException("performanceOptimizer");
         }
         this.performanceOptimizer = performanceOptimizer;
+        this.spyDispatcher = spyDispatcher;
     }
 
     @Override
@@ -123,12 +127,22 @@ public class StatusCommand implements Command {
         status.append("Trace Published: ").append(TraceInterceptor.getPublishedEventCount()).append("\n");
         status.append("Trace Dropped: ").append(TraceInterceptor.getDroppedEventCount()).append("\n");
         status.append("Trace Evicted: ").append(TraceInterceptor.getEvictedEventCount()).append("\n");
-        status.append("Active Stacks: ").append(StackInterceptor.getActiveStackCount()).append("\n");
+        SleuthSpyDispatcher d = spyDispatcher;
+        if (d != null) {
+            status.append("Active Listeners: ").append(d.getActiveListenerCount()).append("\n");
+            status.append("Active Watch Listeners: ").append(d.getActiveWatchCount()).append("\n");
+            status.append("Active Trace Listeners: ").append(d.getActiveTraceCount()).append("\n");
+            status.append("Active Monitor Listeners: ").append(d.getActiveMonitorCount()).append("\n");
+            status.append("Active Stack Listeners: ").append(d.getActiveStackCount()).append("\n");
+            status.append("Active TT Listeners: ").append(d.getActiveTtCount()).append("\n");
+            status.append("Active VmTool Listeners: ").append(d.getActiveVmToolCount()).append("\n");
+        }
+        status.append("Legacy Active Stacks: ").append(StackInterceptor.getActiveStackCount()).append("\n");
         status.append("Stack Published: ").append(StackInterceptor.getPublishedEventCount()).append("\n");
         status.append("Stack Dropped: ").append(StackInterceptor.getDroppedEventCount()).append("\n");
         status.append("Stack Evicted: ").append(StackInterceptor.getEvictedEventCount()).append("\n");
-        status.append("Active Monitors: ").append(MonitorInterceptor.getActiveMonitorCount()).append("\n");
-        status.append("Active TT Sessions: ").append(TtInterceptor.getActiveTtCount()).append("\n");
+        status.append("Legacy Active Monitors: ").append(MonitorInterceptor.getActiveMonitorCount()).append("\n");
+        status.append("Legacy Active TT Sessions: ").append(TtInterceptor.getActiveTtCount()).append("\n");
 
         // Configuration status
         status.append("\n-- Configuration Status --\n");
