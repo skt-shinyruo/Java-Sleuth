@@ -5,7 +5,7 @@
 - Attach 失败/找不到目标 JVM
 - bootstrap bridge 缺失导致插桩不可用
 - 连接不上命令端口/握手失败
-- HMAC / RBAC / 危险命令确认相关问题
+- 认证 / RBAC / 危险命令确认相关问题
 
 > 命令与参数以运行时 `help` 输出为准；本文提供“最短排查路径”。
 
@@ -88,24 +88,22 @@
    ```
 
 3. **确认是否被安全策略阻止启动**
-   - 若配置为非回环地址（如 `0.0.0.0` / 局域网 IP）且 `security.mode=off`，服务会拒绝启动（fail-fast）
-   - 若 `security.mode=hmac` 但 `security.hmac.secret` 为空（且未启用 loopback autogen），也会拒绝启动
+   - Java-Sleuth 命令服务端为 **loopback-only**：若配置为非回环地址（如 `0.0.0.0` / 局域网 IP），服务会拒绝启动（fail-fast）
 
-生产建议与配置细节：`../ops/production-deployment-guide.md`、`../about/security.md`。
+生产建议与配置细节：`../ops/production-deployment-guide.md`、`../ops/operations-runbook.md`。
 
 ---
 
-## 5. HMAC/握手相关报错（连接建立但命令执行失败）
+## 5. 旧版 HMAC/SIG 相关报错（连接建立但命令执行失败）
 
 **常见提示（示例）**
-- `SECURITY ERROR: security.mode=hmac but empty security.hmac.secret`
-- `HMAC security: connId is required (handshake missing)`
-- `HMAC security: SIG sid must match negotiated connId`
+- `Unsupported request envelope: SIG (HMAC mode removed)`
+- `Unsupported config key: security.mode (HMAC mode removed; server is loopback-only)`
+- `Unsupported config key: security.hmac.secret (HMAC mode removed; server is loopback-only)`
 
 **处理**
-- 推荐做法：显式设置 `security.hmac.secret`（避免 loopback autogen 在无交互控制台下无法打印/传播）
-- 确保 Launcher 与目标 JVM 使用一致的安全模式与 secret
-- 尽量使用 `./sleuth.sh`（Launcher 会按项目协议完成握手/签名）；不要用自写 TCP 客户端直连端口
+- 删除旧配置项：`security.mode`、`security.hmac.*`、`security.bootstrap.hmac.*`（这些 key 已被移除/禁用）
+- 不要使用旧客户端发送 `SIG ...` 包裹的命令；请使用最新 Launcher（`./sleuth.sh` / `sleuth.bat`）
 
 ---
 
@@ -121,7 +119,7 @@
 2. 若启用了口令认证（`security.auth.password.enabled=true`），用：
    - `auth <username> <password>`
 
-> 注意：在未启用认证/签名校验的场景下，RBAC 的意义有限；生产环境建议配合 `security.mode=hmac`。
+> 注意：在启用 `security.authorization.enabled=true` 的同时，建议开启口令认证（`security.auth.password.enabled=true`）并设置强口令，避免多人共享主机时权限边界不清晰。
 
 ---
 
@@ -142,4 +140,3 @@
 - `stop`：停止目标 JVM 内的 Java-Sleuth（关闭命令服务与 transformer）
 
 回滚机制与边界说明：`../tutorial/command-instrumentation-and-rollback.md`。
-

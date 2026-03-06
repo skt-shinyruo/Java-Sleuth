@@ -4,7 +4,6 @@ import com.javasleuth.foundation.command.protocol.BinaryFrame;
 import com.javasleuth.foundation.command.protocol.BinaryFrameCodec;
 import com.javasleuth.foundation.command.protocol.Utf8LineCodec;
 import com.javasleuth.foundation.security.CommandSigner;
-import com.javasleuth.foundation.security.RequestSecurityManager;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -86,30 +85,7 @@ public final class ProtocolClient implements AutoCloseable {
             streamingEnabledHint,
             maxPayloadBytesHint,
             maxLineBytesHint,
-            RequestSecurityManager.createDefault()
-        );
-    }
-
-    public static ProtocolClient connect(
-        String host,
-        int port,
-        String preferredProtocol,
-        boolean streamingEnabledHint,
-        int maxPayloadBytesHint,
-        int maxLineBytesHint,
-        RequestSecurityManager securityManager
-    ) throws IOException {
-        if (securityManager == null) {
-            throw new IllegalArgumentException("securityManager is required");
-        }
-        return connect(
-            host,
-            port,
-            preferredProtocol,
-            streamingEnabledHint,
-            maxPayloadBytesHint,
-            maxLineBytesHint,
-            (CommandSigner) securityManager
+            CommandSigner.noop()
         );
     }
 
@@ -322,7 +298,7 @@ public final class ProtocolClient implements AutoCloseable {
                         streamingEnabledHint,
                         maxPayloadBytesHint,
                         maxLineBytesHint,
-                        RequestSecurityManager.createDefault(),
+                        CommandSigner.noop(),
                         attemptHandshakeTimeout
                     );
                 } catch (IOException e) {

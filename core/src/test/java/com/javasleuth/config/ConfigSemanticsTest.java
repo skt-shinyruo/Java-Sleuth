@@ -53,21 +53,21 @@ public class ConfigSemanticsTest {
         SensitiveKeyMasker masker = new SensitiveKeyMasker();
         RuntimeConfigStore store = new RuntimeConfigStore(masker, 10);
 
-        store.set("security.hmac.secret", "abcdef", ConfigUpdateSource.COMMAND);
+        store.set("security.auth.admin.password", "abcdef", ConfigUpdateSource.COMMAND);
         List<ConfigChange> changes1 = store.getRecentChanges(10);
         Assert.assertFalse(changes1.isEmpty());
         ConfigChange c1 = changes1.get(changes1.size() - 1);
-        Assert.assertEquals("security.hmac.secret", c1.getKey());
+        Assert.assertEquals("security.auth.admin.password", c1.getKey());
         Assert.assertEquals("null", c1.getOldValueSummary());
         Assert.assertEquals("ab***ef", c1.getNewValueSummary());
         Assert.assertEquals(ConfigUpdateSource.COMMAND, c1.getSource());
 
-        store.set("security.hmac.secret", "zzz", ConfigUpdateSource.COMMAND);
+        store.set("security.auth.admin.password", "zzz", ConfigUpdateSource.COMMAND);
         ConfigChange c2 = store.getRecentChanges(10).get(store.getRecentChanges(10).size() - 1);
         Assert.assertEquals("ab***ef", c2.getOldValueSummary());
         Assert.assertEquals("****", c2.getNewValueSummary());
 
-        store.remove("security.hmac.secret", ConfigUpdateSource.COMMAND);
+        store.remove("security.auth.admin.password", ConfigUpdateSource.COMMAND);
         ConfigChange c3 = store.getRecentChanges(10).get(store.getRecentChanges(10).size() - 1);
         Assert.assertEquals("****", c3.getOldValueSummary());
         Assert.assertEquals("null", c3.getNewValueSummary());
@@ -83,7 +83,7 @@ public class ConfigSemanticsTest {
 
         Map<String, String> runtime = new HashMap<>();
         runtime.put("b", "2");
-        runtime.put("security.hmac.secret", "abcdef");
+        runtime.put("security.auth.admin.password", "abcdef");
 
         ConfigPersister persister = new ConfigPersister();
 
@@ -102,7 +102,7 @@ public class ConfigSemanticsTest {
         }
         Assert.assertEquals("1", loaded2.getProperty("a"));
         Assert.assertEquals("2", loaded2.getProperty("b"));
-        Assert.assertEquals("abcdef", loaded2.getProperty("security.hmac.secret"));
+        Assert.assertEquals("abcdef", loaded2.getProperty("security.auth.admin.password"));
     }
 
     @Test
@@ -141,6 +141,104 @@ public class ConfigSemanticsTest {
                 System.clearProperty("sleuth.config.forbidden.keys.policy");
             } else {
                 System.setProperty("sleuth.config.forbidden.keys.policy", oldPolicy);
+            }
+            // Best-effort cleanup.
+            try {
+                tmp.delete();
+            } catch (Exception ignore) {
+            }
+        }
+    }
+
+    @Test
+    public void loaderShouldRejectSecurityModeKeyWhenStrict() throws Exception {
+        String oldFile = System.getProperty(ConfigLoader.CONFIG_FILE_PROPERTY);
+        String oldPolicy = System.getProperty("sleuth.config.forbidden.keys.policy");
+        String oldMode = System.getProperty("sleuth.security.mode");
+
+        File tmp = File.createTempFile("sleuth-config-forbidden-security-mode", ".properties");
+        tmp.deleteOnExit();
+        Properties p = new Properties();
+        p.setProperty("security.mode", "hmac");
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) {
+            p.store(out, "test");
+        }
+
+        try {
+            System.setProperty(ConfigLoader.CONFIG_FILE_PROPERTY, tmp.getAbsolutePath());
+            System.setProperty("sleuth.config.forbidden.keys.policy", "strict");
+            System.clearProperty("sleuth.security.mode");
+
+            try {
+                new ConfigLoader().load();
+                Assert.fail("Expected strict policy to reject forbidden key: security.mode");
+            } catch (IllegalArgumentException expected) {
+                Assert.assertTrue(expected.getMessage().contains("security.mode"));
+            }
+        } finally {
+            if (oldFile == null) {
+                System.clearProperty(ConfigLoader.CONFIG_FILE_PROPERTY);
+            } else {
+                System.setProperty(ConfigLoader.CONFIG_FILE_PROPERTY, oldFile);
+            }
+            if (oldPolicy == null) {
+                System.clearProperty("sleuth.config.forbidden.keys.policy");
+            } else {
+                System.setProperty("sleuth.config.forbidden.keys.policy", oldPolicy);
+            }
+            if (oldMode == null) {
+                System.clearProperty("sleuth.security.mode");
+            } else {
+                System.setProperty("sleuth.security.mode", oldMode);
+            }
+            // Best-effort cleanup.
+            try {
+                tmp.delete();
+            } catch (Exception ignore) {
+            }
+        }
+    }
+
+    @Test
+    public void loaderShouldRejectSecurityHmacSecretKeyWhenStrict() throws Exception {
+        String oldFile = System.getProperty(ConfigLoader.CONFIG_FILE_PROPERTY);
+        String oldPolicy = System.getProperty("sleuth.config.forbidden.keys.policy");
+        String oldSecret = System.getProperty("sleuth.security.hmac.secret");
+
+        File tmp = File.createTempFile("sleuth-config-forbidden-security-hmac-secret", ".properties");
+        tmp.deleteOnExit();
+        Properties p = new Properties();
+        p.setProperty("security.hmac.secret", "test-secret");
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) {
+            p.store(out, "test");
+        }
+
+        try {
+            System.setProperty(ConfigLoader.CONFIG_FILE_PROPERTY, tmp.getAbsolutePath());
+            System.setProperty("sleuth.config.forbidden.keys.policy", "strict");
+            System.clearProperty("sleuth.security.hmac.secret");
+
+            try {
+                new ConfigLoader().load();
+                Assert.fail("Expected strict policy to reject forbidden key: security.hmac.secret");
+            } catch (IllegalArgumentException expected) {
+                Assert.assertTrue(expected.getMessage().contains("security.hmac.secret"));
+            }
+        } finally {
+            if (oldFile == null) {
+                System.clearProperty(ConfigLoader.CONFIG_FILE_PROPERTY);
+            } else {
+                System.setProperty(ConfigLoader.CONFIG_FILE_PROPERTY, oldFile);
+            }
+            if (oldPolicy == null) {
+                System.clearProperty("sleuth.config.forbidden.keys.policy");
+            } else {
+                System.setProperty("sleuth.config.forbidden.keys.policy", oldPolicy);
+            }
+            if (oldSecret == null) {
+                System.clearProperty("sleuth.security.hmac.secret");
+            } else {
+                System.setProperty("sleuth.security.hmac.secret", oldSecret);
             }
             // Best-effort cleanup.
             try {

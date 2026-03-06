@@ -25,7 +25,7 @@ public class AuditLoggerTest {
     @Test
     public void testConfigSetSensitiveValueIsMaskedInAuditFormatting() throws Exception {
         try (AuditLogger logger = new AuditLogger(ProductionConfig.createDefault())) {
-            String formatted = formatArgsForAudit(logger, "config", new String[]{"config", "set", "security.hmac.secret", "supersecret"});
+            String formatted = formatArgsForAudit(logger, "config", new String[]{"config", "set", "security.auth.admin.password", "supersecret"});
             assertNotNull(formatted);
             assertFalse(formatted.contains("supersecret"));
             assertTrue(formatted.contains("***"));

@@ -498,7 +498,8 @@ print_summary() {
     echo
     echo "4. Notes:"
     echo "   - The agent runs inside the target JVM and listens on the configured port (default 3658)."
-    echo "   - Avoid exposing the port to untrusted networks; consider enabling security.mode=hmac."
+    echo "   - The command server is loopback-only; avoid exposing the port via proxies/port-forwarding."
+    echo "   - For multi-user hosts, enable security.authorization.enabled + security.auth.password.enabled and set strong passwords."
     echo
     echo "=== SECURITY NOTES ==="
     echo "- Review firewall settings for port 3658"

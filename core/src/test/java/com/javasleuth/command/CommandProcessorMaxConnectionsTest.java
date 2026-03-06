@@ -26,7 +26,6 @@ public class CommandProcessorMaxConnectionsTest {
             config.clearRuntimeConfig();
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", "0");
-            config.setRuntimeConfig("security.mode", "off");
             config.setRuntimeConfig("server.max.connections", "1");
 
             Thread serverThread = new Thread(processor::start, "test-cp-start-maxconn");

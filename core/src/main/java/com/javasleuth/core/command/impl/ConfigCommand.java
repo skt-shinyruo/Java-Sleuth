@@ -10,7 +10,6 @@ import com.javasleuth.foundation.config.model.SleuthConfig;
 import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.foundation.config.schema.ConfigKey;
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
-import com.javasleuth.foundation.security.SecurityValidator;
 import com.javasleuth.foundation.config.SensitiveKeyMasker;
 
 public class ConfigCommand implements Command {
@@ -137,11 +136,9 @@ public class ConfigCommand implements Command {
                 show.append("security.audit.logging = ").append(typed.security().isAuditLoggingEnabled()).append("\n");
                 show.append("security.authorization.enabled = ").append(typed.security().isAuthorizationEnabled()).append("\n");
                 show.append("security.anonymous.viewer = ").append(typed.security().isAnonymousViewerEnabled()).append("\n");
-                show.append("security.mode = ").append(typed.security().getModeWireName()).append("\n");
-                String maskedSecret = SecurityValidator.maskSensitiveValue("security.hmac.secret", typed.security().getHmacSecret());
-                show.append("security.hmac.secret = ").append(maskedSecret).append("\n");
-                show.append("security.hmac.secret.autogen.on.loopback = ").append(typed.security().isHmacSecretAutogenOnLoopbackEnabled()).append("\n");
-                show.append("security.hmac.secret.autogen.print = ").append(typed.security().isHmacSecretAutogenPrintEnabled()).append("\n");
+                show.append("security.auth.password.enabled = ").append(typed.security().isPasswordAuthEnabled()).append("\n");
+                show.append("security.dangerous.confirm.enabled = ").append(typed.security().isDangerousConfirmEnabled()).append("\n");
+                show.append("security.dangerous.confirm.ttl.ms = ").append(typed.security().getDangerousConfirmTtlMs()).append("\n");
                 show.append("security.impact.high.confirm.enabled = ").append(typed.security().isImpactHighConfirmEnabled()).append("\n");
                 show.append("security.impact.high.concurrent.limit = ").append(typed.security().getImpactHighConcurrentLimit()).append("\n");
                 show.append("security.max.command.length = ").append(typed.security().getMaxCommandLength()).append("\n");
@@ -192,7 +189,8 @@ public class ConfigCommand implements Command {
         status.append("\n-- Key Settings --\n");
         status.append("Server: ").append(typed.server().getBindAddress()).append(":").append(typed.server().getPort()).append("\n");
         status.append("Max Connections: ").append(typed.server().getMaxConnections()).append("\n");
-        status.append("Security Mode: ").append(typed.security().getModeWireName()).append("\n");
+        status.append("Authorization: ").append(typed.security().isAuthorizationEnabled() ? "ENABLED" : "DISABLED").append("\n");
+        status.append("Password Auth: ").append(typed.security().isPasswordAuthEnabled() ? "ENABLED" : "DISABLED").append("\n");
         status.append("Audit Logging: ").append(typed.security().isAuditLoggingEnabled() ? "ENABLED" : "DISABLED").append("\n");
         status.append("Metrics: ").append(typed.monitoring().isMetricsEnabled() ? "ENABLED" : "DISABLED").append("\n");
         return status.toString();

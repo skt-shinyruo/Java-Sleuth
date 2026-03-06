@@ -105,21 +105,20 @@ help         - Show help information for all commands
 quit         - Exit the Java-Sleuth session
 ```
 
-> 重要提示：当前默认不启用任何认证/签名校验（`security.mode=off`），并默认关闭 RBAC（`security.authorization.enabled=false`）。
-> 建议仅在本机/容器内通过回环地址使用（`server.bind.address=127.0.0.1`），不要将该端口暴露到不受信任网络。
-> 如需在非回环地址/多用户环境使用，请显式启用 `security.mode=hmac` 并配置 `security.hmac.secret`，同时建议开启权限控制与危险命令二次确认。
+> 重要提示：命令服务端为 **loopback-only**（仅允许 `127.0.0.1` / `localhost` / `::1`），配置为非回环地址会拒绝启动。
+> 不要通过端口转发/代理将该端口暴露到不受信任网络。
+> 默认关闭 RBAC（`security.authorization.enabled=false`）；多用户主机建议启用 `security.authorization.enabled=true` + `security.auth.password.enabled=true` 并设置 `security.auth.*.password`（或环境变量 `SLEUTH_AUTH_*_PASSWORD`）。
 
-## 安全与协议说明（2026-02-06 更新）
+## 安全与协议说明（2026-03-05 更新）
 
 为降低“非回环绑定 + 明文控制”带来的风险，本项目对默认安全边界与传输层做了收敛与重构：
 
-- 默认仅允许本机访问：`server.bind.address=127.0.0.1`
-- 默认安全模式：`security.mode=off`（不做请求签名/认证，便于快速开发与 demo）
-- 防误配保护：若配置为非回环地址（例如 `0.0.0.0` 或局域网 IP），且 `security.mode=off`，Agent 会拒绝启动并提示修复方式
-- 若显式启用 `security.mode=hmac`：
-  - 回环绑定（127.0.0.1/::1）下允许 `security.hmac.secret` 为空，并可自动生成临时 secret（由 `security.hmac.secret.autogen.*` 控制）
-  - 非回环绑定下要求显式配置非空 `security.hmac.secret`，否则拒绝启动
-- Launcher attach 行为：尊重 `security.mode` 配置；`security.bootstrap.hmac.on.attach` 仅在 `security.mode=hmac` 时用于“补齐/生成 secret”，不会再隐式强制启用 HMAC
+- 默认仅允许本机访问：`server.bind.address=127.0.0.1`（或 `localhost` / `::1`）
+- 强制安全边界：配置为非回环地址（例如 `0.0.0.0` 或局域网 IP）会拒绝启动（fail-fast）
+- HMAC 模式已移除：`security.mode`、`security.hmac.*`、`security.bootstrap.hmac.*` 为不支持 key（加载配置时会 fail-fast）
+- 多用户主机建议启用：
+  - RBAC：`security.authorization.enabled=true`
+  - 口令认证：`security.auth.password.enabled=true` + `security.auth.*.password`（或环境变量 `SLEUTH_AUTH_*_PASSWORD`）
 - 危险命令二次确认：默认关闭（`security.dangerous.confirm.enabled=false`），需要时可显式开启
 - 高影响（impact=HIGH）治理：默认关闭二次确认（`security.impact.high.confirm.enabled=false`），需要时可显式开启并配合并发限制
 

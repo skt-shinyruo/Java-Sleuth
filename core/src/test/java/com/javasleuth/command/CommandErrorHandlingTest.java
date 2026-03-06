@@ -58,7 +58,7 @@ public class CommandErrorHandlingTest {
             Command boom = new Command() {
                 @Override
                 public String execute(String[] args) {
-                    throw new RuntimeException("security.hmac.secret=supersecret");
+                    throw new RuntimeException("security.auth.admin.password=supersecret");
                 }
 
                 @Override

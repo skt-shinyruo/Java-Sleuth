@@ -263,52 +263,6 @@ public final class SleuthConfigSchema {
             .build()
     );
 
-    public static final ConfigKey<String> SECURITY_MODE = register(
-        ConfigKey.stringKey("security.mode")
-            .defaultValue("off")
-            .allowedStrings("off", "hmac")
-            .failurePolicy(ConfigKey.FailurePolicy.FAIL_FAST)
-            .build()
-    );
-
-    public static final ConfigKey<String> SECURITY_HMAC_SECRET = register(
-        ConfigKey.stringKey("security.hmac.secret")
-            .defaultValue("")
-            .sensitive()
-            .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
-            .build()
-    );
-
-    public static final ConfigKey<Boolean> SECURITY_HMAC_SECRET_AUTOGEN_ON_LOOPBACK = register(
-        ConfigKey.booleanKey("security.hmac.secret.autogen.on.loopback")
-            .defaultValue(Boolean.TRUE)
-            .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
-            .build()
-    );
-
-    public static final ConfigKey<Boolean> SECURITY_HMAC_SECRET_AUTOGEN_PRINT = register(
-        ConfigKey.booleanKey("security.hmac.secret.autogen.print")
-            .defaultValue(Boolean.TRUE)
-            .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
-            .build()
-    );
-
-    public static final ConfigKey<Long> SECURITY_HMAC_TIMESTAMP_WINDOW_MS = register(
-        ConfigKey.longKey("security.hmac.timestamp.window.ms")
-            .defaultValue(30000L)
-            .longMin(0)
-            .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
-            .build()
-    );
-
-    public static final ConfigKey<Integer> SECURITY_HMAC_NONCE_CACHE_SIZE = register(
-        ConfigKey.intKey("security.hmac.nonce.cache.size")
-            .defaultValue(10000)
-            .longMin(0)
-            .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
-            .build()
-    );
-
     public static final ConfigKey<Boolean> SECURITY_DANGEROUS_CONFIRM_ENABLED = register(
         ConfigKey.booleanKey("security.dangerous.confirm.enabled")
             .defaultValue(Boolean.FALSE)
@@ -351,29 +305,6 @@ public final class SleuthConfigSchema {
         ConfigKey.intKey("security.impact.high.concurrent.limit")
             .defaultValue(1)
             .longMin(0)
-            .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
-            .build()
-    );
-
-    public static final ConfigKey<Boolean> SECURITY_BOOTSTRAP_HMAC_ON_ATTACH = register(
-        ConfigKey.booleanKey("security.bootstrap.hmac.on.attach")
-            .defaultValue(Boolean.FALSE)
-            .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
-            .build()
-    );
-
-    public static final ConfigKey<Integer> SECURITY_BOOTSTRAP_HMAC_SECRET_BYTES = register(
-        ConfigKey.intKey("security.bootstrap.hmac.secret.bytes")
-            .defaultValue(32)
-            .longRange(1, 128)
-            .failurePolicy(ConfigKey.FailurePolicy.CLAMP_AND_WARN)
-            .build()
-    );
-
-    public static final ConfigKey<String> SECURITY_HMAC_SESSION_ROLE = register(
-        ConfigKey.stringKey("security.hmac.session.role")
-            .defaultValue("operator")
-            .allowedStrings("viewer", "operator", "admin")
             .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
             .build()
     );
@@ -613,12 +544,24 @@ public final class SleuthConfigSchema {
     );
 
     // =============================================================================
-    // Forbidden keys (legacy protocol removed)
+    // Forbidden keys (removed/unsupported)
     // =============================================================================
     private static final Set<String> FORBIDDEN_KEYS = forbiddenKeysInternal();
 
     private static Set<String> forbiddenKeysInternal() {
         Set<String> keys = new HashSet<>();
+        // Removed: HMAC request signing mode.
+        keys.add("security.mode");
+        keys.add("security.hmac.secret");
+        keys.add("security.hmac.secret.autogen.on.loopback");
+        keys.add("security.hmac.secret.autogen.print");
+        keys.add("security.hmac.timestamp.window.ms");
+        keys.add("security.hmac.nonce.cache.size");
+        keys.add("security.bootstrap.hmac.on.attach");
+        keys.add("security.bootstrap.hmac.secret.bytes");
+        keys.add("security.hmac.session.role");
+
+        // Removed: legacy protocol flags.
         keys.add("protocol.mode");
         keys.add("protocol.handshake.enabled");
         keys.add("protocol.text.end.marker.enabled");

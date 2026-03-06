@@ -177,13 +177,6 @@ public final class LauncherArgs {
             }
         }
 
-        if (insecure && mode == LaunchMode.HEADLESS) {
-            String confirm = insecureConfirm != null ? insecureConfirm.trim() : "";
-            if (!"I UNDERSTAND".equalsIgnoreCase(confirm)) {
-                errors.add("headless 模式启用 --insecure 必须同时提供 --insecure-confirm \"I UNDERSTAND\"（防止静默降级安全模式）");
-            }
-        }
-
         return errors;
     }
 
@@ -199,9 +192,8 @@ public final class LauncherArgs {
         sb.append("    java -jar ... --pid <pid> --script /path/to/commands.txt [--fail-fast]\n");
         sb.append("\n");
         sb.append("  Security:\n");
-        sb.append("    --insecure                # 强制下发 security.mode=off（本机排障用）\n");
-        sb.append("    --insecure-confirm \"I UNDERSTAND\"  # headless 下必须显式确认\n");
+        sb.append("    --insecure                # DEPRECATED (no-op): HMAC mode removed; server is loopback-only\n");
+        sb.append("    --insecure-confirm \"I UNDERSTAND\"  # DEPRECATED (no-op)\n");
         return sb.toString();
     }
 }
-

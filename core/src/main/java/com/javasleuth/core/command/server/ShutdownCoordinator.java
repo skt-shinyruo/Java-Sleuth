@@ -8,7 +8,6 @@ package com.javasleuth.core.command.server;
 import com.javasleuth.core.monitoring.MetricsCollector;
 import com.javasleuth.foundation.security.AuditLogger;
 import com.javasleuth.foundation.security.AuthorizationManager;
-import com.javasleuth.foundation.security.RequestSecurityManager;
 import com.javasleuth.foundation.util.SleuthLogger;
 import com.javasleuth.core.command.CommandPipeline;
 import com.javasleuth.core.command.CommandRegistry;
@@ -27,7 +26,6 @@ public final class ShutdownCoordinator {
     private final CommandRegistry registry;
     private final CommandPipeline pipeline;
     private final AuthorizationManager authorizationManager;
-    private final RequestSecurityManager requestSecurityManager;
 
     public ShutdownCoordinator(
         AtomicBoolean running,
@@ -36,8 +34,7 @@ public final class ShutdownCoordinator {
         AuditLogger auditLogger,
         CommandRegistry registry,
         CommandPipeline pipeline,
-        AuthorizationManager authorizationManager,
-        RequestSecurityManager requestSecurityManager
+        AuthorizationManager authorizationManager
     ) {
         this.running = running;
         this.clientExecutor = clientExecutor;
@@ -46,7 +43,6 @@ public final class ShutdownCoordinator {
         this.registry = registry;
         this.pipeline = pipeline;
         this.authorizationManager = authorizationManager;
-        this.requestSecurityManager = requestSecurityManager;
     }
 
     public boolean shutdownGracefully(ServerSocket serverSocket, int timeoutSeconds) {
@@ -85,13 +81,6 @@ public final class ShutdownCoordinator {
             try {
                 if (authorizationManager != null) {
                     authorizationManager.shutdown();
-                }
-            } catch (Exception ignore) {
-                // ignore
-            }
-            try {
-                if (requestSecurityManager != null) {
-                    requestSecurityManager.shutdown();
                 }
             } catch (Exception ignore) {
                 // ignore
@@ -142,13 +131,6 @@ public final class ShutdownCoordinator {
             try {
                 if (authorizationManager != null) {
                     authorizationManager.shutdown();
-                }
-            } catch (Exception ignore) {
-                // ignore
-            }
-            try {
-                if (requestSecurityManager != null) {
-                    requestSecurityManager.shutdown();
                 }
             } catch (Exception ignore) {
                 // ignore

@@ -10,7 +10,7 @@ package com.javasleuth.foundation.security;
  * </ul>
  *
  * <p>This interface intentionally only covers the client needs. Server-side verification
- * remains in {@link RequestSecurityManager}.</p>
+ * has been removed together with HMAC mode.</p>
  */
 public interface CommandSigner {
 

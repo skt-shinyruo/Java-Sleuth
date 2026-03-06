@@ -10,7 +10,6 @@ import com.javasleuth.foundation.security.AuthorizationManager;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.foundation.security.InputValidator;
-import com.javasleuth.foundation.security.RequestSecurityManager;
 import org.junit.Test;
 
 import java.io.BufferedReader;
@@ -208,40 +207,6 @@ public class CommandProcessorTest {
                 setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
                 setOrClearProperty("sleuth.security.authorization.enabled", oldAuthz);
             }
-        }
-    }
-
-    @Test
-    public void testHmacSignAndVerifyAndReplayProtection() {
-        String oldMode = System.getProperty("sleuth.security.mode");
-        String oldSecret = System.getProperty("sleuth.security.hmac.secret");
-        String oldWindow = System.getProperty("sleuth.security.hmac.timestamp.window.ms");
-
-        try {
-            System.setProperty("sleuth.security.mode", "hmac");
-            System.setProperty("sleuth.security.hmac.secret", "test-secret");
-            System.setProperty("sleuth.security.hmac.timestamp.window.ms", "60000");
-
-            ProductionConfig config = ProductionConfig.createDefault();
-            try (AuditLogger auditLogger = new AuditLogger(config)) {
-                RequestSecurityManager mgr = new RequestSecurityManager(config, auditLogger);
-                String nonce = "nonce123";
-                long ts = System.currentTimeMillis();
-                String signed = mgr.signCommand("help", ts, nonce, "test-sid");
-                assertNotNull(signed);
-                assertTrue(signed.startsWith("SIG "));
-
-                RequestSecurityManager.VerificationResult ok = mgr.verifyAndExtract("s1", signed);
-                assertTrue(ok.isOk());
-                assertEquals("help", ok.getCommand());
-
-                RequestSecurityManager.VerificationResult replay = mgr.verifyAndExtract("s1", signed);
-                assertFalse(replay.isOk());
-            }
-        } finally {
-            setOrClearProperty("sleuth.security.mode", oldMode);
-            setOrClearProperty("sleuth.security.hmac.secret", oldSecret);
-            setOrClearProperty("sleuth.security.hmac.timestamp.window.ms", oldWindow);
         }
     }
 

@@ -137,7 +137,7 @@ tail -50 /opt/java-sleuth/logs/sleuth.out
 
 # 校验配置（文件级）
 test -f /opt/java-sleuth/config/sleuth.properties
-grep -nE '^(server\\.bind\\.address|server\\.port|security\\.mode|security\\.hmac\\.secret)=' /opt/java-sleuth/config/sleuth.properties
+grep -nE '^(server\\.bind\\.address|server\\.port|security\\.authorization\\.enabled|security\\.auth\\.password\\.enabled|security\\.anonymous\\.viewer)=' /opt/java-sleuth/config/sleuth.properties
 
 # 若服务已启动且可连接（推荐）：使用 SleuthLauncher 验证运行态关键项
 # ./sleuth.sh
@@ -189,9 +189,9 @@ ls -la /opt/java-sleuth/config/
 5. **安全模式配置不当**
    - 症状：日志包含 `SECURITY ERROR: Refusing to start ...`
    - 检查点：
-     - 非回环 bind（例如 `0.0.0.0`）下禁止 `security.mode=off`
-     - 非回环 bind 且 `security.mode=hmac` 时必须配置 `security.hmac.secret` 非空
-     - 回环 bind 下可启用 `security.hmac.secret.autogen.on.loopback=true` 进行临时自洽启动（生产不推荐）
+     - Java-Sleuth 命令服务端为 **loopback-only**：非回环 bind（例如 `0.0.0.0` / 局域网 IP）会拒绝启动
+     - 清理旧配置项：`security.mode`、`security.hmac.*`、`security.bootstrap.hmac.*`（这些 key 已移除/禁用，配置会 fail-fast）
+     - 如需本机多用户权限控制：启用 `security.authorization.enabled=true` + `security.auth.password.enabled=true` 并设置强口令
 
 ### 场景 2：内存占用过高
 

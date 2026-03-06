@@ -75,7 +75,6 @@ public final class HandshakeNegotiator {
             " maxPayload=" + config.protocol().getFrameMaxPayloadBytes() +
             " port=" + config.server().getPort() +
             " bind=" + config.server().getBindAddress() +
-            " securityMode=" + config.security().getModeWireName() +
             " authorization=" + config.security().isAuthorizationEnabled() +
             (connId != null ? " connId=" + connId : "");
     }

@@ -216,7 +216,7 @@ public class ProductionConfig implements ConfigView, MutableConfig {
             return;
         }
         if (SleuthConfigSchema.forbiddenKeys().contains(key)) {
-            throw new IllegalArgumentException("Unsupported config key: " + key + " (legacy protocol removed)");
+            throw new IllegalArgumentException(ConfigLoader.forbiddenKeyMessage(key));
         }
     }
 }

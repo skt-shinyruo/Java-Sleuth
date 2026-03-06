@@ -1,7 +1,6 @@
 package com.javasleuth.core.command;
 
 import com.javasleuth.foundation.config.ProductionConfig;
-import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -11,6 +10,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.ServerSocket;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.Assert;
@@ -57,8 +57,6 @@ public class CommandProcessorSecurityBoundaryTest {
         try {
             config.setRuntimeConfig("server.bind.address", "0.0.0.0");
             config.setRuntimeConfig("server.port", "0");
-            config.setRuntimeConfig("security.mode", "off");
-            config.setRuntimeConfig("security.hmac.secret", "");
 
             ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
             ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
@@ -81,14 +79,18 @@ public class CommandProcessorSecurityBoundaryTest {
             Assert.assertFalse(out.contains("Java-Sleuth listening"));
 
             String err = errBuf.toString("UTF-8");
+            String lower = err.toLowerCase(Locale.ROOT);
             Assert.assertTrue(err.contains("SECURITY ERROR"));
+            // HMAC mode is removed; the error message should not mention legacy keys.
+            Assert.assertFalse(lower.contains("security.mode"));
+            Assert.assertFalse(lower.contains("hmac"));
         } finally {
             config.clearRuntimeConfig();
         }
     }
 
     @Test
-    public void testLoopbackAutogeneratesSecretWhenHmacModeButSecretEmpty() throws Exception {
+    public void testLoopbackBindAllowsStart() throws Exception {
         ProductionConfig cfg = ProductionConfig.createDefault();
         CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(cfg));
         ProductionConfig config = processor.getConfig();
@@ -96,8 +98,6 @@ public class CommandProcessorSecurityBoundaryTest {
         try {
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", "0");
-            config.setRuntimeConfig("security.mode", "hmac");
-            config.setRuntimeConfig("security.hmac.secret", "");
 
             ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
             ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
@@ -112,10 +112,6 @@ public class CommandProcessorSecurityBoundaryTest {
                 serverThread.start();
 
                 Assert.assertTrue(waitForServerSocketOpen(processor, 2, TimeUnit.SECONDS));
-
-                String secret = SleuthConfigSchema.SECURITY_HMAC_SECRET.read(config);
-                Assert.assertNotNull(secret);
-                Assert.assertFalse(secret.trim().isEmpty());
             } finally {
                 stopServerSocketOnly(processor);
                 if (serverThread != null) {

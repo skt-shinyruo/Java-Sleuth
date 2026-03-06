@@ -56,21 +56,12 @@ public final class SleuthConfigParser {
     }
 
     private static SecurityConfig parseSecurity(ConfigView config) {
-        String raw = SleuthConfigSchema.SECURITY_MODE.read(config);
-        SecurityConfig.Mode mode = parseSecurityMode(raw);
-
         boolean inputValidation = SleuthConfigSchema.SECURITY_INPUT_VALIDATION.read(config);
         boolean auditLogging = SleuthConfigSchema.SECURITY_AUDIT_LOGGING.read(config);
         boolean authorization = SleuthConfigSchema.SECURITY_AUTHORIZATION_ENABLED.read(config);
         boolean anonymousViewer = SleuthConfigSchema.SECURITY_ANONYMOUS_VIEWER.read(config);
         int maxCommandLength = SleuthConfigSchema.SECURITY_MAX_COMMAND_LENGTH.read(config);
         String allowedCommands = normalizeNonBlank(SleuthConfigSchema.SECURITY_ALLOWED_COMMANDS.read(config), "*");
-
-        String hmacSecret = SleuthConfigSchema.SECURITY_HMAC_SECRET.read(config);
-        boolean hmacAutogenLoopback = SleuthConfigSchema.SECURITY_HMAC_SECRET_AUTOGEN_ON_LOOPBACK.read(config);
-        boolean hmacAutogenPrint = SleuthConfigSchema.SECURITY_HMAC_SECRET_AUTOGEN_PRINT.read(config);
-        long timestampWindow = SleuthConfigSchema.SECURITY_HMAC_TIMESTAMP_WINDOW_MS.read(config);
-        int nonceCacheSize = SleuthConfigSchema.SECURITY_HMAC_NONCE_CACHE_SIZE.read(config);
 
         boolean dangerousConfirmEnabled = SleuthConfigSchema.SECURITY_DANGEROUS_CONFIRM_ENABLED.read(config);
         long dangerousConfirmTtlMs = SleuthConfigSchema.SECURITY_DANGEROUS_CONFIRM_TTL_MS.read(config);
@@ -80,38 +71,24 @@ public final class SleuthConfigParser {
         boolean impactHighConfirmEnabled = SleuthConfigSchema.SECURITY_IMPACT_HIGH_CONFIRM_ENABLED.read(config);
         int impactHighConcurrentLimit = SleuthConfigSchema.SECURITY_IMPACT_HIGH_CONCURRENT_LIMIT.read(config);
 
-        boolean bootstrapHmacOnAttach = SleuthConfigSchema.SECURITY_BOOTSTRAP_HMAC_ON_ATTACH.read(config);
-        int bootstrapSecretBytes = SleuthConfigSchema.SECURITY_BOOTSTRAP_HMAC_SECRET_BYTES.read(config);
-
-        String sessionRole = normalizeNonBlank(SleuthConfigSchema.SECURITY_HMAC_SESSION_ROLE.read(config), "operator");
-
         boolean passwordAuthEnabled = SleuthConfigSchema.SECURITY_AUTH_PASSWORD_ENABLED.read(config);
         String adminPassword = SleuthConfigSchema.SECURITY_AUTH_ADMIN_PASSWORD.read(config);
         String operatorPassword = SleuthConfigSchema.SECURITY_AUTH_OPERATOR_PASSWORD.read(config);
         String viewerPassword = SleuthConfigSchema.SECURITY_AUTH_VIEWER_PASSWORD.read(config);
 
         return new SecurityConfig(
-            mode,
             inputValidation,
             auditLogging,
             authorization,
             anonymousViewer,
             maxCommandLength,
             allowedCommands,
-            hmacSecret,
-            hmacAutogenLoopback,
-            hmacAutogenPrint,
-            timestampWindow,
-            nonceCacheSize,
             dangerousConfirmEnabled,
             dangerousConfirmTtlMs,
             dangerousConfirmTokenBytes,
             dangerousConfirmCacheSize,
             impactHighConfirmEnabled,
             impactHighConcurrentLimit,
-            bootstrapHmacOnAttach,
-            bootstrapSecretBytes,
-            sessionRole,
             passwordAuthEnabled,
             adminPassword,
             operatorPassword,
@@ -242,17 +219,6 @@ public final class SleuthConfigParser {
         );
 
         return new PluginsConfig(enabled, serviceLoader, allowlist, dir, strategy);
-    }
-
-    private static SecurityConfig.Mode parseSecurityMode(String raw) {
-        String v = normalizeNonBlank(raw, "off").toLowerCase(Locale.ROOT);
-        if ("off".equals(v)) {
-            return SecurityConfig.Mode.OFF;
-        }
-        if ("hmac".equals(v)) {
-            return SecurityConfig.Mode.HMAC;
-        }
-        return SecurityConfig.Mode.OFF;
     }
 
     private static String normalizeNonBlank(String v, String defaultValue) {

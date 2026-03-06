@@ -11,7 +11,6 @@ import com.javasleuth.foundation.security.AuditLogger;
 import com.javasleuth.foundation.security.AuthenticationManager;
 import com.javasleuth.foundation.security.AuthorizationManager;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
-import com.javasleuth.foundation.security.RequestSecurityManager;
 import com.javasleuth.foundation.util.SleuthLogger;
 import com.javasleuth.foundation.util.SleuthThreadFactory;
 import com.javasleuth.core.vmtool.VmToolSessionRegistry;
@@ -98,7 +97,6 @@ public final class SleuthAgentRuntime implements AutoCloseable {
             AuditLogger auditLogger = services.getAuditLogger();
             AuthenticationManager authenticationManager = services.getAuthenticationManager();
             AuthorizationManager authorizationManager = new AuthorizationManager(config, auditLogger, authenticationManager);
-            RequestSecurityManager requestSecurityManager = new RequestSecurityManager(config, auditLogger);
             DangerousCommandConfirmationManager dangerousConfirm = services.getDangerousConfirm();
 
             // Per-runtime state (avoid permanent singleton for tests/detach→re-attach).
@@ -115,7 +113,6 @@ public final class SleuthAgentRuntime implements AutoCloseable {
                 auditLogger,
                 authenticationManager,
                 authorizationManager,
-                requestSecurityManager,
                 dangerousConfirm,
                 clientSessionRegistry,
                 metricsCollector,

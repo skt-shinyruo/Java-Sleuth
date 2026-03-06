@@ -350,18 +350,10 @@ sudo chmod 640 /opt/java-sleuth/config/*.properties
 ```properties
 # 安全配置（以当前代码实现为准）
 # - 当前版本未实现 security.authentication.enabled / security.session.timeout 这类配置项
-# - 默认关闭匿名 viewer：仅在 off + viewer 会话场景会要求先 auth；推荐使用 hmac 会话自举
-# - 非回环绑定时禁止 security.mode=off（会拒绝启动），建议启用 hmac 并设置强随机 secret
+# - Java-Sleuth 命令服务端为 loopback-only：请保持 server.bind.address=127.0.0.1/localhost/::1（非回环绑定会拒绝启动）
+# - 多用户主机建议启用 RBAC + 口令认证，并设置强口令
 security.authorization.enabled=true
 security.anonymous.viewer=false
-security.mode=hmac
-security.hmac.secret=<a-strong-random-secret>
-# Loopback 自洽启动（生产建议明确配置 secret，并关闭打印）
-security.hmac.secret.autogen.on.loopback=false
-security.hmac.secret.autogen.print=false
-security.hmac.timestamp.window.ms=30000
-security.hmac.nonce.cache.size=10000
-security.hmac.session.role=operator
 
 # 危险命令二次确认（推荐）
 security.dangerous.confirm.enabled=true
@@ -373,11 +365,11 @@ security.dangerous.confirm.cache.size=2000
 security.impact.high.confirm.enabled=true
 security.impact.high.concurrent.limit=1
 
-# 可选：口令认证（默认关闭）
-security.auth.password.enabled=false
-# security.auth.admin.password=<set-a-strong-password>
-# security.auth.operator.password=<set-a-strong-password>
-# security.auth.viewer.password=<set-a-strong-password>
+# 口令认证（推荐）
+security.auth.password.enabled=true
+security.auth.admin.password=<set-a-strong-password>
+security.auth.operator.password=<set-a-strong-password>
+security.auth.viewer.password=<set-a-strong-password>
 ```
 
 ### 审计日志
@@ -1023,13 +1015,10 @@ security.max.command.length=2000
 security.allowed.commands=*
 security.authorization.enabled=true
 security.anonymous.viewer=false
-security.mode=hmac
-security.hmac.secret=<a-strong-random-secret>
-security.hmac.secret.autogen.on.loopback=false
-security.hmac.secret.autogen.print=false
-security.hmac.timestamp.window.ms=30000
-security.hmac.nonce.cache.size=10000
-security.hmac.session.role=operator
+security.auth.password.enabled=true
+security.auth.admin.password=<set-a-strong-password>
+security.auth.operator.password=<set-a-strong-password>
+security.auth.viewer.password=<set-a-strong-password>
 security.dangerous.confirm.enabled=true
 security.dangerous.confirm.ttl.ms=60000
 security.dangerous.confirm.token.bytes=12

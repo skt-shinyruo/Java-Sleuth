@@ -23,7 +23,6 @@ public class ProtocolClientIntegrationTest {
             config.clearRuntimeConfig();
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", "0");
-            config.setRuntimeConfig("security.mode", "off");
             config.setRuntimeConfig("protocol.streaming.enabled", "true");
 
             Thread serverThread = new Thread(processor::start, "test-cp-start");
@@ -62,7 +61,6 @@ public class ProtocolClientIntegrationTest {
             config.clearRuntimeConfig();
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", "0");
-            config.setRuntimeConfig("security.mode", "off");
             config.setRuntimeConfig("protocol.streaming.enabled", "false");
 
             Thread serverThread = new Thread(processor::start, "test-cp-start-streaming-disabled");
@@ -106,7 +104,6 @@ public class ProtocolClientIntegrationTest {
             config.clearRuntimeConfig();
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", "0");
-            config.setRuntimeConfig("security.mode", "off");
             config.setRuntimeConfig("protocol.streaming.enabled", "true");
 
             Thread serverThread = new Thread(() -> {

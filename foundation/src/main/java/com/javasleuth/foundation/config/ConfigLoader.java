@@ -6,6 +6,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
 
@@ -94,7 +95,7 @@ public final class ConfigLoader {
             if (!inFile && !inSys) {
                 continue;
             }
-            String msg = "Unsupported config key: " + key + " (legacy protocol removed)";
+            String msg = forbiddenKeyMessage(key);
             if (policy == ForbiddenKeyPolicy.STRICT) {
                 throw new IllegalArgumentException(msg);
             }
@@ -104,5 +105,19 @@ public final class ConfigLoader {
 
     private static Set<String> forbiddenKeys() {
         return FORBIDDEN_KEYS;
+    }
+
+    static String forbiddenKeyMessage(String key) {
+        if (key == null) {
+            return "Unsupported config key: <null>";
+        }
+        String lower = key.trim().toLowerCase(Locale.ROOT);
+        if ("security.mode".equals(lower) || lower.startsWith("security.hmac.") || lower.startsWith("security.bootstrap.hmac.")) {
+            return "Unsupported config key: " + key + " (HMAC mode removed; server is loopback-only)";
+        }
+        if (lower.startsWith("protocol.")) {
+            return "Unsupported config key: " + key + " (legacy protocol removed)";
+        }
+        return "Unsupported config key: " + key;
     }
 }

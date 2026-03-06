@@ -17,7 +17,6 @@ import com.javasleuth.foundation.security.AuditLogger;
 import com.javasleuth.foundation.security.AuthenticationManager;
 import com.javasleuth.foundation.security.AuthorizationManager;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
-import com.javasleuth.foundation.security.RequestSecurityManager;
 import com.javasleuth.foundation.util.SleuthThreadFactory;
 import com.javasleuth.foundation.util.SleuthLogger;
 import java.io.IOException;
@@ -57,7 +56,6 @@ public class CommandProcessor {
         AuditLogger auditLogger,
         AuthenticationManager authenticationManager,
         AuthorizationManager authorizationManager,
-        RequestSecurityManager requestSecurityManager,
         DangerousCommandConfirmationManager dangerousConfirm,
         ClientSessionRegistry clientSessionRegistry,
         MetricsCollector metricsCollector
@@ -70,7 +68,6 @@ public class CommandProcessor {
             auditLogger,
             authenticationManager,
             authorizationManager,
-            requestSecurityManager,
             dangerousConfirm,
             clientSessionRegistry,
             metricsCollector

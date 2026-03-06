@@ -21,7 +21,6 @@ public final class CommandProcessorComponents {
     private final com.javasleuth.foundation.security.InputValidator inputValidator;
     private final com.javasleuth.foundation.security.AuthenticationManager authenticationManager;
     private final com.javasleuth.foundation.security.AuthorizationManager authorizationManager;
-    private final com.javasleuth.foundation.security.RequestSecurityManager requestSecurityManager;
     private final com.javasleuth.foundation.security.DangerousCommandConfirmationManager dangerousConfirm;
 
     private final com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry;
@@ -49,7 +48,6 @@ public final class CommandProcessorComponents {
         com.javasleuth.foundation.security.InputValidator inputValidator,
         com.javasleuth.foundation.security.AuthenticationManager authenticationManager,
         com.javasleuth.foundation.security.AuthorizationManager authorizationManager,
-        com.javasleuth.foundation.security.RequestSecurityManager requestSecurityManager,
         com.javasleuth.foundation.security.DangerousCommandConfirmationManager dangerousConfirm,
         com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry,
         com.javasleuth.core.command.session.ClientSessionIndex sessionIndex,
@@ -73,7 +71,6 @@ public final class CommandProcessorComponents {
         this.inputValidator = inputValidator;
         this.authenticationManager = authenticationManager;
         this.authorizationManager = authorizationManager;
-        this.requestSecurityManager = requestSecurityManager;
         this.dangerousConfirm = dangerousConfirm;
         this.clientSessionRegistry = clientSessionRegistry;
         this.sessionIndex = sessionIndex;
@@ -132,10 +129,6 @@ public final class CommandProcessorComponents {
 
     public com.javasleuth.foundation.security.AuthorizationManager getAuthorizationManager() {
         return authorizationManager;
-    }
-
-    public com.javasleuth.foundation.security.RequestSecurityManager getRequestSecurityManager() {
-        return requestSecurityManager;
     }
 
     public com.javasleuth.foundation.security.DangerousCommandConfirmationManager getDangerousConfirm() {

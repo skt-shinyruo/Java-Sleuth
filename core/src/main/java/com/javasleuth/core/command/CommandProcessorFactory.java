@@ -31,7 +31,6 @@ public final class CommandProcessorFactory {
         com.javasleuth.foundation.security.AuditLogger auditLogger,
         com.javasleuth.foundation.security.AuthenticationManager authenticationManager,
         com.javasleuth.foundation.security.AuthorizationManager authorizationManager,
-        com.javasleuth.foundation.security.RequestSecurityManager requestSecurityManager,
         com.javasleuth.foundation.security.DangerousCommandConfirmationManager dangerousConfirm,
         com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry,
         com.javasleuth.core.monitoring.MetricsCollector metricsCollector
@@ -44,7 +43,6 @@ public final class CommandProcessorFactory {
             auditLogger,
             authenticationManager,
             authorizationManager,
-            requestSecurityManager,
             dangerousConfirm,
             clientSessionRegistry,
             metricsCollector,
@@ -61,7 +59,6 @@ public final class CommandProcessorFactory {
         com.javasleuth.foundation.security.AuditLogger auditLogger,
         com.javasleuth.foundation.security.AuthenticationManager authenticationManager,
         com.javasleuth.foundation.security.AuthorizationManager authorizationManager,
-        com.javasleuth.foundation.security.RequestSecurityManager requestSecurityManager,
         com.javasleuth.foundation.security.DangerousCommandConfirmationManager dangerousConfirm,
         com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry,
         com.javasleuth.core.monitoring.MetricsCollector metricsCollector,
@@ -76,7 +73,6 @@ public final class CommandProcessorFactory {
             auditLogger,
             authenticationManager,
             authorizationManager,
-            requestSecurityManager,
             dangerousConfirm,
             clientSessionRegistry,
             metricsCollector,
@@ -94,7 +90,6 @@ public final class CommandProcessorFactory {
         com.javasleuth.foundation.security.AuditLogger auditLogger,
         com.javasleuth.foundation.security.AuthenticationManager authenticationManager,
         com.javasleuth.foundation.security.AuthorizationManager authorizationManager,
-        com.javasleuth.foundation.security.RequestSecurityManager requestSecurityManager,
         com.javasleuth.foundation.security.DangerousCommandConfirmationManager dangerousConfirm,
         com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry,
         com.javasleuth.core.monitoring.MetricsCollector metricsCollector,
@@ -110,7 +105,6 @@ public final class CommandProcessorFactory {
             auditLogger,
             authenticationManager,
             authorizationManager,
-            requestSecurityManager,
             dangerousConfirm,
             clientSessionRegistry,
             metricsCollector,
@@ -139,7 +133,6 @@ public final class CommandProcessorFactory {
             null,
             null,
             null,
-            null,
             null
         );
     }
@@ -152,7 +145,6 @@ public final class CommandProcessorFactory {
         com.javasleuth.foundation.security.AuditLogger auditLogger,
         com.javasleuth.foundation.security.AuthenticationManager authenticationManager,
         com.javasleuth.foundation.security.AuthorizationManager authorizationManager,
-        com.javasleuth.foundation.security.RequestSecurityManager requestSecurityManager,
         com.javasleuth.foundation.security.DangerousCommandConfirmationManager dangerousConfirm,
         com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry,
         com.javasleuth.core.monitoring.MetricsCollector metricsCollector
@@ -165,7 +157,6 @@ public final class CommandProcessorFactory {
             auditLogger,
             authenticationManager,
             authorizationManager,
-            requestSecurityManager,
             dangerousConfirm,
             clientSessionRegistry,
             metricsCollector,
@@ -182,7 +173,6 @@ public final class CommandProcessorFactory {
         com.javasleuth.foundation.security.AuditLogger auditLogger,
         com.javasleuth.foundation.security.AuthenticationManager authenticationManager,
         com.javasleuth.foundation.security.AuthorizationManager authorizationManager,
-        com.javasleuth.foundation.security.RequestSecurityManager requestSecurityManager,
         com.javasleuth.foundation.security.DangerousCommandConfirmationManager dangerousConfirm,
         com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry,
         com.javasleuth.core.monitoring.MetricsCollector metricsCollector,
@@ -197,7 +187,6 @@ public final class CommandProcessorFactory {
             auditLogger,
             authenticationManager,
             authorizationManager,
-            requestSecurityManager,
             dangerousConfirm,
             clientSessionRegistry,
             metricsCollector,
@@ -215,7 +204,6 @@ public final class CommandProcessorFactory {
         com.javasleuth.foundation.security.AuditLogger auditLogger,
         com.javasleuth.foundation.security.AuthenticationManager authenticationManager,
         com.javasleuth.foundation.security.AuthorizationManager authorizationManager,
-        com.javasleuth.foundation.security.RequestSecurityManager requestSecurityManager,
         com.javasleuth.foundation.security.DangerousCommandConfirmationManager dangerousConfirm,
         com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry,
         com.javasleuth.core.monitoring.MetricsCollector metricsCollector,
@@ -248,8 +236,6 @@ public final class CommandProcessorFactory {
                 : new com.javasleuth.foundation.security.AuthenticationManager(cfg, audit);
         com.javasleuth.foundation.security.AuthorizationManager authz =
             authorizationManager != null ? authorizationManager : new com.javasleuth.foundation.security.AuthorizationManager(cfg, audit, authn);
-        com.javasleuth.foundation.security.RequestSecurityManager reqSec =
-            requestSecurityManager != null ? requestSecurityManager : new com.javasleuth.foundation.security.RequestSecurityManager(cfg, audit);
 
         boolean ownsDangerousConfirm = dangerousConfirm == null;
         com.javasleuth.foundation.security.DangerousCommandConfirmationManager dc =
@@ -337,7 +323,6 @@ public final class CommandProcessorFactory {
             cfg,
             audit,
             authn,
-            reqSec,
             registry,
             pipeline,
             sessionIndex,
@@ -353,8 +338,7 @@ public final class CommandProcessorFactory {
             audit,
             registry,
             pipeline,
-            authz,
-            reqSec
+            authz
         );
 
         AutoCloseable ownedResources = null;
@@ -415,7 +399,6 @@ public final class CommandProcessorFactory {
             inputValidator,
             authn,
             authz,
-            reqSec,
             dc,
             csr,
             sessionIndex,

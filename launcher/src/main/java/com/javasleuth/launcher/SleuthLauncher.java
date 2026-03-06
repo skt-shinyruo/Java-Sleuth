@@ -31,10 +31,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import org.jline.reader.LineReader;
-import org.jline.reader.LineReaderBuilder;
-import org.jline.terminal.Terminal;
-import org.jline.terminal.TerminalBuilder;
 
 public class SleuthLauncher {
 
@@ -94,11 +90,8 @@ public class SleuthLauncher {
         }
 
         boolean insecureMode = parsed.isInsecure();
-        if (insecureMode && parsed.getLaunchMode() == LaunchMode.INTERACTIVE) {
-            if (!confirmInsecureMode()) {
-                System.out.println("Insecure mode confirmation rejected. Exiting...");
-                return 0;
-            }
+        if (insecureMode) {
+            System.out.println("⚠️  --insecure is deprecated and has no effect (HMAC mode removed; server is loopback-only).");
         }
 
         AgentAttacher attacher = new AgentAttacher(new ToolsAttachApi(), new AgentArgsBuilder());
@@ -168,18 +161,6 @@ public class SleuthLauncher {
             return null;
         }
         return selector.select(candidates);
-    }
-
-    private boolean confirmInsecureMode() throws IOException {
-        Terminal terminal = TerminalBuilder.builder().system(true).build();
-        LineReader reader = LineReaderBuilder.builder().terminal(terminal).build();
-
-        System.out.println("⚠️  You are about to enable insecure mode (security.mode=off).");
-        System.out.println("    This is intended for local troubleshooting only and is unsafe if exposed via port-forwarding or proxies.");
-        System.out.println("    Type 'I UNDERSTAND' to continue, or anything else to cancel.");
-
-        String input = reader.readLine("Confirm insecure mode: ");
-        return "I UNDERSTAND".equalsIgnoreCase(input != null ? input.trim() : "");
     }
 
     private void startInteractiveSession() {

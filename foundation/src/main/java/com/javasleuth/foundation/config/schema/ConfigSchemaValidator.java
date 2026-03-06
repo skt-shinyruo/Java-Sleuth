@@ -59,14 +59,9 @@ public final class ConfigSchemaValidator {
             }
         }
 
-        // 关键边界必须显式 fail-fast。
-        assertFailFast(errors, SleuthConfigSchema.SECURITY_MODE);
-
         // 合法枚举集合必须覆盖默认值（避免默认值与 allowed 漂移）。
-        assertAllowedContainsDefault(errors, SleuthConfigSchema.SECURITY_MODE);
         assertAllowedContainsDefault(errors, SleuthConfigSchema.PLUGINS_CONFLICT_STRATEGY);
         assertAllowedContainsDefault(errors, SleuthConfigSchema.LOGGING_LEVEL);
-        assertAllowedContainsDefault(errors, SleuthConfigSchema.SECURITY_HMAC_SESSION_ROLE);
 
         return errors;
     }
@@ -93,17 +88,11 @@ public final class ConfigSchemaValidator {
         try {
             // 通过读取一个空 ConfigView 无法触发 allowed 检查；因此在这里对常见关键 key 做白名单校验。
             // 该检查由 Schema 常量本身（allowedStrings）保证，若缺失会在运行时导致 fallback。
-            if ("security.mode".equals(key.getKey()) && !("off".equals(lower) || "hmac".equals(lower))) {
-                errors.add("security.mode default must be off|hmac: " + def);
-            }
             if ("plugins.conflict.strategy".equals(key.getKey()) && !("prefer-builtin".equals(lower) || "prefer-plugin".equals(lower))) {
                 errors.add("plugins.conflict.strategy default must be prefer-builtin|prefer-plugin: " + def);
             }
             if ("logging.level".equals(key.getKey()) && !("trace".equals(lower) || "debug".equals(lower) || "info".equals(lower) || "warn".equals(lower) || "error".equals(lower))) {
                 errors.add("logging.level default must be TRACE|DEBUG|INFO|WARN|ERROR: " + def);
-            }
-            if ("security.hmac.session.role".equals(key.getKey()) && !("viewer".equals(lower) || "operator".equals(lower) || "admin".equals(lower))) {
-                errors.add("security.hmac.session.role default must be viewer|operator|admin: " + def);
             }
         } catch (Exception ignore) {
             // ignore

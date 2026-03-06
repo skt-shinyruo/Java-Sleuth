@@ -5,7 +5,6 @@ package com.javasleuth.core.command.server.protocol;
  *
  * <p>该类不直接依赖 CommandProcessor 的内部状态，通过注入的会话索引与 pipeline 执行。</p>
  */
-import com.javasleuth.foundation.command.protocol.KvLineCodec;
 import com.javasleuth.core.command.CommandContext;
 import com.javasleuth.core.command.CommandContextHolder;
 import com.javasleuth.core.command.CommandParser;
@@ -23,18 +22,15 @@ import com.javasleuth.foundation.config.model.SecurityConfig;
 import com.javasleuth.core.monitoring.MetricsCollector;
 import com.javasleuth.foundation.security.AuditLogger;
 import com.javasleuth.foundation.security.AuthenticationManager;
-import com.javasleuth.foundation.security.RequestSecurityManager;
 import com.javasleuth.foundation.util.SleuthLogger;
 import java.io.IOException;
 import java.util.Locale;
-import java.util.Map;
 
 public final class CommandRequestExecutor {
     private final MetricsCollector metricsCollector;
     private final ProductionConfig config;
     private final AuditLogger auditLogger;
     private final AuthenticationManager authenticationManager;
-    private final RequestSecurityManager requestSecurityManager;
     private final CommandRegistry registry;
     private final CommandPipeline pipeline;
     private final ClientSessionIndex sessionIndex;
@@ -44,7 +40,6 @@ public final class CommandRequestExecutor {
         ProductionConfig config,
         AuditLogger auditLogger,
         AuthenticationManager authenticationManager,
-        RequestSecurityManager requestSecurityManager,
         CommandRegistry registry,
         CommandPipeline pipeline,
         ClientSessionIndex sessionIndex
@@ -53,7 +48,6 @@ public final class CommandRequestExecutor {
         this.config = config;
         this.auditLogger = auditLogger;
         this.authenticationManager = authenticationManager;
-        this.requestSecurityManager = requestSecurityManager;
         this.registry = registry;
         this.pipeline = pipeline;
         this.sessionIndex = sessionIndex;
@@ -77,42 +71,14 @@ public final class CommandRequestExecutor {
         String errorDisconnectedMessage
     ) throws IOException {
         long commandStart = System.currentTimeMillis();
-        String verifyKey = sessionIndex.get(clientId);
-        if (verifyKey == null) {
-            verifyKey = baseSessionId;
-        }
-        if (verifyKey == null) {
-            verifyKey = clientId;
-        }
-
-        if (securityConfig != null && securityConfig.isHmacEnabled()) {
-            Map<String, String> sigKv = KvLineCodec.parseAfterVerb(raw);
-            String sid = sigKv.get("sid");
-            if (sigKv.containsKey("v")) {
-                reply.sendError("HMAC security: unsupported SIG field: v");
-                metricsCollector.recordError("security_sig_version");
-                return false;
-            }
-            if (connId == null || connId.trim().isEmpty()) {
-                reply.sendError("HMAC security: connId is required (handshake missing)");
-                metricsCollector.recordError("security_sig_connid");
-                return false;
-            }
-            if (sid == null || !connId.equals(sid)) {
-                reply.sendError("HMAC security: SIG sid must match negotiated connId");
-                metricsCollector.recordError("security_sig_sid");
-                return false;
-            }
-        }
-
-        RequestSecurityManager.VerificationResult verified = requestSecurityManager.verifyAndExtract(verifyKey, raw);
-        if (!verified.isOk()) {
-            reply.sendError(verified.getError());
-            metricsCollector.recordError("security_verify");
+        String commandLine = raw != null ? raw.trim() : "";
+        if (commandLine.startsWith("SIG ")) {
+            reply.sendError("Unsupported request envelope: SIG (HMAC mode removed)");
+            metricsCollector.recordError("security_sig_removed");
             return false;
         }
 
-        String[] parts = CommandParser.parse(verified.getCommand());
+        String[] parts = CommandParser.parse(commandLine);
         if (parts.length == 0) {
             return false;
         }

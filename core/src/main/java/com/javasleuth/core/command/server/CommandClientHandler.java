@@ -23,7 +23,6 @@ import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.core.monitoring.MetricsCollector;
 import com.javasleuth.foundation.security.AuditLogger;
 import com.javasleuth.foundation.security.AuthenticationManager;
-import com.javasleuth.foundation.security.RequestSecurityManager;
 import com.javasleuth.foundation.util.SleuthLogContext;
 import com.javasleuth.foundation.util.SleuthLogger;
 import java.io.BufferedInputStream;
@@ -47,7 +46,6 @@ public final class CommandClientHandler {
     private final ProductionConfig config;
     private final AuditLogger auditLogger;
     private final AuthenticationManager authenticationManager;
-    private final RequestSecurityManager requestSecurityManager;
     private final CommandRegistry registry;
     private final CommandPipeline pipeline;
     private final ClientSessionIndex sessionIndex;
@@ -63,7 +61,6 @@ public final class CommandClientHandler {
         ProductionConfig config,
         AuditLogger auditLogger,
         AuthenticationManager authenticationManager,
-        RequestSecurityManager requestSecurityManager,
         CommandRegistry registry,
         CommandPipeline pipeline,
         ClientSessionIndex sessionIndex,
@@ -75,7 +72,6 @@ public final class CommandClientHandler {
         this.config = config;
         this.auditLogger = auditLogger;
         this.authenticationManager = authenticationManager;
-        this.requestSecurityManager = requestSecurityManager;
         this.registry = registry;
         this.pipeline = pipeline;
         this.sessionIndex = sessionIndex;
@@ -86,7 +82,6 @@ public final class CommandClientHandler {
             config,
             auditLogger,
             authenticationManager,
-            requestSecurityManager,
             registry,
             pipeline,
             sessionIndex
@@ -143,12 +138,6 @@ public final class CommandClientHandler {
             }
             if (sessionConfig != null) {
                 AuthenticationManager.UserRole initialRole = AuthenticationManager.UserRole.VIEWER;
-                if (securityConfig != null && securityConfig.isHmacEnabled()) {
-                    initialRole = AuthenticationManager.UserRole.fromName(
-                        securityConfig.getHmacSessionRole(),
-                        AuthenticationManager.UserRole.OPERATOR
-                    );
-                }
 
                 AuthenticationManager.AuthenticationResult sessionResult =
                     authenticationManager.createSession(initialRole, clientInfo);

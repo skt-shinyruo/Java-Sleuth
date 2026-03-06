@@ -138,7 +138,7 @@ public class StatusCommand implements Command {
         status.append("Cache TTL: ").append(config.getLong("performance.cache.ttl", 5000)).append("ms\n");
         status.append("Protocol: ").append("binary").append("\n");
         status.append("Handshake Enabled: ").append(true).append("\n");
-        status.append("Security Mode: ").append(config.getString("security.mode", "off")).append("\n");
+        status.append("Network Boundary: ").append("loopback-only").append("\n");
         status.append("Input Validation: ").append(config.getBoolean("security.input.validation", true) ? "ENABLED" : "DISABLED").append("\n");
         status.append("Audit Logging: ").append(config.getBoolean("security.audit.logging", true) ? "ENABLED" : "DISABLED").append("\n");
         status.append("Authorization: ").append(config.getBoolean("security.authorization.enabled", false) ? "ENABLED" : "DISABLED").append("\n");
