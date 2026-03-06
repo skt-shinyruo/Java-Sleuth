@@ -42,7 +42,7 @@ public final class AgentArgsBuilder {
         }
     }
 
-    public BuildResult build(ProductionConfig config, boolean insecureMode, File containerJar) {
+    public BuildResult build(ProductionConfig config, File containerJar) {
         if (config == null) {
             return BuildResult.error("Internal error: ProductionConfig is null");
         }
@@ -58,7 +58,6 @@ public final class AgentArgsBuilder {
         }
         agentArgs.append("server.port=").append(SleuthConfigSchema.SERVER_PORT.read(config)).append(";");
         agentArgs.append("protocol.streaming.enabled=").append(SleuthConfigSchema.PROTOCOL_STREAMING_ENABLED.read(config)).append(";");
-        // HMAC mode has been removed. Keep `--insecure` for CLI compatibility (no-op).
 
         return BuildResult.ok(agentArgs.toString());
     }

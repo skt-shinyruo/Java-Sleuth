@@ -36,16 +36,10 @@ public class LauncherArgsTest {
     }
 
     @Test
-    public void testHeadlessInsecureIsAcceptedAsNoop() {
+    public void testUnknownArgIsRejected() {
         LauncherArgs args = LauncherArgs.parse(new String[] {"--pid", "123", "--cmd", "version", "--insecure"});
         List<String> errors = args.validate();
-        Assert.assertTrue(errors.isEmpty());
-    }
-
-    @Test
-    public void testHeadlessInsecureWithConfirmIsAcceptedAsNoop() {
-        LauncherArgs args = LauncherArgs.parse(new String[] {"--pid", "123", "--cmd", "version", "--insecure", "--insecure-confirm", "I UNDERSTAND"});
-        List<String> errors = args.validate();
-        Assert.assertTrue(errors.isEmpty());
+        Assert.assertFalse(errors.isEmpty());
+        Assert.assertTrue(errors.toString().contains("--insecure"));
     }
 }

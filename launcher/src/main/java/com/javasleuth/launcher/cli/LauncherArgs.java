@@ -11,8 +11,6 @@ import java.util.List;
  */
 public final class LauncherArgs {
     private final boolean help;
-    private final boolean insecure;
-    private final String insecureConfirm;
     private final String pid;
     private final String command;
     private final String scriptPath;
@@ -21,8 +19,6 @@ public final class LauncherArgs {
 
     private LauncherArgs(
         boolean help,
-        boolean insecure,
-        String insecureConfirm,
         String pid,
         String command,
         String scriptPath,
@@ -30,8 +26,6 @@ public final class LauncherArgs {
         List<String> unknownArgs
     ) {
         this.help = help;
-        this.insecure = insecure;
-        this.insecureConfirm = insecureConfirm;
         this.pid = pid;
         this.command = command;
         this.scriptPath = scriptPath;
@@ -41,8 +35,6 @@ public final class LauncherArgs {
 
     public static LauncherArgs parse(String[] args) {
         boolean help = false;
-        boolean insecure = false;
-        String insecureConfirm = null;
         String pid = null;
         String command = null;
         String script = null;
@@ -50,7 +42,7 @@ public final class LauncherArgs {
         List<String> unknown = new ArrayList<>();
 
         if (args == null) {
-            return new LauncherArgs(false, false, null, null, null, null, false, Collections.emptyList());
+            return new LauncherArgs(false, null, null, null, false, Collections.emptyList());
         }
 
         for (int i = 0; i < args.length; i++) {
@@ -65,18 +57,6 @@ public final class LauncherArgs {
 
             if ("--help".equalsIgnoreCase(a) || "-h".equalsIgnoreCase(a) || "-help".equalsIgnoreCase(a)) {
                 help = true;
-                continue;
-            }
-
-            if ("--insecure".equalsIgnoreCase(a) || "-insecure".equalsIgnoreCase(a)) {
-                insecure = true;
-                continue;
-            }
-
-            if ("--insecure-confirm".equalsIgnoreCase(a)) {
-                if (i + 1 < args.length) {
-                    insecureConfirm = safeValue(args[++i]);
-                }
                 continue;
             }
 
@@ -114,7 +94,7 @@ public final class LauncherArgs {
             unknown.add(a);
         }
 
-        return new LauncherArgs(help, insecure, insecureConfirm, pid, command, script, failFast, unknown);
+        return new LauncherArgs(help, pid, command, script, failFast, unknown);
     }
 
     private static String safeValue(String v) {
@@ -127,14 +107,6 @@ public final class LauncherArgs {
 
     public boolean isHelp() {
         return help;
-    }
-
-    public boolean isInsecure() {
-        return insecure;
-    }
-
-    public String getInsecureConfirm() {
-        return insecureConfirm;
     }
 
     public String getPid() {
@@ -167,6 +139,10 @@ public final class LauncherArgs {
     public List<String> validate() {
         List<String> errors = new ArrayList<>();
 
+        if (unknownArgs != null && !unknownArgs.isEmpty()) {
+            errors.add("未知参数: " + String.join(", ", unknownArgs));
+        }
+
         LaunchMode mode = getLaunchMode();
         if (mode == LaunchMode.HEADLESS) {
             if (pid == null || pid.trim().isEmpty()) {
@@ -183,6 +159,14 @@ public final class LauncherArgs {
     public String usage() {
         StringBuilder sb = new StringBuilder();
         sb.append("Java-Sleuth Launcher Usage:\n");
+        sb.append("  Options:\n");
+        sb.append("    --help | -h\n");
+        sb.append("    --pid <pid>\n");
+        sb.append("    --cmd <command>\n");
+        sb.append("    --script <file>\n");
+        sb.append("    --fail-fast\n");
+        sb.append("    --continue-on-error\n");
+        sb.append("\n");
         sb.append("  Interactive:\n");
         sb.append("    java -jar java-sleuth-launcher-*-jar-with-dependencies.jar\n");
         sb.append("    java -jar ... --pid <pid>    # 直接 attach 指定 PID 后进入交互\n");
@@ -190,10 +174,6 @@ public final class LauncherArgs {
         sb.append("  Headless (automation):\n");
         sb.append("    java -jar ... --pid <pid> --cmd \"version\"\n");
         sb.append("    java -jar ... --pid <pid> --script /path/to/commands.txt [--fail-fast]\n");
-        sb.append("\n");
-        sb.append("  Security:\n");
-        sb.append("    --insecure                # DEPRECATED (no-op): HMAC mode removed; server is loopback-only\n");
-        sb.append("    --insecure-confirm \"I UNDERSTAND\"  # DEPRECATED (no-op)\n");
         return sb.toString();
     }
 }

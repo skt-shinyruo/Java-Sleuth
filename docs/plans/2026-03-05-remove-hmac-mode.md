@@ -123,7 +123,7 @@ Expected: PASS.
 **Step 1: Agent args**
 
 - Stop appending `security.mode` / `security.hmac.*` to agent args.
-- Keep `--insecure` as a no-op/deprecated option (do not require confirm).
+- Remove deprecated `--insecure` / `--insecure-confirm` flags (breaking change).
 
 **Step 2: Client protocol**
 
@@ -164,4 +164,3 @@ Expected: PASS.
 Run: `mvn test`
 
 Expected: PASS.
-

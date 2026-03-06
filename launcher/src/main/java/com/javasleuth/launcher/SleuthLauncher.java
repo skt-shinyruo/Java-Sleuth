@@ -89,18 +89,12 @@ public class SleuthLauncher {
             return 0;
         }
 
-        boolean insecureMode = parsed.isInsecure();
-        if (insecureMode) {
-            System.out.println("⚠️  --insecure is deprecated and has no effect (HMAC mode removed; server is loopback-only).");
-        }
-
         AgentAttacher attacher = new AgentAttacher(new ToolsAttachApi(), new AgentArgsBuilder());
         boolean attached = attacher.attach(
             selectedVm.id(),
             selectedVm.displayName(),
             agentJar,
-            containerJar,
-            insecureMode
+            containerJar
         );
         if (!attached) {
             return 1;

@@ -18,7 +18,7 @@ public final class AgentAttacher {
         this.agentArgsBuilder = agentArgsBuilder;
     }
 
-    public boolean attach(String pid, String displayName, File agentJar, File containerJar, boolean insecureMode) throws Exception {
+    public boolean attach(String pid, String displayName, File agentJar, File containerJar) throws Exception {
         if (pid == null || pid.trim().isEmpty()) {
             System.err.println("Invalid target PID");
             return false;
@@ -52,7 +52,7 @@ public final class AgentAttacher {
             // 忽略
         }
 
-        AgentArgsBuilder.BuildResult built = agentArgsBuilder.build(config, insecureMode, containerJar);
+        AgentArgsBuilder.BuildResult built = agentArgsBuilder.build(config, containerJar);
         if (!built.isOk()) {
             System.err.println(built.getErrorMessage());
             return false;
