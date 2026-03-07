@@ -12,14 +12,19 @@
 - Linux/macOS：`./sleuth.sh`
 - Windows：`sleuth.bat`
 - 或直接运行 Launcher fat-jar：`java -jar launcher/target/java-sleuth-launcher-*-jar-with-dependencies.jar`
-  - 说明：若不在项目根目录运行（无法自动扫描到 `agent/target` / `core/target`），请显式指定：
+  - 说明：若不在项目根目录运行（无法自动扫描到 `agent/target` / `container/target`），请显式指定：
     - bootstrap agent jar：`-Dsleuth.agent.jar=agent/target/java-sleuth-agent-*-jar-with-dependencies.jar`（或环境变量 `SLEUTH_AGENT_JAR`）
     - agent container jar（推荐，新架构）：`-Dsleuth.agent.container.jar=container/target/java-sleuth-container-*-jar-with-dependencies.jar`（或环境变量 `SLEUTH_AGENT_CONTAINER_JAR`）
-    - agent core jar（兼容旧架构/兜底）：`-Dsleuth.agent.core.jar=core/target/java-sleuth-agent-core-*-jar-with-dependencies.jar`（或环境变量 `SLEUTH_AGENT_CORE_JAR`）
   - 高级：若 bootstrap bridge jar（`java-sleuth-bootstrap-bridge-*.jar`）定位失败，可在目标 JVM 上设置：
     - `-Dsleuth.agent.bootstrap.bridge.jar=agent/target/java-sleuth-bootstrap-bridge-*.jar`（或环境变量 `SLEUTH_AGENT_BOOTSTRAP_BRIDGE_JAR`）
   - 可选加固（兼容优先，默认不启用）：如需禁止 CWD 相对目录扫描，请设置：
     - `-Dsleuth.locator.allowCwdScan=false`（并配合上述显式 jar 路径）
+
+> 推荐：使用打包产物（稳定文件名）避免“找 jar”心智模型分叉。执行 `mvn clean package` 后可在 `packaging/target/` 找到 zip/dir：
+> - `java-sleuth-launcher.jar`
+> - `java-sleuth-agent.jar`
+> - `java-sleuth-container.jar`
+> - `java-sleuth-bootstrap-bridge.jar`
 
 ## 3. 选择目标 JVM 并开始诊断
 

@@ -29,7 +29,6 @@
 2. 不在项目根目录运行时，显式指定 jar 路径（示例，按你的实际路径修改）：
    - `-Dsleuth.agent.container.jar=container/target/java-sleuth-container-*-jar-with-dependencies.jar`
    - `-Dsleuth.agent.jar=agent/target/java-sleuth-agent-*-jar-with-dependencies.jar`
-   - `-Dsleuth.agent.core.jar=core/target/java-sleuth-agent-core-*-jar-with-dependencies.jar`（兼容/兜底）
 
 详见：`getting-started.md`。
 

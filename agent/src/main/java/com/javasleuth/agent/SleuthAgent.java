@@ -24,6 +24,7 @@ public final class SleuthAgent {
     private static final String BOOTSTRAP_AGENT_LIFECYCLE_CLASS = "com.javasleuth.bootstrap.agent.AgentLifecycle";
 
     private static final String BOOTSTRAP_JAR_LOCATOR_CLASS = "com.javasleuth.bootstrap.util.JarLocator";
+    private static final String STABLE_BOOTSTRAP_BRIDGE_JAR_NAME = "java-sleuth-bootstrap-bridge.jar";
 
     private static final String LOCATOR_DEBUG_PROPERTY = "sleuth.locator.debug";
     private static final String LOCATOR_ALLOW_CWD_SCAN_PROPERTY = "sleuth.locator.allowCwdScan";
@@ -101,16 +102,12 @@ public final class SleuthAgent {
 
             File containerJar = locateAgentContainerJarBestEffort();
             if (containerJar == null) {
-                // Backward compatible fallback: old builds might still have core fat-jar.
-                containerJar = locateAgentCoreJarBestEffort();
-            }
-            if (containerJar == null) {
                 System.err.println("Java-Sleuth: Agent container jar not found.");
                 System.err.println("  - Provide via agent args: containerJar=<path>");
                 System.err.println(
                     "  - Or set -D" + AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY + "=<path> / env " + AGENT_CONTAINER_JAR_OVERRIDE_ENV
                 );
-                System.err.println("  - Or place container jar near bootstrap jar: java-sleuth-container*");
+                System.err.println("  - Or place container jar next to bootstrap agent jar: java-sleuth-container.jar");
                 // 启动失败：回滚生命周期 session，允许修复参数后重试 attach。
                 bridgeFailBestEffort(sessionId, null);
                 return;
@@ -176,6 +173,14 @@ public final class SleuthAgent {
         File agentJar = locateOwnJar();
         File agentDir = agentJar != null ? agentJar.getParentFile() : null;
         File candidate = null;
+
+        // Distribution default: stable filename next to agent jar.
+        if (agentDir != null) {
+            candidate = new File(agentDir, STABLE_BOOTSTRAP_BRIDGE_JAR_NAME);
+            if (candidate.isFile()) {
+                return candidate;
+            }
+        }
 
         // Preferred: bridge jar copied next to agent jar (agent/target or lib/).
         candidate = locateNewestJarByPrefix(agentDir, "java-sleuth-bootstrap-bridge-");
@@ -596,10 +601,6 @@ public final class SleuthAgent {
 
     private static File locateAgentContainerJarBestEffort() {
         return invokeJarLocatorFileMethodBestEffort("locateAgentContainerJar");
-    }
-
-    private static File locateAgentCoreJarBestEffort() {
-        return invokeJarLocatorFileMethodBestEffort("locateAgentCoreJar");
     }
 
     private static File invokeJarLocatorFileMethodBestEffort(String methodName) {

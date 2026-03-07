@@ -279,10 +279,11 @@ Java-Sleuth 采用类似 Arthas 的“两段式 Agent”，目标是避免在目
 
 ### 目标 JVM 内
 - **java-sleuth-agent（bootstrap）**：薄 Agent（agentmain/premain 入口），追加到 BootstrapClassLoader 搜索路径。
-- **java-sleuth-agent-core**：实现 fat-jar（ASM/Jackson/CFR/RE2J...），由 bootstrap 使用隔离 ClassLoader 加载，从而不把三方依赖暴露给业务 ClassLoader。
+- **java-sleuth-container（payload）**：运行时载荷（fat-jar / composition root），由 bootstrap 使用隔离 ClassLoader 加载，从而不把三方依赖暴露给业务 ClassLoader。
+- **java-sleuth-agent-core（module）**：核心实现模块（非直接加载产物），作为依赖被打进 container payload 中。
 - **Spy/Bridge（`com.javasleuth.monitor.*`）**：被插桩字节码直接引用的回调，保证“注入字节码只依赖 JDK + sleuth 自己的稳定 API”，避免把 ASM/Jackson 等泄漏进业务依赖面。
 
-### 运行时核心（位于 agent-core 内）
+### 运行时核心（位于 core 模块内，通过 container 启动）
 - **CommandProcessor**：基于 Socket 的命令处理，多客户端支持
 - **SleuthClassFileTransformer**：字节码转换框架
 
@@ -328,7 +329,7 @@ examples/src/main/java/com/javasleuth/test/
 Maven 配置关键点：
 - **Java 8 兼容**：支持 JDK 8+ 环境
 - **Agent Manifest**：仅 bootstrap agent jar 声明 Java Agent 入口
-- **Fat JAR 打包**：分别构建 launcher / agent-bootstrap / agent-core 三个 fat-jar
+- **Fat JAR 打包**：分别构建 launcher / agent-bootstrap / container（payload）三个 fat-jar
 - **跨平台脚本**：Linux/macOS/Windows 支持
 
 ## Troubleshooting
@@ -336,13 +337,13 @@ Maven 配置关键点：
 ### Agent JAR Not Found
 ```
 Agent JAR not found: agent/target/java-sleuth-agent-*-jar-with-dependencies.jar
-Agent CORE JAR not found: core/target/java-sleuth-agent-core-*-jar-with-dependencies.jar
+Agent CONTAINER JAR not found: container/target/java-sleuth-container-*-jar-with-dependencies.jar
 Please build the project first with: mvn clean package
 ```
 **Solution**:
 - Run `mvn clean package` to build the project.
 - Or set `-Dsleuth.agent.jar=<path>` (or env `SLEUTH_AGENT_JAR`) to point to the bootstrap agent jar directly.
-- For the two-stage agent, also set `-Dsleuth.agent.core.jar=<path>` (or env `SLEUTH_AGENT_CORE_JAR`) to point to the agent core jar.
+- Also set `-Dsleuth.agent.container.jar=<path>` (or env `SLEUTH_AGENT_CONTAINER_JAR`) to point to the payload jar (container fat-jar).
 
 ### tools.jar Not Found (Java < 9)
 ```

@@ -18,8 +18,6 @@ import java.util.jar.Manifest;
 public final class JarLocator {
     public static final String AGENT_JAR_OVERRIDE_PROPERTY = "sleuth.agent.jar";
     public static final String AGENT_JAR_OVERRIDE_ENV = "SLEUTH_AGENT_JAR";
-    public static final String AGENT_CORE_JAR_OVERRIDE_PROPERTY = "sleuth.agent.core.jar";
-    public static final String AGENT_CORE_JAR_OVERRIDE_ENV = "SLEUTH_AGENT_CORE_JAR";
     public static final String AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY = "sleuth.agent.container.jar";
     public static final String AGENT_CONTAINER_JAR_OVERRIDE_ENV = "SLEUTH_AGENT_CONTAINER_JAR";
 
@@ -27,8 +25,9 @@ public final class JarLocator {
     public static final String LOCATOR_ALLOW_CWD_SCAN_PROPERTY = "sleuth.locator.allowCwdScan";
 
     public static final String DEFAULT_AGENT_JAR_SUFFIX = "-jar-with-dependencies.jar";
+    public static final String STABLE_AGENT_JAR_NAME = "java-sleuth-agent.jar";
+    public static final String STABLE_CONTAINER_JAR_NAME = "java-sleuth-container.jar";
     public static final String MANIFEST_MARKER_BOOTSTRAP = "Sleuth-Agent-Bootstrap";
-    public static final String MANIFEST_MARKER_CORE = "Sleuth-Agent-Core";
     public static final String MANIFEST_MARKER_CONTAINER = "Sleuth-Agent-Container";
 
     private JarLocator() {}
@@ -90,10 +89,6 @@ public final class JarLocator {
         if (fromAgentTarget != null) {
             return fromAgentTarget;
         }
-        File fromCoreTarget = locateNewestAgentJarBySuffix(cwd("core/target"), DEFAULT_AGENT_JAR_SUFFIX);
-        if (fromCoreTarget != null) {
-            return fromCoreTarget;
-        }
         File fromTarget = locateNewestAgentJarBySuffix(cwd("target"), DEFAULT_AGENT_JAR_SUFFIX);
         if (fromTarget != null) {
             return fromTarget;
@@ -118,42 +113,6 @@ public final class JarLocator {
             return null;
         }
         return isAgentJar(file) ? file : null;
-    }
-
-    public static File locateAgentCoreJar(Class<?> anchor) {
-        File override = locateCoreOverrideJar();
-        if (override != null) {
-            return override;
-        }
-
-        File fromClasspath = locateCoreJarOnClasspath(DEFAULT_AGENT_JAR_SUFFIX);
-        if (fromClasspath != null) {
-            return fromClasspath;
-        }
-
-        File fromCodeSource = locateCoreJarFromCodeSource(anchor);
-        if (fromCodeSource != null) {
-            return fromCodeSource;
-        }
-
-        // Fallback: scan common build/release directories under current working directory
-        if (!isCwdScanAllowed()) {
-            debug("JarLocator: CWD scan disabled by -D" + LOCATOR_ALLOW_CWD_SCAN_PROPERTY + "=false");
-            return null;
-        }
-        File fromCoreTarget = locateNewestCoreJarBySuffix(cwd("core/target"), DEFAULT_AGENT_JAR_SUFFIX);
-        if (fromCoreTarget != null) {
-            return fromCoreTarget;
-        }
-        File fromTarget = locateNewestCoreJarBySuffix(cwd("target"), DEFAULT_AGENT_JAR_SUFFIX);
-        if (fromTarget != null) {
-            return fromTarget;
-        }
-        File fromLib = locateNewestCoreJarBySuffix(cwd("lib"), DEFAULT_AGENT_JAR_SUFFIX);
-        if (fromLib != null) {
-            return fromLib;
-        }
-        return locateNewestCoreJarBySuffix(cwd("../lib"), DEFAULT_AGENT_JAR_SUFFIX);
     }
 
     public static File locateAgentContainerJar(Class<?> anchor) {
@@ -220,21 +179,6 @@ public final class JarLocator {
         }
     }
 
-    private static File locateCoreOverrideJar() {
-        String override = System.getProperty(AGENT_CORE_JAR_OVERRIDE_PROPERTY);
-        if (override == null || override.trim().isEmpty()) {
-            override = System.getenv(AGENT_CORE_JAR_OVERRIDE_ENV);
-        }
-        if (override == null || override.trim().isEmpty()) {
-            return null;
-        }
-        File file = new File(override.trim());
-        if (!file.isFile()) {
-            return null;
-        }
-        return isCoreJar(file) ? file : null;
-    }
-
     private static File locateContainerOverrideJar() {
         String override = System.getProperty(AGENT_CONTAINER_JAR_OVERRIDE_PROPERTY);
         if (override == null || override.trim().isEmpty()) {
@@ -291,31 +235,6 @@ public final class JarLocator {
         return null;
     }
 
-    private static File locateCoreJarOnClasspath(String suffix) {
-        String cp = System.getProperty("java.class.path");
-        if (cp == null || cp.trim().isEmpty()) {
-            return null;
-        }
-        String[] parts = cp.split(java.util.regex.Pattern.quote(File.pathSeparator));
-        for (String part : parts) {
-            if (part == null) {
-                continue;
-            }
-            String trimmed = part.trim();
-            if (trimmed.isEmpty() || !trimmed.toLowerCase().endsWith(".jar")) {
-                continue;
-            }
-            if (suffix != null && !suffix.isEmpty() && !trimmed.endsWith(suffix)) {
-                continue;
-            }
-            File f = new File(trimmed);
-            if (f.isFile() && isCoreJar(f)) {
-                return f;
-            }
-        }
-        return null;
-    }
-
     private static File locateContainerJarOnClasspath(String suffix) {
         String cp = System.getProperty("java.class.path");
         if (cp == null || cp.trim().isEmpty()) {
@@ -366,6 +285,11 @@ public final class JarLocator {
                 if (isAgentJar(file)) {
                     return file;
                 }
+                // Stable sibling name (distribution): java-sleuth-agent.jar in the same directory.
+                File stable = locateStableAgentJarInDir(file.getParentFile());
+                if (stable != null) {
+                    return stable;
+                }
                 // If the anchor is the launcher jar, prefer an agent jar from the same directory.
                 File sibling = locateNewestAgentJarBySuffix(file.getParentFile(), DEFAULT_AGENT_JAR_SUFFIX);
                 return sibling;
@@ -375,50 +299,6 @@ public final class JarLocator {
                 File cursor = file;
                 for (int i = 0; i < 6 && cursor != null; i++) {
                     File foundHere = locateNewestAgentJarBySuffix(cursor, DEFAULT_AGENT_JAR_SUFFIX);
-                    if (foundHere != null) {
-                        return foundHere;
-                    }
-                    cursor = cursor.getParentFile();
-                }
-            }
-        } catch (Exception ignore) {
-            // ignore
-        }
-        return null;
-    }
-
-    private static File locateCoreJarFromCodeSource(Class<?> anchor) {
-        if (anchor == null) {
-            return null;
-        }
-        try {
-            ProtectionDomain pd = anchor.getProtectionDomain();
-            if (pd == null) {
-                return null;
-            }
-            CodeSource cs = pd.getCodeSource();
-            if (cs == null) {
-                return null;
-            }
-            URL location = cs.getLocation();
-            if (location == null) {
-                return null;
-            }
-            File file = toFile(location);
-            if (file == null) {
-                return null;
-            }
-            if (file.isFile() && file.getName().toLowerCase().endsWith(".jar")) {
-                if (isCoreJar(file)) {
-                    return file;
-                }
-                return locateNewestCoreJarBySuffix(file.getParentFile(), DEFAULT_AGENT_JAR_SUFFIX);
-            }
-
-            if (file.isDirectory()) {
-                File cursor = file;
-                for (int i = 0; i < 6 && cursor != null; i++) {
-                    File foundHere = locateNewestCoreJarBySuffix(cursor, DEFAULT_AGENT_JAR_SUFFIX);
                     if (foundHere != null) {
                         return foundHere;
                     }
@@ -456,6 +336,11 @@ public final class JarLocator {
                 if (isContainerJar(file)) {
                     return file;
                 }
+                // Stable sibling name (distribution): java-sleuth-container.jar in the same directory.
+                File stable = locateStableContainerJarInDir(file.getParentFile());
+                if (stable != null) {
+                    return stable;
+                }
                 return locateNewestContainerJarBySuffix(file.getParentFile(), DEFAULT_AGENT_JAR_SUFFIX);
             }
 
@@ -473,6 +358,37 @@ public final class JarLocator {
             // ignore
         }
         return null;
+    }
+
+    private static File locateStableAgentJarInDir(File dir) {
+        File stable = locateJarByName(dir, STABLE_AGENT_JAR_NAME);
+        if (stable == null) {
+            return null;
+        }
+        if (isBootstrapAgentJar(stable)) {
+            return stable;
+        }
+        return isAgentJar(stable) ? stable : null;
+    }
+
+    private static File locateStableContainerJarInDir(File dir) {
+        File stable = locateJarByName(dir, STABLE_CONTAINER_JAR_NAME);
+        if (stable == null) {
+            return null;
+        }
+        return isContainerJar(stable) ? stable : null;
+    }
+
+    private static File locateJarByName(File dir, String fileName) {
+        if (dir == null || fileName == null || fileName.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            File f = new File(dir, fileName);
+            return (f.isFile() && f.getName().toLowerCase().endsWith(".jar")) ? f : null;
+        } catch (Exception ignore) {
+            return null;
+        }
     }
 
     private static File toFile(URL url) {
@@ -514,33 +430,6 @@ public final class JarLocator {
         for (File f : candidates) {
             if (f != null && f.isFile() && isAgentJar(f)) {
                 debug("JarLocator: resolved agent jar: " + f.getAbsolutePath());
-                return f;
-            }
-        }
-        return null;
-    }
-
-    private static File locateNewestCoreJarBySuffix(File dir, String suffix) {
-        if (dir == null || !dir.exists() || !dir.isDirectory()) {
-            return null;
-        }
-        File[] files = dir.listFiles((d, name) -> name != null && name.endsWith(suffix));
-        if (files == null || files.length == 0) {
-            return null;
-        }
-        List<File> candidates = new ArrayList<>();
-        for (File f : files) {
-            if (f != null && f.isFile()) {
-                candidates.add(f);
-            }
-        }
-        if (candidates.isEmpty()) {
-            return null;
-        }
-        sortCandidatesPreferVersion(candidates, suffix);
-        for (File f : candidates) {
-            if (f != null && f.isFile() && isCoreJar(f)) {
-                debug("JarLocator: resolved core jar: " + f.getAbsolutePath());
                 return f;
             }
         }
@@ -756,18 +645,6 @@ public final class JarLocator {
         }
     }
 
-    private static boolean isCoreJar(File jarFile) {
-        if (jarFile == null || !jarFile.isFile()) {
-            return false;
-        }
-        try (JarFile jf = new JarFile(jarFile)) {
-            Manifest mf = jf.getManifest();
-            return hasCoreManifestAttributes(mf);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
     private static boolean isContainerJar(File jarFile) {
         if (jarFile == null || !jarFile.isFile()) {
             return false;
@@ -792,18 +669,6 @@ public final class JarLocator {
         String premainClass = attrs.getValue("Premain-Class");
         return (agentClass != null && !agentClass.trim().isEmpty()) ||
                (premainClass != null && !premainClass.trim().isEmpty());
-    }
-
-    private static boolean hasCoreManifestAttributes(Manifest mf) {
-        if (mf == null) {
-            return false;
-        }
-        Attributes attrs = mf.getMainAttributes();
-        if (attrs == null) {
-            return false;
-        }
-        String marker = attrs.getValue(MANIFEST_MARKER_CORE);
-        return marker != null && "true".equalsIgnoreCase(marker.trim());
     }
 
     private static boolean hasContainerManifestAttributes(Manifest mf) {

@@ -22,8 +22,8 @@ Used by the thin agent and/or injected bytecode:
   - `failBestEffort(long, ClassLoader) : void`
   - `detachBestEffort(ClassLoader) : void`
 - `com.javasleuth.bootstrap.util.JarLocator`
+  - `locateAgentJar(Class) : File`
   - `locateAgentContainerJar(Class) : File`
-  - `locateAgentCoreJar(Class) : File`
 - `com.javasleuth.bootstrap.spy.SleuthSpyAPI` (bootstrap-visible callback used by enhanced bytecode)
   - `atEnter(String, Class, String, Object, Object[], long) : void`
   - `atExit(String, Class, String, Object, Object[], Object, boolean, long, long) : void`

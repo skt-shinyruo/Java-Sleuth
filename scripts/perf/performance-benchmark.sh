@@ -12,7 +12,7 @@ BENCHMARK_DIR="$SCRIPT_DIR/benchmark-results"
 TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 REPORT_FILE="$BENCHMARK_DIR/benchmark_report_$TIMESTAMP.md"
 AGENT_JAR=""
-CORE_JAR=""
+CONTAINER_JAR=""
 TEST_PORT=3658
 CONCURRENT_CLIENTS=10
 TEST_DURATION=60
@@ -51,12 +51,12 @@ setup_benchmark() {
     if [[ -z "$AGENT_JAR" ]] || [[ ! -f "$AGENT_JAR" ]]; then
         AGENT_JAR="$(ls -1t "$PROJECT_DIR"/target/java-sleuth-agent-[0-9]*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
     fi
-    CORE_JAR="$(ls -1t "$PROJECT_DIR"/core/target/java-sleuth-agent-core*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
-    if [[ -z "$CORE_JAR" ]] || [[ ! -f "$CORE_JAR" ]]; then
-        CORE_JAR="$(ls -1t "$PROJECT_DIR"/target/java-sleuth-agent-core*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+    CONTAINER_JAR="$(ls -1t "$PROJECT_DIR"/container/target/java-sleuth-container*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+    if [[ -z "$CONTAINER_JAR" ]] || [[ ! -f "$CONTAINER_JAR" ]]; then
+        CONTAINER_JAR="$(ls -1t "$PROJECT_DIR"/target/java-sleuth-container*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
     fi
 
-    if [[ -z "$AGENT_JAR" ]] || [[ ! -f "$AGENT_JAR" ]] || [[ -z "$CORE_JAR" ]] || [[ ! -f "$CORE_JAR" ]]; then
+    if [[ -z "$AGENT_JAR" ]] || [[ ! -f "$AGENT_JAR" ]] || [[ -z "$CONTAINER_JAR" ]] || [[ ! -f "$CONTAINER_JAR" ]]; then
         log "Building project..."
         (cd "$PROJECT_DIR" && mvn clean package -DskipTests)
 
@@ -65,13 +65,13 @@ setup_benchmark() {
             AGENT_JAR="$(ls -1t "$PROJECT_DIR"/target/java-sleuth-agent-[0-9]*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
         fi
 
-        CORE_JAR="$(ls -1t "$PROJECT_DIR"/core/target/java-sleuth-agent-core*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
-        if [[ -z "$CORE_JAR" ]] || [[ ! -f "$CORE_JAR" ]]; then
-            CORE_JAR="$(ls -1t "$PROJECT_DIR"/target/java-sleuth-agent-core*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+        CONTAINER_JAR="$(ls -1t "$PROJECT_DIR"/container/target/java-sleuth-container*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+        if [[ -z "$CONTAINER_JAR" ]] || [[ ! -f "$CONTAINER_JAR" ]]; then
+            CONTAINER_JAR="$(ls -1t "$PROJECT_DIR"/target/java-sleuth-container*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
         fi
 
-        if [[ -z "$AGENT_JAR" ]] || [[ ! -f "$AGENT_JAR" ]] || [[ -z "$CORE_JAR" ]] || [[ ! -f "$CORE_JAR" ]]; then
-            error "Failed to build agent JARs under: $PROJECT_DIR/agent/target/ and $PROJECT_DIR/core/target/"
+        if [[ -z "$AGENT_JAR" ]] || [[ ! -f "$AGENT_JAR" ]] || [[ -z "$CONTAINER_JAR" ]] || [[ ! -f "$CONTAINER_JAR" ]]; then
+            error "Failed to build agent/container JARs under: $PROJECT_DIR/agent/target/ and $PROJECT_DIR/container/target/"
         fi
     fi
 }
@@ -89,7 +89,7 @@ start_sleuth() {
          -XX:+UseG1GC \
          -XX:MaxGCPauseMillis=100 \
          -XX:+UseCompressedOops \
-         -Dsleuth.agent.core.jar="$CORE_JAR" \
+         -Dsleuth.agent.container.jar="$CONTAINER_JAR" \
          -javaagent:"$AGENT_JAR" \
          -Dsleuth.server.port=$TEST_PORT \
          -Dsleuth.performance.thread.pool.core=16 \

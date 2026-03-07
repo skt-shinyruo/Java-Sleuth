@@ -4,8 +4,7 @@ package com.javasleuth.bootstrap.util;
  * Shared agentArgs parsing + System properties application.
  *
  * <p>Both bootstrap ({@code com.javasleuth.agent.SleuthAgent}) and isolated entrypoints
- * ({@code com.javasleuth.container.SleuthAgentContainerEntrypoint} /
- * {@code com.javasleuth.core.agent.core.SleuthAgentCore}) must interpret agentArgs
+ * ({@code com.javasleuth.container.SleuthAgentContainerEntrypoint}) must interpret agentArgs
  * consistently to avoid config drift.</p>
  *
  * <p>Format: {@code k=v;k2=v2;...} (semicolon separated). Keys without {@code sleuth.}
@@ -66,14 +65,6 @@ public final class AgentArgsApplier {
                     rollback.recordBeforeSet("sleuth.config.file");
                 }
                 System.setProperty("sleuth.config.file", value);
-                continue;
-            }
-
-            if ("coreJar".equalsIgnoreCase(key)) {
-                if (rollback != null) {
-                    rollback.recordBeforeSet(JarLocator.AGENT_CORE_JAR_OVERRIDE_PROPERTY);
-                }
-                System.setProperty(JarLocator.AGENT_CORE_JAR_OVERRIDE_PROPERTY, value);
                 continue;
             }
 

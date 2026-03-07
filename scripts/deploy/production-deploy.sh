@@ -8,14 +8,17 @@ set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_NAME_AGENT_BOOTSTRAP="java-sleuth-agent"
-PROJECT_NAME_AGENT_CORE="java-sleuth-agent-core"
+PROJECT_NAME_CONTAINER="java-sleuth-container"
+PROJECT_NAME_BOOTSTRAP_BRIDGE="java-sleuth-bootstrap-bridge"
 PROJECT_NAME_LAUNCHER="java-sleuth-launcher"
 VERSION="1.0.0"
 AGENT_BOOTSTRAP_JAR_NAME="${PROJECT_NAME_AGENT_BOOTSTRAP}-${VERSION}-jar-with-dependencies.jar"
-AGENT_CORE_JAR_NAME="${PROJECT_NAME_AGENT_CORE}-${VERSION}-jar-with-dependencies.jar"
+CONTAINER_JAR_NAME="${PROJECT_NAME_CONTAINER}-${VERSION}-jar-with-dependencies.jar"
+BOOTSTRAP_BRIDGE_JAR_NAME="${PROJECT_NAME_BOOTSTRAP_BRIDGE}-${VERSION}.jar"
 LAUNCHER_JAR_NAME="${PROJECT_NAME_LAUNCHER}-${VERSION}-jar-with-dependencies.jar"
 AGENT_BOOTSTRAP_JAR="agent/target/${AGENT_BOOTSTRAP_JAR_NAME}"
-AGENT_CORE_JAR="core/target/${AGENT_CORE_JAR_NAME}"
+CONTAINER_JAR="container/target/${CONTAINER_JAR_NAME}"
+BOOTSTRAP_BRIDGE_JAR="agent/target/${BOOTSTRAP_BRIDGE_JAR_NAME}"
 LAUNCHER_JAR="launcher/target/${LAUNCHER_JAR_NAME}"
 DEPLOY_DIR="/opt/java-sleuth"
 CONFIG_DIR="${DEPLOY_DIR}/config"
@@ -111,8 +114,11 @@ build_project() {
     if [[ ! -f "$AGENT_BOOTSTRAP_JAR" ]]; then
         error "Build failed - bootstrap agent JAR not found: $AGENT_BOOTSTRAP_JAR"
     fi
-    if [[ ! -f "$AGENT_CORE_JAR" ]]; then
-        error "Build failed - agent core JAR not found: $AGENT_CORE_JAR"
+    if [[ ! -f "$CONTAINER_JAR" ]]; then
+        error "Build failed - agent container JAR not found: $CONTAINER_JAR"
+    fi
+    if [[ ! -f "$BOOTSTRAP_BRIDGE_JAR" ]]; then
+        error "Build failed - bootstrap bridge JAR not found: $BOOTSTRAP_BRIDGE_JAR"
     fi
     if [[ ! -f "$LAUNCHER_JAR" ]]; then
         error "Build failed - JAR file not found: $LAUNCHER_JAR"
@@ -126,25 +132,29 @@ deploy_files() {
     log "Deploying files..."
 
     # Backup existing installation
-    if [[ -f "${DEPLOY_DIR}/lib/${AGENT_BOOTSTRAP_JAR_NAME}" ]] || [[ -f "${DEPLOY_DIR}/lib/${AGENT_CORE_JAR_NAME}" ]] || [[ -f "${DEPLOY_DIR}/lib/${LAUNCHER_JAR_NAME}" ]]; then
+    if [[ -f "${DEPLOY_DIR}/lib/${AGENT_BOOTSTRAP_JAR_NAME}" ]] || [[ -f "${DEPLOY_DIR}/lib/${CONTAINER_JAR_NAME}" ]] || [[ -f "${DEPLOY_DIR}/lib/${LAUNCHER_JAR_NAME}" ]] || [[ -f "${DEPLOY_DIR}/lib/${BOOTSTRAP_BRIDGE_JAR_NAME}" ]]; then
         local backup_name="backup-$(date +%Y%m%d_%H%M%S)"
         mkdir -p "${BACKUP_DIR}/${backup_name}"
         if [[ -f "${DEPLOY_DIR}/lib/${AGENT_BOOTSTRAP_JAR_NAME}" ]]; then
             cp "${DEPLOY_DIR}/lib/${AGENT_BOOTSTRAP_JAR_NAME}" "${BACKUP_DIR}/${backup_name}/"
         fi
-        if [[ -f "${DEPLOY_DIR}/lib/${AGENT_CORE_JAR_NAME}" ]]; then
-            cp "${DEPLOY_DIR}/lib/${AGENT_CORE_JAR_NAME}" "${BACKUP_DIR}/${backup_name}/"
+        if [[ -f "${DEPLOY_DIR}/lib/${CONTAINER_JAR_NAME}" ]]; then
+            cp "${DEPLOY_DIR}/lib/${CONTAINER_JAR_NAME}" "${BACKUP_DIR}/${backup_name}/"
         fi
         if [[ -f "${DEPLOY_DIR}/lib/${LAUNCHER_JAR_NAME}" ]]; then
             cp "${DEPLOY_DIR}/lib/${LAUNCHER_JAR_NAME}" "${BACKUP_DIR}/${backup_name}/"
+        fi
+        if [[ -f "${DEPLOY_DIR}/lib/${BOOTSTRAP_BRIDGE_JAR_NAME}" ]]; then
+            cp "${DEPLOY_DIR}/lib/${BOOTSTRAP_BRIDGE_JAR_NAME}" "${BACKUP_DIR}/${backup_name}/"
         fi
         log "Previous installation backed up to ${BACKUP_DIR}/${backup_name}"
     fi
 
     # Copy JAR files
     cp "$AGENT_BOOTSTRAP_JAR" "${DEPLOY_DIR}/lib/"
-    cp "$AGENT_CORE_JAR" "${DEPLOY_DIR}/lib/"
+    cp "$CONTAINER_JAR" "${DEPLOY_DIR}/lib/"
     cp "$LAUNCHER_JAR" "${DEPLOY_DIR}/lib/"
+    cp "$BOOTSTRAP_BRIDGE_JAR" "${DEPLOY_DIR}/lib/"
 
     # Copy startup scripts
     cp sleuth.sh "${DEPLOY_DIR}/bin/"
@@ -428,7 +438,7 @@ create_startup_script() {
 # Java-Sleuth is designed as an interactive attach tool:
 # - java-sleuth-launcher: runs on operator machine/server
 # - java-sleuth-agent (bootstrap): injected into target JVM (Attach API / -javaagent)
-# - java-sleuth-agent-core: isolated implementation loaded by the bootstrap agent
+# - java-sleuth-container: payload (fat-jar) loaded by the bootstrap agent (isolated ClassLoader)
 
 set -euo pipefail
 
@@ -452,7 +462,8 @@ validate_deployment() {
     # Check files exist
     local files=(
         "${DEPLOY_DIR}/lib/${AGENT_BOOTSTRAP_JAR_NAME}"
-        "${DEPLOY_DIR}/lib/${AGENT_CORE_JAR_NAME}"
+        "${DEPLOY_DIR}/lib/${CONTAINER_JAR_NAME}"
+        "${DEPLOY_DIR}/lib/${BOOTSTRAP_BRIDGE_JAR_NAME}"
         "${DEPLOY_DIR}/lib/${LAUNCHER_JAR_NAME}"
         "${DEPLOY_DIR}/bin/sleuth.sh"
         "${DEPLOY_DIR}/bin/sleuth-production.sh"
@@ -486,7 +497,8 @@ print_summary() {
     echo "Logs Directory: $LOGS_DIR"
     echo "Launcher JAR: ${DEPLOY_DIR}/lib/${LAUNCHER_JAR_NAME}"
     echo "Agent Bootstrap JAR: ${DEPLOY_DIR}/lib/${AGENT_BOOTSTRAP_JAR_NAME}"
-    echo "Agent Core JAR: ${DEPLOY_DIR}/lib/${AGENT_CORE_JAR_NAME}"
+    echo "Agent Container JAR: ${DEPLOY_DIR}/lib/${CONTAINER_JAR_NAME}"
+    echo "Bootstrap Bridge JAR: ${DEPLOY_DIR}/lib/${BOOTSTRAP_BRIDGE_JAR_NAME}"
     echo
     echo "=== NEXT STEPS ==="
     echo "1. Review configuration files in $CONFIG_DIR"

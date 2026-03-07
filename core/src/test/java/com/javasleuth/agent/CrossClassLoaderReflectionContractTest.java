@@ -35,11 +35,11 @@ public class CrossClassLoaderReflectionContractTest {
 
         Class<?> jarLocator = Class.forName("com.javasleuth.bootstrap.util.JarLocator");
 
+        Method locateAgentJar = jarLocator.getMethod("locateAgentJar", Class.class);
+        Assert.assertEquals(File.class, locateAgentJar.getReturnType());
+
         Method locateAgentContainerJar = jarLocator.getMethod("locateAgentContainerJar", Class.class);
         Assert.assertEquals(File.class, locateAgentContainerJar.getReturnType());
-
-        Method locateAgentCoreJar = jarLocator.getMethod("locateAgentCoreJar", Class.class);
-        Assert.assertEquals(File.class, locateAgentCoreJar.getReturnType());
 
         // Required for bytecode enhancements that inject bootstrap callbacks.
         Class<?> spyApi = Class.forName("com.javasleuth.bootstrap.spy.SleuthSpyAPI");

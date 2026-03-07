@@ -6,7 +6,13 @@ REM Java-Sleuth Startup Script for Windows
 set SCRIPT_DIR=%~dp0
 set LAUNCHER_JAR=
 set AGENT_JAR=
-set CORE_JAR=
+set CONTAINER_JAR=
+
+REM Distribution default: stable jar filenames in the same directory as this script
+if exist "%SCRIPT_DIR%java-sleuth-launcher.jar" (
+    set LAUNCHER_JAR=%SCRIPT_DIR%java-sleuth-launcher.jar
+    goto :launcher_found
+)
 
 for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%launcher\target\java-sleuth-launcher*-jar-with-dependencies.jar" 2^>nul') do (
     set LAUNCHER_JAR=%SCRIPT_DIR%launcher\target\%%f
@@ -45,33 +51,55 @@ for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%..\lib\java-sleuth-[0-9]*-ja
 
 :launcher_found
 
+REM Distribution default: stable agent jar
+if exist "%SCRIPT_DIR%java-sleuth-agent.jar" (
+    set AGENT_JAR=%SCRIPT_DIR%java-sleuth-agent.jar
+    goto :agent_found
+)
+
 for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%agent\target\java-sleuth-agent*-jar-with-dependencies.jar" 2^>nul') do (
     set AGENT_JAR=%SCRIPT_DIR%agent\target\%%f
     goto :agent_found
 )
 for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%target\java-sleuth-agent*-jar-with-dependencies.jar" 2^>nul') do (
-    echo %%f | findstr /i "^java-sleuth-agent-core-" >nul
-    if errorlevel 1 (
-        set AGENT_JAR=%SCRIPT_DIR%target\%%f
-        goto :agent_found
-    )
+    set AGENT_JAR=%SCRIPT_DIR%target\%%f
+    goto :agent_found
 )
 for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%lib\java-sleuth-agent*-jar-with-dependencies.jar" 2^>nul') do (
-    echo %%f | findstr /i "^java-sleuth-agent-core-" >nul
-    if errorlevel 1 (
-        set AGENT_JAR=%SCRIPT_DIR%lib\%%f
-        goto :agent_found
-    )
+    set AGENT_JAR=%SCRIPT_DIR%lib\%%f
+    goto :agent_found
 )
 for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%..\lib\java-sleuth-agent*-jar-with-dependencies.jar" 2^>nul') do (
-    echo %%f | findstr /i "^java-sleuth-agent-core-" >nul
-    if errorlevel 1 (
-        set AGENT_JAR=%SCRIPT_DIR%..\lib\%%f
-        goto :agent_found
-    )
+    set AGENT_JAR=%SCRIPT_DIR%..\lib\%%f
+    goto :agent_found
 )
 
 :agent_found
+
+REM Distribution default: stable container jar (payload)
+if exist "%SCRIPT_DIR%java-sleuth-container.jar" (
+    set CONTAINER_JAR=%SCRIPT_DIR%java-sleuth-container.jar
+    goto :container_found
+)
+
+for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%container\target\java-sleuth-container*-jar-with-dependencies.jar" 2^>nul') do (
+    set CONTAINER_JAR=%SCRIPT_DIR%container\target\%%f
+    goto :container_found
+)
+for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%target\java-sleuth-container*-jar-with-dependencies.jar" 2^>nul') do (
+    set CONTAINER_JAR=%SCRIPT_DIR%target\%%f
+    goto :container_found
+)
+for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%lib\java-sleuth-container*-jar-with-dependencies.jar" 2^>nul') do (
+    set CONTAINER_JAR=%SCRIPT_DIR%lib\%%f
+    goto :container_found
+)
+for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%..\lib\java-sleuth-container*-jar-with-dependencies.jar" 2^>nul') do (
+    set CONTAINER_JAR=%SCRIPT_DIR%..\lib\%%f
+    goto :container_found
+)
+
+:container_found
 
 if "%LAUNCHER_JAR%"=="" (
     echo Java-Sleuth launcher JAR file not found under:
@@ -143,44 +171,26 @@ if not "%SLEUTH_CONFIG_FILE%"=="" (
     set LAUNCHER_OPTS=-Dsleuth.config.file="%SLEUTH_CONFIG_FILE%"
 )
 
-for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%core\target\java-sleuth-agent-core*-jar-with-dependencies.jar" 2^>nul') do (
-    set CORE_JAR=%SCRIPT_DIR%core\target\%%f
-    goto :core_found
-)
-for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%target\java-sleuth-agent-core*-jar-with-dependencies.jar" 2^>nul') do (
-    set CORE_JAR=%SCRIPT_DIR%target\%%f
-    goto :core_found
-)
-for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%lib\java-sleuth-agent-core*-jar-with-dependencies.jar" 2^>nul') do (
-    set CORE_JAR=%SCRIPT_DIR%lib\%%f
-    goto :core_found
-)
-for /f "delims=" %%f in ('dir /b /o:-d "%SCRIPT_DIR%..\lib\java-sleuth-agent-core*-jar-with-dependencies.jar" 2^>nul') do (
-    set CORE_JAR=%SCRIPT_DIR%..\lib\%%f
-    goto :core_found
-)
-
-:core_found
-
-if "%CORE_JAR%"=="" (
+if "%CONTAINER_JAR%"=="" (
     if not "%AGENT_JAR%"=="%LAUNCHER_JAR%" (
-        echo Java-Sleuth agent CORE JAR file not found under:
-        echo   - %SCRIPT_DIR%core\target\
+        echo Java-Sleuth agent CONTAINER JAR file not found under:
+        echo   - %SCRIPT_DIR%java-sleuth-container.jar
+        echo   - %SCRIPT_DIR%container\target\
         echo   - %SCRIPT_DIR%target\
         echo   - %SCRIPT_DIR%lib\
         echo   - %SCRIPT_DIR%..\lib\
-        echo Tip: set -Dsleuth.agent.core.jar^=<path^> (or env SLEUTH_AGENT_CORE_JAR)
+        echo Tip: set -Dsleuth.agent.container.jar^=<path^> (or env SLEUTH_AGENT_CONTAINER_JAR)
         echo Please build the project first with: mvn clean package
         exit /b 1
     )
 )
 
-set CORE_OPTS=
-if not "%CORE_JAR%"=="" (
-    if exist "%CORE_JAR%" (
-        echo Agent CORE JAR: %CORE_JAR%
-        set CORE_OPTS=-Dsleuth.agent.core.jar="%CORE_JAR%"
+set CONTAINER_OPTS=
+if not "%CONTAINER_JAR%"=="" (
+    if exist "%CONTAINER_JAR%" (
+        echo Agent CONTAINER JAR: %CONTAINER_JAR%
+        set CONTAINER_OPTS=-Dsleuth.agent.container.jar="%CONTAINER_JAR%"
     )
 )
 
-java %LAUNCHER_OPTS% %CORE_OPTS% -Dsleuth.agent.jar="%AGENT_JAR%" -cp "%CLASSPATH%" com.javasleuth.launcher.SleuthLauncher %*
+java %LAUNCHER_OPTS% %CONTAINER_OPTS% -Dsleuth.agent.jar="%AGENT_JAR%" -cp "%CLASSPATH%" com.javasleuth.launcher.SleuthLauncher %*

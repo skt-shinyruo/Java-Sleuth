@@ -1,0 +1,54 @@
+<assembly xmlns="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.1"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.1 http://maven.apache.org/xsd/assembly-1.1.1.xsd">
+    <id>bin</id>
+    <includeBaseDirectory>false</includeBaseDirectory>
+
+    <formats>
+        <format>dir</format>
+        <format>zip</format>
+    </formats>
+
+    <files>
+        <!-- Stable filenames (Arthas-like): agent + payload are colocated. -->
+        <file>
+            <source>../agent/target/java-sleuth-agent-${project.version}-jar-with-dependencies.jar</source>
+            <destName>java-sleuth-agent.jar</destName>
+        </file>
+        <file>
+            <source>../container/target/java-sleuth-container-${project.version}-jar-with-dependencies.jar</source>
+            <destName>java-sleuth-container.jar</destName>
+        </file>
+        <file>
+            <source>../launcher/target/java-sleuth-launcher-${project.version}-jar-with-dependencies.jar</source>
+            <destName>java-sleuth-launcher.jar</destName>
+        </file>
+        <file>
+            <source>../agent/target/java-sleuth-bootstrap-bridge-${project.version}.jar</source>
+            <destName>java-sleuth-bootstrap-bridge.jar</destName>
+        </file>
+
+        <!-- Convenience scripts -->
+        <file>
+            <source>../sleuth.sh</source>
+            <destName>sleuth.sh</destName>
+            <fileMode>0755</fileMode>
+        </file>
+        <file>
+            <source>../sleuth.bat</source>
+            <destName>sleuth.bat</destName>
+        </file>
+        <file>
+            <source>../README.md</source>
+            <destName>README.md</destName>
+        </file>
+    </files>
+
+    <fileSets>
+        <fileSet>
+            <directory>../config-templates</directory>
+            <outputDirectory>config-templates</outputDirectory>
+        </fileSet>
+    </fileSets>
+</assembly>
+

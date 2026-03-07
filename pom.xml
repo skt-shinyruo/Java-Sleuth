@@ -21,6 +21,7 @@
         <module>container</module>
         <module>launcher</module>
         <module>examples</module>
+        <module>packaging</module>
     </modules>
 
     <properties>

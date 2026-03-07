@@ -21,9 +21,9 @@ if [[ -z "${AGENT_JAR}" ]]; then
     AGENT_JAR="$(ls -1t "$PROJECT_DIR"/target/java-sleuth-[0-9]*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
 fi
 
-CORE_JAR="$(ls -1t "$PROJECT_DIR"/core/target/java-sleuth-agent-core*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
-if [[ -z "${CORE_JAR}" ]]; then
-    CORE_JAR="$(ls -1t "$PROJECT_DIR"/target/java-sleuth-agent-core*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+CONTAINER_JAR="$(ls -1t "$PROJECT_DIR"/container/target/java-sleuth-container*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+if [[ -z "${CONTAINER_JAR}" ]]; then
+    CONTAINER_JAR="$(ls -1t "$PROJECT_DIR"/target/java-sleuth-container*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
 fi
 
 BASE_JAR="$(ls -1t "$PROJECT_DIR"/core/target/*.jar 2>/dev/null | grep -v 'jar-with-dependencies' | head -n 1 || true)"
@@ -42,16 +42,16 @@ fi
 
 base="$(basename "$AGENT_JAR")"
 if [[ "$base" != java-sleuth-[0-9]*-jar-with-dependencies.jar ]]; then
-    if [[ -z "${CORE_JAR}" ]] || [[ ! -f "${CORE_JAR}" ]]; then
-        echo "Agent CORE JAR not found under: $PROJECT_DIR/core/target/ (or legacy $PROJECT_DIR/target/)"
-        echo "Tip: set -Dsleuth.agent.core.jar=<path> (or env SLEUTH_AGENT_CORE_JAR)"
+    if [[ -z "${CONTAINER_JAR}" ]] || [[ ! -f "${CONTAINER_JAR}" ]]; then
+        echo "Agent CONTAINER JAR not found under: $PROJECT_DIR/container/target/ (or legacy $PROJECT_DIR/target/)"
+        echo "Tip: set -Dsleuth.agent.container.jar=<path> (or env SLEUTH_AGENT_CONTAINER_JAR)"
         exit 1
     fi
 fi
 
-CORE_OPT=()
-if [[ -n "${CORE_JAR}" ]] && [[ -f "${CORE_JAR}" ]]; then
-    CORE_OPT=(-Dsleuth.agent.core.jar="${CORE_JAR}")
+CONTAINER_OPT=()
+if [[ -n "${CONTAINER_JAR}" ]] && [[ -f "${CONTAINER_JAR}" ]]; then
+    CONTAINER_OPT=(-Dsleuth.agent.container.jar="${CONTAINER_JAR}")
 fi
 
 bash ./scripts/examples/compile-examples.sh > /dev/null
@@ -65,7 +65,7 @@ for i in {1..3}; do
     sleep 1
 
     start_time=$(date +%s%N)
-    java "${CORE_OPT[@]}" -javaagent:"$AGENT_JAR" -cp "$BASE_JAR:$EXAMPLES_CLASSES" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
+    java "${CONTAINER_OPT[@]}" -javaagent:"$AGENT_JAR" -cp "$BASE_JAR:$EXAMPLES_CLASSES" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
     APP_PID=$!
 
     # Wait for agent to be ready
@@ -82,7 +82,7 @@ for i in {1..3}; do
 done
 
 # Start application for command performance tests
-java "${CORE_OPT[@]}" -javaagent:"$AGENT_JAR" -cp "$BASE_JAR:$EXAMPLES_CLASSES" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
+java "${CONTAINER_OPT[@]}" -javaagent:"$AGENT_JAR" -cp "$BASE_JAR:$EXAMPLES_CLASSES" com.javasleuth.test.TestApplication > /dev/null 2>&1 &
 APP_PID=$!
 
 # Wait for agent to be ready

@@ -28,8 +28,8 @@ NC='\033[0m' # No Color
 # Check if launcher/agent JARs exist
 LAUNCHER_JAR="$(ls -1t "$PROJECT_DIR"/launcher/target/java-sleuth-launcher*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
 AGENT_JAR="$(ls -1t "$PROJECT_DIR"/agent/target/java-sleuth-agent-[0-9]*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
-CORE_JAR="$(ls -1t "$PROJECT_DIR"/core/target/java-sleuth-agent-core*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
-if [ -z "${LAUNCHER_JAR}" ] || [ ! -f "${LAUNCHER_JAR}" ] || [ -z "${AGENT_JAR}" ] || [ ! -f "${AGENT_JAR}" ] || [ -z "${CORE_JAR}" ] || [ ! -f "${CORE_JAR}" ]; then
+CONTAINER_JAR="$(ls -1t "$PROJECT_DIR"/container/target/java-sleuth-container*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
+if [ -z "${LAUNCHER_JAR}" ] || [ ! -f "${LAUNCHER_JAR}" ] || [ -z "${AGENT_JAR}" ] || [ ! -f "${AGENT_JAR}" ] || [ -z "${CONTAINER_JAR}" ] || [ ! -f "${CONTAINER_JAR}" ]; then
     # Backward compatibility: legacy single fat-jar (artifactId=java-sleuth)
     LEGACY_JAR="$(ls -1t "$PROJECT_DIR"/core/target/java-sleuth-[0-9]*-jar-with-dependencies.jar 2>/dev/null | head -n 1 || true)"
     if [ -z "${LEGACY_JAR}" ]; then
@@ -38,7 +38,7 @@ if [ -z "${LAUNCHER_JAR}" ] || [ ! -f "${LAUNCHER_JAR}" ] || [ -z "${AGENT_JAR}"
     if [ -n "${LEGACY_JAR}" ] && [ -f "${LEGACY_JAR}" ]; then
         LAUNCHER_JAR="${LEGACY_JAR}"
         AGENT_JAR="${LEGACY_JAR}"
-        CORE_JAR=""
+        CONTAINER_JAR=""
     else
         echo -e "${RED}Please build the project first with: mvn clean package${NC}"
         exit 1
