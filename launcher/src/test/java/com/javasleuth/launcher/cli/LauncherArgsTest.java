@@ -42,4 +42,24 @@ public class LauncherArgsTest {
         Assert.assertFalse(errors.isEmpty());
         Assert.assertTrue(errors.toString().contains("--insecure"));
     }
+
+    @Test
+    public void testRestartFlagIsParsed() {
+        LauncherArgs args = LauncherArgs.parse(new String[] {"--restart"});
+        Assert.assertTrue(args.isRestart());
+        Assert.assertEquals(LaunchMode.INTERACTIVE, args.getLaunchMode());
+        Assert.assertTrue(args.validate().isEmpty());
+    }
+
+    @Test
+    public void testAuthFlagsMustBePaired() {
+        LauncherArgs args1 = LauncherArgs.parse(new String[] {"--auth-user", "admin"});
+        Assert.assertFalse(args1.validate().isEmpty());
+
+        LauncherArgs args2 = LauncherArgs.parse(new String[] {"--auth-pass", "secret"});
+        Assert.assertFalse(args2.validate().isEmpty());
+
+        LauncherArgs args3 = LauncherArgs.parse(new String[] {"--auth-user", "admin", "--auth-pass", "secret"});
+        Assert.assertTrue(args3.validate().isEmpty());
+    }
 }
