@@ -20,10 +20,6 @@ import java.util.jar.JarFile;
  * </ul>
  */
 public final class SleuthAgent {
-    private static final String CONTAINER_ENTRYPOINT_CLASS = "com.javasleuth.container.SleuthAgentContainerEntrypoint";
-    private static final String BOOTSTRAP_AGENT_LIFECYCLE_CLASS = "com.javasleuth.bootstrap.agent.AgentLifecycle";
-
-    private static final String BOOTSTRAP_JAR_LOCATOR_CLASS = "com.javasleuth.bootstrap.util.JarLocator";
     private static final String STABLE_BOOTSTRAP_BRIDGE_JAR_NAME = "java-sleuth-bootstrap-bridge.jar";
 
     private static final String LOCATOR_DEBUG_PROPERTY = "sleuth.locator.debug";
@@ -41,16 +37,16 @@ public final class SleuthAgent {
     public static void agentmain(String agentArgs, Instrumentation inst) {
         // Runtime attach: fail fast so the attach caller can detect startup errors.
         // This does NOT crash the target JVM; it only fails the attach request.
-        bootstrap(agentArgs, inst, true);
+        bootstrap(agentArgs, inst, true, CrossClassLoaderFacade.ENTRY_AGENTMAIN);
     }
 
     public static void premain(String agentArgs, Instrumentation inst) {
         // -javaagent mode: also fail-fast. Starting the JVM with a partially working agent is riskier than
         // failing fast, because enhancements may inject bootstrap calls that can crash application threads.
-        bootstrap(agentArgs, inst, true);
+        bootstrap(agentArgs, inst, true, CrossClassLoaderFacade.ENTRY_PREMAIN);
     }
 
-    private static void bootstrap(String agentArgs, Instrumentation inst, boolean failFast) {
+    private static void bootstrap(String agentArgs, Instrumentation inst, boolean failFast, String entrypointPhase) {
         URLClassLoader isolated = null;
         long sessionId = 0L;
         boolean sessionBegun = false;
@@ -74,7 +70,7 @@ public final class SleuthAgent {
 
             // Strong hint for operators: when bootstrap bridge is not actually visible, enhancer commands
             // must not be allowed to inject com.javasleuth.bootstrap.* calls into application bytecode.
-            if (!isBootstrapBridgeAvailableBestEffort()) {
+            if (!CrossClassLoaderFacade.isBootstrapBridgeAvailable()) {
                 System.err.println("Java-Sleuth: Bootstrap bridge is NOT available (bootstrap-visible classes missing).");
                 if (failFast) {
                     System.err.println("  - Agent startup will fail-fast to protect the target JVM from NoClassDefFoundError/LinkageError.");
@@ -87,20 +83,20 @@ public final class SleuthAgent {
             }
 
             // SSOT: acquire lifecycle session before any global side effects (sysprops, classloader, transformers...).
-            sessionId = bridgeTryBeginAttachOrZero();
+            sessionId = CrossClassLoaderFacade.tryBeginAttachOrZero();
             if (sessionId == 0L) {
                 System.err.println("Java-Sleuth: Agent is already attached to this JVM (lifecycle gate)");
                 return;
             }
             sessionBegun = true;
 
-            if (!bridgeApplyAgentArgsIfAbsent(sessionId, agentArgs)) {
+            if (!CrossClassLoaderFacade.applyAgentArgsIfAbsent(sessionId, agentArgs)) {
                 System.err.println("Java-Sleuth: Failed to apply agent args (lifecycle gate); aborting agent startup.");
-                bridgeFailBestEffort(sessionId, null);
+                CrossClassLoaderFacade.failBestEffort(sessionId, null);
                 return;
             }
 
-            File containerJar = locateAgentContainerJarBestEffort();
+            File containerJar = CrossClassLoaderFacade.locateAgentContainerJar(SleuthAgent.class);
             if (containerJar == null) {
                 System.err.println("Java-Sleuth: Agent container jar not found.");
                 System.err.println("  - Provide via agent args: containerJar=<path>");
@@ -109,7 +105,7 @@ public final class SleuthAgent {
                 );
                 System.err.println("  - Or place container jar next to bootstrap agent jar: java-sleuth-container.jar");
                 // 启动失败：回滚生命周期 session，允许修复参数后重试 attach。
-                bridgeFailBestEffort(sessionId, null);
+                CrossClassLoaderFacade.failBestEffort(sessionId, null);
                 return;
             }
 
@@ -117,9 +113,9 @@ public final class SleuthAgent {
             isolated = new URLClassLoader(new URL[] { containerUrl }, null);
 
             // Bind this attach lifecycle boundary to the isolated ClassLoader (detach will close it).
-            if (!bridgeCommitIsolatedClassLoader(sessionId, isolated)) {
+            if (!CrossClassLoaderFacade.commitIsolatedClassLoader(sessionId, isolated)) {
                 System.err.println("Java-Sleuth: Failed to commit isolated ClassLoader into lifecycle registry; aborting.");
-                bridgeFailBestEffort(sessionId, isolated);
+                CrossClassLoaderFacade.failBestEffort(sessionId, isolated);
                 closeQuietly(isolated);
                 return;
             }
@@ -128,9 +124,7 @@ public final class SleuthAgent {
             ClassLoader old = current.getContextClassLoader();
             current.setContextClassLoader(isolated);
             try {
-                Class<?> entry = Class.forName(CONTAINER_ENTRYPOINT_CLASS, true, isolated);
-                java.lang.reflect.Method m = entry.getMethod("agentmain", String.class, Instrumentation.class);
-                m.invoke(null, agentArgs, inst);
+                CrossClassLoaderFacade.invokeContainerEntrypoint(isolated, entrypointPhase, agentArgs, inst);
             } finally {
                 current.setContextClassLoader(old);
             }
@@ -141,7 +135,7 @@ public final class SleuthAgent {
             }
             try {
                 if (sessionBegun) {
-                    bridgeFailBestEffort(sessionId, isolated);
+                    CrossClassLoaderFacade.failBestEffort(sessionId, isolated);
                 }
             } catch (Throwable ignore) {
                 // ignore
@@ -554,92 +548,6 @@ public final class SleuthAgent {
             // ignore
         }
         return false;
-    }
-
-    private static long bridgeTryBeginAttachOrZero() {
-        try {
-            Class<?> c = Class.forName(BOOTSTRAP_AGENT_LIFECYCLE_CLASS, false, null);
-            java.lang.reflect.Method m = c.getMethod("tryBeginAttach");
-            Object r = m.invoke(null);
-            return (r instanceof Number) ? ((Number) r).longValue() : 0L;
-        } catch (Throwable ignore) {
-            return 0L;
-        }
-    }
-
-    private static boolean bridgeApplyAgentArgsIfAbsent(long sessionId, String agentArgs) {
-        try {
-            Class<?> c = Class.forName(BOOTSTRAP_AGENT_LIFECYCLE_CLASS, false, null);
-            java.lang.reflect.Method m = c.getMethod("applyAgentArgsIfAbsent", long.class, String.class);
-            Object r = m.invoke(null, sessionId, agentArgs);
-            return Boolean.TRUE.equals(r);
-        } catch (Throwable ignore) {
-            return false;
-        }
-    }
-
-    private static boolean bridgeCommitIsolatedClassLoader(long sessionId, ClassLoader loader) {
-        try {
-            Class<?> c = Class.forName(BOOTSTRAP_AGENT_LIFECYCLE_CLASS, false, null);
-            java.lang.reflect.Method m = c.getMethod("commitIsolatedClassLoader", long.class, ClassLoader.class);
-            Object r = m.invoke(null, sessionId, loader);
-            return Boolean.TRUE.equals(r);
-        } catch (Throwable ignore) {
-            return false;
-        }
-    }
-
-    private static void bridgeFailBestEffort(long sessionId, ClassLoader loaderOrNull) {
-        try {
-            Class<?> c = Class.forName(BOOTSTRAP_AGENT_LIFECYCLE_CLASS, false, null);
-            java.lang.reflect.Method m = c.getMethod("failBestEffort", long.class, ClassLoader.class);
-            m.invoke(null, sessionId, loaderOrNull);
-        } catch (Throwable ignore) {
-            // ignore
-        }
-    }
-
-    private static File locateAgentContainerJarBestEffort() {
-        return invokeJarLocatorFileMethodBestEffort("locateAgentContainerJar");
-    }
-
-    private static File invokeJarLocatorFileMethodBestEffort(String methodName) {
-        if (methodName == null || methodName.trim().isEmpty()) {
-            return null;
-        }
-        try {
-            Class<?> c = Class.forName(BOOTSTRAP_JAR_LOCATOR_CLASS, false, null);
-            java.lang.reflect.Method m = c.getMethod(methodName, Class.class);
-            Object r = m.invoke(null, SleuthAgent.class);
-            return (r instanceof File) ? (File) r : null;
-        } catch (Throwable ignore) {
-            return null;
-        }
-    }
-
-    private static boolean isBootstrapBridgeAvailableBestEffort() {
-        // Lifecycle SSOT must be bootstrap-visible (used as attach gate and cleanup registry).
-        if (!isBootstrapClassAvailable(BOOTSTRAP_AGENT_LIFECYCLE_CLASS)) {
-            return false;
-        }
-        // Bootstrap-only utilities required by SleuthAgent bootstrap flow.
-        if (!isBootstrapClassAvailable(BOOTSTRAP_JAR_LOCATOR_CLASS)) {
-            return false;
-        }
-        // Spy API is required for any bytecode enhancement that injects bootstrap calls.
-        return isBootstrapClassAvailable("com.javasleuth.bootstrap.spy.SleuthSpyAPI");
-    }
-
-    private static boolean isBootstrapClassAvailable(String binaryName) {
-        if (binaryName == null || binaryName.trim().isEmpty()) {
-            return false;
-        }
-        try {
-            Class<?> c = Class.forName(binaryName, false, null);
-            return c != null && c.getClassLoader() == null;
-        } catch (Throwable ignore) {
-            return false;
-        }
     }
 
     private static void closeQuietly(URLClassLoader cl) {

@@ -2,7 +2,6 @@ package com.javasleuth.core.vmtool;
 
 import com.javasleuth.core.enhancement.InstanceTrackEnhancer;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
-import com.javasleuth.bootstrap.monitor.VmToolInterceptor;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.VmToolTrackAdviceListener;
 import com.javasleuth.foundation.util.LoadedClassResolver;
@@ -148,6 +147,9 @@ public final class VmToolSessionRegistry {
                                  boolean includeSubclasses,
                                  int maxEntries,
                                  int classLimit) {
+        if (!SleuthSpyDispatcher.isInstalled(spyDispatcher)) {
+            return StartResult.failed(SleuthSpyDispatcher.unavailableMessage("vmtool track"));
+        }
         if (instrumentation == null || transformer == null) {
             return StartResult.failed("Instrumentation/transformer not available.");
         }
@@ -219,20 +221,13 @@ public final class VmToolSessionRegistry {
 
         // Register track session before applying enhancements so events can be recorded immediately.
         boolean trackRegistered = false;
-        if (isDispatcherInstalled(spyDispatcher)) {
-            try {
-                tracker.registerTrack(id, baseClassName, max);
-                spyDispatcher.register(id, SleuthSpyDispatcher.ListenerKind.VMTOOL, new VmToolTrackAdviceListener(id, tracker));
-                trackRegistered = true;
-            } catch (Throwable t) {
-                // Fallback to legacy bootstrap interceptor path (best-effort).
-                unregisterTrackBestEffort(id);
-                VmToolInterceptor.registerTrack(id, baseClassName, max);
-                trackRegistered = true;
-            }
-        } else {
-            VmToolInterceptor.registerTrack(id, baseClassName, max);
+        try {
+            tracker.registerTrack(id, baseClassName, max);
+            spyDispatcher.register(id, SleuthSpyDispatcher.ListenerKind.VMTOOL, new VmToolTrackAdviceListener(id, tracker));
             trackRegistered = true;
+        } catch (Throwable t) {
+            unregisterTrackBestEffort(id);
+            return StartResult.failed("Failed to register vmtool track listener: " + t.getMessage());
         }
 
         List<EnhancedClass> enhanced = new ArrayList<>();
@@ -354,66 +349,21 @@ public final class VmToolSessionRegistry {
         if (trackId == null || trackId.trim().isEmpty()) {
             return null;
         }
-        String id = trackId.trim();
-        if (isDispatcherInstalled(spyDispatcher)) {
-            VmToolTracker.TrackStats s = tracker.getTrackStats(id);
-            if (s != null) {
-                return s;
-            }
-        }
-        VmToolInterceptor.TrackStats legacy = VmToolInterceptor.getTrackStats(id);
-        if (legacy == null) {
-            return null;
-        }
-        return new VmToolTracker.TrackStats(
-            legacy.getTrackId(),
-            legacy.getBaseClassName(),
-            legacy.getCreatedAtMs(),
-            legacy.getMaxEntries(),
-            legacy.getCapturedTotal(),
-            legacy.getCached(),
-            legacy.getAlive()
-        );
+        return tracker.getTrackStats(trackId.trim());
     }
 
     public List<VmToolTracker.TrackedInstanceInfo> listInstances(String trackId, int limit, boolean aliveOnly) {
         if (trackId == null || trackId.trim().isEmpty()) {
             return Collections.emptyList();
         }
-        String id = trackId.trim();
-        if (isDispatcherInstalled(spyDispatcher) && tracker.getTrackStats(id) != null) {
-            return tracker.listInstances(id, limit, aliveOnly);
-        }
-        List<VmToolInterceptor.TrackedInstanceInfo> legacy = VmToolInterceptor.listInstances(id, limit, aliveOnly);
-        if (legacy == null || legacy.isEmpty()) {
-            return Collections.emptyList();
-        }
-        List<VmToolTracker.TrackedInstanceInfo> out = new ArrayList<>(legacy.size());
-        for (VmToolInterceptor.TrackedInstanceInfo info : legacy) {
-            if (info == null) {
-                continue;
-            }
-            out.add(new VmToolTracker.TrackedInstanceInfo(
-                info.getRefId(),
-                info.getClassName(),
-                info.getIdentityHash(),
-                info.getCapturedAtMs(),
-                info.getCapturedThread(),
-                info.isAlive()
-            ));
-        }
-        return out;
+        return tracker.listInstances(trackId.trim(), limit, aliveOnly);
     }
 
     public Object getInstance(String trackId, long refId) {
         if (trackId == null || trackId.trim().isEmpty()) {
             return null;
         }
-        String id = trackId.trim();
-        if (isDispatcherInstalled(spyDispatcher) && tracker.getTrackStats(id) != null) {
-            return tracker.getInstance(id, refId);
-        }
-        return VmToolInterceptor.getInstance(id, refId);
+        return tracker.getInstance(trackId.trim(), refId);
     }
 
     private void unregisterTrackBestEffort(String trackId) {
@@ -421,11 +371,6 @@ public final class VmToolSessionRegistry {
             return;
         }
         String id = trackId.trim();
-        try {
-            VmToolInterceptor.unregisterTrack(id);
-        } catch (Throwable ignore) {
-            // ignore
-        }
         try {
             tracker.unregisterTrack(id);
         } catch (Throwable ignore) {
@@ -443,28 +388,9 @@ public final class VmToolSessionRegistry {
 
     private void clearAllTracksBestEffort() {
         try {
-            VmToolInterceptor.clearAll();
-        } catch (Throwable ignore) {
-            // ignore
-        }
-        try {
             tracker.clearAll();
         } catch (Throwable ignore) {
             // ignore
-        }
-    }
-
-    private static boolean isDispatcherInstalled(SleuthSpyDispatcher dispatcher) {
-        try {
-            if (dispatcher == null) {
-                return false;
-            }
-            if (!com.javasleuth.bootstrap.spy.SleuthSpyAPI.isInited()) {
-                return false;
-            }
-            return com.javasleuth.bootstrap.spy.SleuthSpyAPI.getSpy() == dispatcher;
-        } catch (Throwable t) {
-            return false;
         }
     }
 

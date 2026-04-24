@@ -1,9 +1,11 @@
 package com.javasleuth.core.agent.runtime;
 
+import com.javasleuth.bootstrap.monitor.BootstrapMonitorConfigStore;
 import com.javasleuth.bootstrap.monitor.MonitorInterceptor;
 import com.javasleuth.bootstrap.monitor.StackInterceptor;
 import com.javasleuth.bootstrap.monitor.TraceInterceptor;
 import com.javasleuth.bootstrap.monitor.TtInterceptor;
+import com.javasleuth.bootstrap.monitor.VmToolInterceptor;
 import com.javasleuth.bootstrap.monitor.WatchInterceptor;
 
 /**
@@ -16,6 +18,12 @@ import com.javasleuth.bootstrap.monitor.WatchInterceptor;
  */
 public final class AgentGlobalState {
     private AgentGlobalState() {}
+
+    public static void resetBootstrapAttachStateBestEffort() {
+        clearBootstrapMonitorConfigStoreBestEffort();
+        clearVmToolInterceptorBestEffort();
+        resetInterceptorsBestEffort();
+    }
 
     public static void resetInterceptorsBestEffort() {
         try {
@@ -40,6 +48,22 @@ public final class AgentGlobalState {
         }
         try {
             StackInterceptor.resetForDetach();
+        } catch (Exception ignore) {
+            // best-effort
+        }
+    }
+
+    public static void clearBootstrapMonitorConfigStoreBestEffort() {
+        try {
+            BootstrapMonitorConfigStore.clear();
+        } catch (Exception ignore) {
+            // best-effort
+        }
+    }
+
+    public static void clearVmToolInterceptorBestEffort() {
+        try {
+            VmToolInterceptor.clearAll();
         } catch (Exception ignore) {
             // best-effort
         }

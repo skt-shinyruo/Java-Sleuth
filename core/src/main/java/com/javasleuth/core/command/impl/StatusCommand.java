@@ -119,16 +119,12 @@ public class StatusCommand implements Command {
 
         // Watch/Trace observability
         status.append("\n-- Watch/Trace Observability --\n");
-        status.append("Active Watches: ").append(WatchInterceptor.getActiveWatchCount()).append("\n");
-        status.append("Watch Published: ").append(WatchInterceptor.getPublishedEventCount()).append("\n");
-        status.append("Watch Dropped: ").append(WatchInterceptor.getDroppedEventCount()).append("\n");
-        status.append("Watch Evicted: ").append(WatchInterceptor.getEvictedEventCount()).append("\n");
-        status.append("Active Traces: ").append(TraceInterceptor.getActiveTraceCount()).append("\n");
-        status.append("Trace Published: ").append(TraceInterceptor.getPublishedEventCount()).append("\n");
-        status.append("Trace Dropped: ").append(TraceInterceptor.getDroppedEventCount()).append("\n");
-        status.append("Trace Evicted: ").append(TraceInterceptor.getEvictedEventCount()).append("\n");
         SleuthSpyDispatcher d = spyDispatcher;
-        if (d != null) {
+        boolean dispatcherInstalled = SleuthSpyDispatcher.isInstalled(d);
+        status.append("Listener Runtime Installed: ").append(dispatcherInstalled).append("\n");
+        if (dispatcherInstalled) {
+            status.append("Active Watches: ").append(d.getActiveWatchCount()).append("\n");
+            status.append("Active Traces: ").append(d.getActiveTraceCount()).append("\n");
             status.append("Active Listeners: ").append(d.getActiveListenerCount()).append("\n");
             status.append("Active Watch Listeners: ").append(d.getActiveWatchCount()).append("\n");
             status.append("Active Trace Listeners: ").append(d.getActiveTraceCount()).append("\n");
@@ -136,7 +132,25 @@ public class StatusCommand implements Command {
             status.append("Active Stack Listeners: ").append(d.getActiveStackCount()).append("\n");
             status.append("Active TT Listeners: ").append(d.getActiveTtCount()).append("\n");
             status.append("Active VmTool Listeners: ").append(d.getActiveVmToolCount()).append("\n");
+        } else {
+            status.append("Active Watches: unavailable\n");
+            status.append("Active Traces: unavailable\n");
+            status.append("Active Listeners: unavailable\n");
+            status.append("Active Watch Listeners: unavailable\n");
+            status.append("Active Trace Listeners: unavailable\n");
+            status.append("Active Monitor Listeners: unavailable\n");
+            status.append("Active Stack Listeners: unavailable\n");
+            status.append("Active TT Listeners: unavailable\n");
+            status.append("Active VmTool Listeners: unavailable\n");
         }
+        status.append("Legacy Active Watches: ").append(WatchInterceptor.getActiveWatchCount()).append("\n");
+        status.append("Legacy Active Traces: ").append(TraceInterceptor.getActiveTraceCount()).append("\n");
+        status.append("Legacy Watch Published: ").append(WatchInterceptor.getPublishedEventCount()).append("\n");
+        status.append("Legacy Watch Dropped: ").append(WatchInterceptor.getDroppedEventCount()).append("\n");
+        status.append("Legacy Watch Evicted: ").append(WatchInterceptor.getEvictedEventCount()).append("\n");
+        status.append("Legacy Trace Published: ").append(TraceInterceptor.getPublishedEventCount()).append("\n");
+        status.append("Legacy Trace Dropped: ").append(TraceInterceptor.getDroppedEventCount()).append("\n");
+        status.append("Legacy Trace Evicted: ").append(TraceInterceptor.getEvictedEventCount()).append("\n");
         status.append("Legacy Active Stacks: ").append(StackInterceptor.getActiveStackCount()).append("\n");
         status.append("Stack Published: ").append(StackInterceptor.getPublishedEventCount()).append("\n");
         status.append("Stack Dropped: ").append(StackInterceptor.getDroppedEventCount()).append("\n");

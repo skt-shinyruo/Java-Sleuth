@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * should be owned by an attach lifecycle object and closed via a single path ({@link #close()}), similar to
  * Arthas' {@code destroy()} style of shutdown.
  *
- * <p>Security services are attach-scope instances (Task 4). Runtime optimizers are still singletons (Task 5).
+ * <p>Security services and optimizers are attach-scope instances owned by the runtime.
  */
 public final class SleuthAgentServices implements AutoCloseable {
     private final ProductionConfig config;
@@ -23,6 +23,7 @@ public final class SleuthAgentServices implements AutoCloseable {
     private final AuthenticationManager authenticationManager;
     private final DangerousCommandConfirmationManager dangerousConfirm;
     private final PerformanceOptimizer performanceOptimizer;
+    private final MemoryOptimizer memoryOptimizer;
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
@@ -31,7 +32,8 @@ public final class SleuthAgentServices implements AutoCloseable {
         AuditLogger auditLogger,
         AuthenticationManager authenticationManager,
         DangerousCommandConfirmationManager dangerousConfirm,
-        PerformanceOptimizer performanceOptimizer
+        PerformanceOptimizer performanceOptimizer,
+        MemoryOptimizer memoryOptimizer
     ) {
         if (config == null) {
             throw new IllegalArgumentException("config is required");
@@ -48,11 +50,15 @@ public final class SleuthAgentServices implements AutoCloseable {
         if (performanceOptimizer == null) {
             throw new IllegalArgumentException("performanceOptimizer is required");
         }
+        if (memoryOptimizer == null) {
+            throw new IllegalArgumentException("memoryOptimizer is required");
+        }
         this.config = config;
         this.auditLogger = auditLogger;
         this.authenticationManager = authenticationManager;
         this.dangerousConfirm = dangerousConfirm;
         this.performanceOptimizer = performanceOptimizer;
+        this.memoryOptimizer = memoryOptimizer;
     }
 
     public static SleuthAgentServices createDefault() {
@@ -68,8 +74,16 @@ public final class SleuthAgentServices implements AutoCloseable {
         AuditLogger auditLogger = new AuditLogger(config);
         AuthenticationManager authenticationManager = new AuthenticationManager(config, auditLogger);
         DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger);
-        PerformanceOptimizer performanceOptimizer = PerformanceOptimizer.getInstance(config);
-        return new SleuthAgentServices(config, auditLogger, authenticationManager, dangerousConfirm, performanceOptimizer);
+        PerformanceOptimizer performanceOptimizer = new PerformanceOptimizer(config);
+        MemoryOptimizer memoryOptimizer = new MemoryOptimizer(config, performanceOptimizer);
+        return new SleuthAgentServices(
+            config,
+            auditLogger,
+            authenticationManager,
+            dangerousConfirm,
+            performanceOptimizer,
+            memoryOptimizer
+        );
     }
 
     public ProductionConfig getConfig() {
@@ -92,6 +106,10 @@ public final class SleuthAgentServices implements AutoCloseable {
         return performanceOptimizer;
     }
 
+    public MemoryOptimizer getMemoryOptimizer() {
+        return memoryOptimizer;
+    }
+
     @Override
     public void close() {
         if (!closed.compareAndSet(false, true)) {
@@ -101,14 +119,14 @@ public final class SleuthAgentServices implements AutoCloseable {
         // 1) MemoryOptimizer holds a scheduled executor + registers a JMX MBean.
         // It's currently unused by default; shutdown is best-effort and no-op if never started.
         try {
-            MemoryOptimizer.shutdownInstance();
+            memoryOptimizer.close();
         } catch (Exception ignore) {
             // best-effort
         }
 
         // 2) Performance optimizer (thread pools + JMX).
         try {
-            PerformanceOptimizer.shutdown();
+            performanceOptimizer.close();
         } catch (Exception ignore) {
             // best-effort
         }

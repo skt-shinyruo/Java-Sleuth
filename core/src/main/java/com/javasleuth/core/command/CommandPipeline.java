@@ -15,6 +15,7 @@ import com.javasleuth.foundation.security.AuthorizationManager;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.foundation.security.InputValidator;
 import com.javasleuth.foundation.util.SleuthLogger;
+import com.javasleuth.foundation.util.PerformanceOptimizer;
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import java.util.Arrays;
 import java.util.Locale;
@@ -118,7 +119,8 @@ public class CommandPipeline {
         InputValidator inputValidator,
         AuthorizationManager authorizationManager,
         DangerousCommandConfirmationManager dangerousConfirm,
-        ProductionConfig config
+        ProductionConfig config,
+        PerformanceOptimizer performanceOptimizer
     ) {
         if (inputValidator == null) {
             throw new IllegalArgumentException("inputValidator is required");
@@ -132,6 +134,9 @@ public class CommandPipeline {
         if (config == null) {
             throw new IllegalArgumentException("config is required");
         }
+        if (performanceOptimizer == null) {
+            throw new IllegalArgumentException("performanceOptimizer is required");
+        }
         this.inputValidator = inputValidator;
         this.config = config;
         this.precheckPipeline = new PrecheckPipeline(inputValidator, authorizationManager, dangerousConfirm);
@@ -141,7 +146,7 @@ public class CommandPipeline {
             inv -> executionEngine.executeSync(inv.getCommand(), inv.getArgs(), inv.getMeta(), inv.getTimeoutMs(), inv.getContext()),
             Arrays.asList(
                 new OutputSanitizeInterceptor(inputValidator),
-                new CacheInterceptor()
+                new CacheInterceptor(performanceOptimizer)
             )
         );
 

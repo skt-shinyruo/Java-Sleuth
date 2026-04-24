@@ -14,9 +14,14 @@ import javax.management.ObjectName;
 
 public class HeapDumpCommand implements Command {
     private final Instrumentation instrumentation;
+    private final PerformanceOptimizer performanceOptimizer;
 
-    public HeapDumpCommand(Instrumentation instrumentation) {
+    public HeapDumpCommand(Instrumentation instrumentation, PerformanceOptimizer performanceOptimizer) {
         this.instrumentation = instrumentation;
+        if (performanceOptimizer == null) {
+            throw new IllegalArgumentException("performanceOptimizer");
+        }
+        this.performanceOptimizer = performanceOptimizer;
     }
 
     @Override
@@ -64,7 +69,7 @@ public class HeapDumpCommand implements Command {
         final String finalFileName = fileName;
         final boolean finalLiveOnly = liveOnly;
 
-        return PerformanceOptimizer.executeAsync(() -> createHeapDump(finalFileName, finalLiveOnly), "heapdump")
+        return performanceOptimizer.executeAsync(() -> createHeapDump(finalFileName, finalLiveOnly), "heapdump")
                 .get(); // Block to wait for completion since heap dumps need to complete
     }
 

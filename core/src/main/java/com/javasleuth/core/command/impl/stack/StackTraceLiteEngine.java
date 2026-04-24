@@ -9,7 +9,6 @@ import com.javasleuth.bootstrap.data.StackTraceResult;
 import com.javasleuth.core.enhancement.ClassEnhancer;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.StackEnhancer;
-import com.javasleuth.bootstrap.monitor.StackInterceptor;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.StackAdviceListener;
 import com.javasleuth.foundation.util.WildcardMatcher;
@@ -47,6 +46,9 @@ public final class StackTraceLiteEngine {
         int depth,
         StreamSink sink
     ) throws Exception {
+        if (!SleuthSpyDispatcher.isInstalled(spyDispatcher)) {
+            return SleuthSpyDispatcher.unavailableMessage("stack");
+        }
         if (transformer == null) {
             return "Stack trace mode requires transformer, but transformer is null.";
         }
@@ -68,24 +70,14 @@ public final class StackTraceLiteEngine {
         BlockingQueue<StackTraceResult> q = new LinkedBlockingQueue<>(config.getInt("monitoring.watch.queue.capacity", 1000));
 
         ClassEnhancer enhancer = new StackEnhancer(target.getName(), methodPattern, null, stackId);
-        boolean interceptorRegistered = false;
         boolean enhancerAdded = false;
         try {
-            boolean registered = false;
-            SleuthSpyDispatcher dispatcher = this.spyDispatcher;
-            if (dispatcher != null && isDispatcherInstalled(dispatcher)) {
-                boolean dropOnFull = config.getBoolean("monitoring.watch.drop.on.full", true);
-                dispatcher.register(
-                    stackId,
-                    SleuthSpyDispatcher.ListenerKind.STACK,
-                    new StackAdviceListener(stackId, q, depth, dropOnFull)
-                );
-                registered = true;
-            } else {
-                StackInterceptor.register(stackId, q, depth);
-                registered = true;
-            }
-            interceptorRegistered = registered;
+            boolean dropOnFull = config.getBoolean("monitoring.watch.drop.on.full", true);
+            spyDispatcher.register(
+                stackId,
+                SleuthSpyDispatcher.ListenerKind.STACK,
+                new StackAdviceListener(stackId, q, depth, dropOnFull)
+            );
 
             transformer.addEnhancer(target, enhancer);
             enhancerAdded = true;
@@ -107,20 +99,10 @@ public final class StackTraceLiteEngine {
                     // ignore
                 }
             }
-            if (interceptorRegistered) {
-                try {
-                    StackInterceptor.unregister(stackId);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-                try {
-                    SleuthSpyDispatcher d = this.spyDispatcher;
-                    if (d != null) {
-                        d.unregister(stackId);
-                    }
-                } catch (Exception ignore) {
-                    // ignore
-                }
+            try {
+                spyDispatcher.unregister(stackId);
+            } catch (Exception ignore) {
+                // ignore
             }
             throw e;
         }
@@ -184,12 +166,8 @@ public final class StackTraceLiteEngine {
     public boolean stop(String stackId) {
         StackSession session = activeSessions.remove(stackId);
         if (session == null) {
-            StackInterceptor.unregister(stackId);
             try {
-                SleuthSpyDispatcher d = this.spyDispatcher;
-                if (d != null) {
-                    d.unregister(stackId);
-                }
+                spyDispatcher.unregister(stackId);
             } catch (Exception ignore) {
                 // ignore
             }
@@ -201,28 +179,13 @@ public final class StackTraceLiteEngine {
         } catch (Exception ignored) {
             // best-effort
         } finally {
-            StackInterceptor.unregister(stackId);
             try {
-                SleuthSpyDispatcher d = this.spyDispatcher;
-                if (d != null) {
-                    d.unregister(stackId);
-                }
+                spyDispatcher.unregister(stackId);
             } catch (Exception ignore) {
                 // ignore
             }
         }
         return true;
-    }
-
-    private static boolean isDispatcherInstalled(SleuthSpyDispatcher dispatcher) {
-        try {
-            if (!com.javasleuth.bootstrap.spy.SleuthSpyAPI.isInited()) {
-                return false;
-            }
-            return com.javasleuth.bootstrap.spy.SleuthSpyAPI.getSpy() == dispatcher;
-        } catch (Throwable t) {
-            return false;
-        }
     }
 
     private void appendOrSend(StringBuilder buf, StreamSink sink, String text) {

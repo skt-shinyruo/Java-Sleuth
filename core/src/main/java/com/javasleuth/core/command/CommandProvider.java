@@ -1,6 +1,8 @@
 package com.javasleuth.core.command;
 
 import com.javasleuth.foundation.security.CommandMeta;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 
@@ -17,7 +19,41 @@ import java.util.Map;
 public interface CommandProvider {
     String getName();
 
-    Map<String, Command> getCommands();
+    default CommandProviderInfo getInfo() {
+        if ("builtin".equalsIgnoreCase(getName())) {
+            return CommandProviderInfo.builtin(getName(), Collections.<String>emptySet());
+        }
+        return CommandProviderInfo.legacy(getName());
+    }
+
+    default Collection<CommandDescriptor> getCommandDescriptors(CommandProviderContext context) {
+        Map<String, Command> commands = getCommands();
+        if (commands == null || commands.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<String, CommandMeta> metaByName = getCommandMeta();
+        Collection<CommandDescriptor> descriptors = new ArrayList<>(commands.size());
+        for (Map.Entry<String, Command> entry : commands.entrySet()) {
+            if (entry == null) {
+                continue;
+            }
+            String name = entry.getKey();
+            if (name == null) {
+                continue;
+            }
+            String normalized = name.trim().toLowerCase();
+            CommandMeta meta = metaByName != null ? metaByName.get(normalized) : null;
+            if (meta == null && metaByName != null) {
+                meta = metaByName.get(name);
+            }
+            descriptors.add(CommandDescriptor.of(name, entry.getValue(), meta));
+        }
+        return descriptors;
+    }
+
+    default Map<String, Command> getCommands() {
+        return Collections.emptyMap();
+    }
 
     default Map<String, CommandMeta> getCommandMeta() {
         return Collections.emptyMap();

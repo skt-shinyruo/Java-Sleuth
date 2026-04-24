@@ -9,7 +9,6 @@ import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.core.enhancement.ClassEnhancer;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.WatchEnhancer;
-import com.javasleuth.bootstrap.monitor.WatchInterceptor;
 import com.javasleuth.bootstrap.data.WatchResult;
 import com.javasleuth.core.command.JobManager;
 import com.javasleuth.core.command.session.ClientSession;
@@ -200,6 +199,9 @@ public class WatchCommand implements StreamCommand {
                                List<String> expr,
                                List<SleuthConditionEvaluator.Condition> conditions,
                                 StreamSink sink) throws Exception {
+        if (!SleuthSpyDispatcher.isInstalled(spyDispatcher)) {
+            return SleuthSpyDispatcher.unavailableMessage("watch");
+        }
 
         // Find matching class (multi-ClassLoader safe)
         LoadedClassResolver.Candidate resolved;
@@ -231,25 +233,14 @@ public class WatchCommand implements StreamCommand {
 
         WatchEnhancer enhancer = new WatchEnhancer(targetClassName, methodPattern, null,
             captureParams, captureReturn, captureException, watchId);
-        boolean interceptorRegistered = false;
         boolean enhancerAdded = false;
         try {
-            boolean registered = false;
-            SleuthSpyDispatcher dispatcher = this.spyDispatcher;
-            if (dispatcher != null && isDispatcherInstalled(dispatcher)) {
-                boolean dropOnFull = config.getBoolean("monitoring.watch.drop.on.full", true);
-                dispatcher.register(
-                    watchId,
-                    SleuthSpyDispatcher.ListenerKind.WATCH,
-                    new WatchAdviceListener(watchId, resultQueue, dropOnFull)
-                );
-                registered = true;
-            } else {
-                // Fallback to legacy bootstrap interceptor path.
-                WatchInterceptor.registerWatch(watchId, resultQueue);
-                registered = true;
-            }
-            interceptorRegistered = registered;
+            boolean dropOnFull = config.getBoolean("monitoring.watch.drop.on.full", true);
+            spyDispatcher.register(
+                watchId,
+                SleuthSpyDispatcher.ListenerKind.WATCH,
+                new WatchAdviceListener(watchId, resultQueue, dropOnFull)
+            );
 
             // Create and register enhancer
             transformer.addEnhancer(targetClass, enhancer);
@@ -275,20 +266,10 @@ public class WatchCommand implements StreamCommand {
                     // ignore
                 }
             }
-            if (interceptorRegistered) {
-                try {
-                    WatchInterceptor.unregisterWatch(watchId);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-                try {
-                    SleuthSpyDispatcher d = this.spyDispatcher;
-                    if (d != null) {
-                        d.unregister(watchId);
-                    }
-                } catch (Exception ignore) {
-                    // ignore
-                }
+            try {
+                spyDispatcher.unregister(watchId);
+            } catch (Exception ignore) {
+                // ignore
             }
             throw e;
         }
@@ -389,12 +370,8 @@ public class WatchCommand implements StreamCommand {
                 }
 
                 // Unregister watch
-                WatchInterceptor.unregisterWatch(watchId);
                 try {
-                    SleuthSpyDispatcher d = this.spyDispatcher;
-                    if (d != null) {
-                        d.unregister(watchId);
-                    }
+                    spyDispatcher.unregister(watchId);
                 } catch (Exception ignore) {
                     // ignore
                 }
@@ -402,17 +379,6 @@ public class WatchCommand implements StreamCommand {
             } catch (Exception e) {
                 SleuthLogger.warn("Error stopping watch: " + e.getMessage(), e);
             }
-        }
-    }
-
-    private static boolean isDispatcherInstalled(SleuthSpyDispatcher dispatcher) {
-        try {
-            if (!com.javasleuth.bootstrap.spy.SleuthSpyAPI.isInited()) {
-                return false;
-            }
-            return com.javasleuth.bootstrap.spy.SleuthSpyAPI.getSpy() == dispatcher;
-        } catch (Throwable t) {
-            return false;
         }
     }
 

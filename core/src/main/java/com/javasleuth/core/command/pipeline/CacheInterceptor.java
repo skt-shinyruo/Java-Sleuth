@@ -5,6 +5,15 @@ import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.util.PerformanceOptimizer;
 
 public final class CacheInterceptor implements PipelineInterceptor<SyncInvocation, String> {
+    private final PerformanceOptimizer performanceOptimizer;
+
+    public CacheInterceptor(PerformanceOptimizer performanceOptimizer) {
+        if (performanceOptimizer == null) {
+            throw new IllegalArgumentException("performanceOptimizer is required");
+        }
+        this.performanceOptimizer = performanceOptimizer;
+    }
+
     @Override
     public String intercept(SyncInvocation ctx, PipelineHandler<SyncInvocation, String> next) throws Exception {
         if (ctx == null) {
@@ -22,7 +31,7 @@ public final class CacheInterceptor implements PipelineInterceptor<SyncInvocatio
         String cacheKey = clientKey + ":" + ctx.getCommandName() + ":" + String.join(":", ctx.getArgs());
 
         try {
-            return PerformanceOptimizer.getCachedResult(cacheKey, () -> {
+            return performanceOptimizer.getCachedResult(cacheKey, () -> {
                 try {
                     return next.handle(ctx);
                 } catch (Exception e) {

@@ -9,7 +9,6 @@ import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.core.enhancement.ClassEnhancer;
 import com.javasleuth.core.enhancement.MonitorEnhancer;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
-import com.javasleuth.bootstrap.monitor.MonitorInterceptor;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.MonitorAdviceListener;
 import com.javasleuth.foundation.util.WildcardMatcher;
@@ -131,6 +130,9 @@ public class MonitorCommand implements StreamCommand {
     private String startMonitoring(String classPattern, String methodPattern,
                                    long intervalMs, int rounds, int classLimit,
                                    StreamSink sink) throws Exception {
+        if (!SleuthSpyDispatcher.isInstalled(spyDispatcher)) {
+            return SleuthSpyDispatcher.unavailableMessage("monitor");
+        }
         List<Class<?>> matches = new ArrayList<>();
         for (Class<?> c : instrumentation.getAllLoadedClasses()) {
             if (c == null) {
@@ -153,23 +155,12 @@ public class MonitorCommand implements StreamCommand {
         }
 
         String monitorId = UUID.randomUUID().toString();
-        boolean interceptorRegistered = false;
         MonitorAdviceListener monitorListener = null;
         List<MonitorSession.EnhancedClass> enhanced = new ArrayList<>();
         try {
-            boolean registered = false;
-            SleuthSpyDispatcher dispatcher = this.spyDispatcher;
-            if (dispatcher != null && isDispatcherInstalled(dispatcher)) {
-                monitorListener = new MonitorAdviceListener();
-                dispatcher.register(monitorId, SleuthSpyDispatcher.ListenerKind.MONITOR, monitorListener);
-                monitorListener.clear();
-                registered = true;
-            } else {
-                MonitorInterceptor.registerMonitor(monitorId);
-                MonitorInterceptor.clear(monitorId);
-                registered = true;
-            }
-            interceptorRegistered = registered;
+            monitorListener = new MonitorAdviceListener();
+            spyDispatcher.register(monitorId, SleuthSpyDispatcher.ListenerKind.MONITOR, monitorListener);
+            monitorListener.clear();
 
             for (Class<?> c : matches) {
                 MonitorEnhancer enhancer = new MonitorEnhancer(c.getName(), methodPattern, null, monitorId);
@@ -206,12 +197,10 @@ public class MonitorCommand implements StreamCommand {
                     // ignore
                 }
             }
-            if (interceptorRegistered) {
-                try {
-                    MonitorInterceptor.unregisterMonitor(monitorId);
-                } catch (Exception ignore) {
-                    // ignore
-                }
+            try {
+                spyDispatcher.unregister(monitorId);
+            } catch (Exception ignore) {
+                // ignore
             }
             throw e;
         }
@@ -258,14 +247,10 @@ public class MonitorCommand implements StreamCommand {
                 Map<String, MonitorAdviceListener.MethodStatsSnapshot> snap;
                 MonitorSession s = activeSessions.get(monitorId);
                 MonitorAdviceListener l = s != null ? s.monitorListener : null;
+                snap = l != null ? l.snapshot() : java.util.Collections.<String, MonitorAdviceListener.MethodStatsSnapshot>emptyMap();
+                appendOrSend(out, sink, formatSnapshot(snap, i + 1, rounds));
                 if (l != null) {
-                    snap = l.snapshot();
-                    appendOrSend(out, sink, formatSnapshot(snap, i + 1, rounds));
                     l.clear();
-                } else {
-                    snap = convertLegacySnapshot(MonitorInterceptor.snapshot(monitorId));
-                    appendOrSend(out, sink, formatSnapshot(snap, i + 1, rounds));
-                    MonitorInterceptor.clear(monitorId);
                 }
                 done++;
             }
@@ -288,12 +273,8 @@ public class MonitorCommand implements StreamCommand {
     private void stopMonitor(String monitorId) {
         MonitorSession session = activeSessions.remove(monitorId);
         if (session == null) {
-            MonitorInterceptor.unregisterMonitor(monitorId);
             try {
-                SleuthSpyDispatcher d = this.spyDispatcher;
-                if (d != null) {
-                    d.unregister(monitorId);
-                }
+                spyDispatcher.unregister(monitorId);
             } catch (Exception ignore) {
                 // ignore
             }
@@ -310,42 +291,12 @@ public class MonitorCommand implements StreamCommand {
                 }
             }
         } finally {
-            MonitorInterceptor.unregisterMonitor(monitorId);
             try {
-                SleuthSpyDispatcher d = this.spyDispatcher;
-                if (d != null) {
-                    d.unregister(monitorId);
-                }
+                spyDispatcher.unregister(monitorId);
             } catch (Exception ignore) {
                 // ignore
             }
         }
-    }
-
-    private static Map<String, MonitorAdviceListener.MethodStatsSnapshot> convertLegacySnapshot(
-        Map<String, MonitorInterceptor.MethodStatsSnapshot> snap
-    ) {
-        if (snap == null || snap.isEmpty()) {
-            return java.util.Collections.emptyMap();
-        }
-        Map<String, MonitorAdviceListener.MethodStatsSnapshot> out = new java.util.HashMap<>();
-        for (Map.Entry<String, MonitorInterceptor.MethodStatsSnapshot> e : snap.entrySet()) {
-            MonitorInterceptor.MethodStatsSnapshot s = e.getValue();
-            if (s == null) {
-                continue;
-            }
-            out.put(
-                e.getKey(),
-                new MonitorAdviceListener.MethodStatsSnapshot(
-                    s.getCount(),
-                    s.getExceptionCount(),
-                    s.getTotalNanos(),
-                    s.getMaxNanos(),
-                    s.getMinNanos()
-                )
-            );
-        }
-        return out;
     }
 
     private String formatSnapshot(Map<String, MonitorAdviceListener.MethodStatsSnapshot> snap, int round, int rounds) {
@@ -381,20 +332,6 @@ public class MonitorCommand implements StreamCommand {
             shown++;
         }
         return sb.toString().trim();
-    }
-
-    private static boolean isDispatcherInstalled(SleuthSpyDispatcher dispatcher) {
-        try {
-            if (dispatcher == null) {
-                return false;
-            }
-            if (!com.javasleuth.bootstrap.spy.SleuthSpyAPI.isInited()) {
-                return false;
-            }
-            return com.javasleuth.bootstrap.spy.SleuthSpyAPI.getSpy() == dispatcher;
-        } catch (Throwable t) {
-            return false;
-        }
     }
 
     private void appendOrSend(StringBuilder buf, StreamSink sink, String text) {
