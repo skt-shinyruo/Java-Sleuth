@@ -1,9 +1,9 @@
 package com.javasleuth.foundation.util;
 
 import com.javasleuth.foundation.config.ConfigView;
-import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import java.lang.management.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -13,11 +13,12 @@ import javax.management.*;
  * Memory and GC optimization utility for Java-Sleuth
  * Provides intelligent memory management and GC tuning
  */
-public class MemoryOptimizer implements MemoryOptimizerMBean {
-    private static MemoryOptimizer instance;
+public class MemoryOptimizer implements MemoryOptimizerMBean, AutoCloseable {
     private final ConfigView config;
+    private final PerformanceOptimizer performanceOptimizer;
     private final MemoryMXBean memoryBean;
     private final ScheduledExecutorService memoryMonitor;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     // Memory thresholds
     private static final double MEMORY_WARNING_THRESHOLD = 0.8;
@@ -29,11 +30,15 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
     private volatile long lastGcTime = 0;
     private volatile long gcCooldownMs = 30000; // 30 seconds between forced GCs
 
-    private MemoryOptimizer(ConfigView config) {
+    public MemoryOptimizer(ConfigView config, PerformanceOptimizer performanceOptimizer) {
         if (config == null) {
             throw new IllegalArgumentException("config is required");
         }
+        if (performanceOptimizer == null) {
+            throw new IllegalArgumentException("performanceOptimizer is required");
+        }
         this.config = config;
+        this.performanceOptimizer = performanceOptimizer;
         this.memoryBean = ManagementFactory.getMemoryMXBean();
 
         // Create memory monitoring thread
@@ -47,17 +52,6 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
 
         // Register JMX MBean
         registerMBean();
-    }
-
-    public static synchronized MemoryOptimizer getInstance(ConfigView config) {
-        if (instance == null) {
-            instance = new MemoryOptimizer(config);
-        }
-        return instance;
-    }
-
-    public static synchronized MemoryOptimizer getInstance() {
-        return getInstance(ProductionConfig.createDefault());
     }
 
     /**
@@ -109,7 +103,7 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
     private void performMemoryOptimization() {
         try {
             // Clear expired caches
-            PerformanceOptimizer.clearExpiredCache();
+            performanceOptimizer.clearExpiredCache();
 
             // Check if GC is needed
             MemoryUsage heapUsage = memoryBean.getHeapMemoryUsage();
@@ -376,7 +370,7 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
     @Override
     public void clearAllCaches() {
         SleuthLogger.info("Clearing all caches via JMX");
-        PerformanceOptimizer.clearCache();
+        performanceOptimizer.clearCache();
     }
 
     @Override
@@ -418,24 +412,14 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
         }
     }
 
-    public static synchronized void shutdownInstance() {
-        MemoryOptimizer inst = instance;
-        if (inst == null) {
-            return;
-        }
-        try {
-            inst.shutdown();
-        } catch (Exception ignore) {
-            // ignore
-        } finally {
-            instance = null;
-        }
-    }
-
     /**
      * Shutdown memory optimizer
      */
-    public void shutdown() {
+    @Override
+    public void close() {
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
         SleuthLogger.debug("Shutting down memory optimizer...");
 
         memoryMonitor.shutdown();
@@ -452,4 +436,7 @@ public class MemoryOptimizer implements MemoryOptimizerMBean {
         SleuthLogger.debug("Memory optimizer shutdown complete");
     }
 
+    public void shutdown() {
+        close();
+    }
 }

@@ -39,7 +39,8 @@ public class CommandRegistryShutdownTest {
                 null,
                 auditLogger,
                 Collections.<CommandProvider>emptyList(),
-                pluginCl
+                pluginCl,
+                new CommandProviderContext(null, null, null, config, auditLogger, null, null, null, null, null, null, null)
             );
 
             registry.shutdown();

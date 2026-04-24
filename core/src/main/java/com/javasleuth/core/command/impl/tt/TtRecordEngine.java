@@ -9,7 +9,6 @@ import com.javasleuth.bootstrap.data.TtRecord;
 import com.javasleuth.core.enhancement.ClassEnhancer;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.TtEnhancer;
-import com.javasleuth.bootstrap.monitor.TtInterceptor;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.TtAdviceListener;
 import com.javasleuth.foundation.util.WildcardMatcher;
@@ -52,6 +51,9 @@ public final class TtRecordEngine {
         long timeoutSeconds,
         StreamSink sink
     ) throws Exception {
+        if (!SleuthSpyDispatcher.isInstalled(spyDispatcher)) {
+            return SleuthSpyDispatcher.unavailableMessage("tt");
+        }
         // Find one matching class (simplified).
         Class<?>[] loaded = instrumentation.getAllLoadedClasses();
         Class<?> target = null;
@@ -69,24 +71,14 @@ public final class TtRecordEngine {
         BlockingQueue<TtRecord> q = new LinkedBlockingQueue<>(config.getInt("monitoring.watch.queue.capacity", 1000));
 
         ClassEnhancer enhancer = new TtEnhancer(target.getName(), methodPattern, null, ttId);
-        boolean interceptorRegistered = false;
         boolean enhancerAdded = false;
         try {
-            boolean registered = false;
-            SleuthSpyDispatcher dispatcher = this.spyDispatcher;
-            if (dispatcher != null && isDispatcherInstalled(dispatcher)) {
-                boolean dropOnFull = config.getBoolean("monitoring.watch.drop.on.full", true);
-                dispatcher.register(
-                    ttId,
-                    SleuthSpyDispatcher.ListenerKind.TT,
-                    new TtAdviceListener(ttId, q, recordStore, dropOnFull)
-                );
-                registered = true;
-            } else {
-                TtInterceptor.register(ttId, q);
-                registered = true;
-            }
-            interceptorRegistered = registered;
+            boolean dropOnFull = config.getBoolean("monitoring.watch.drop.on.full", true);
+            spyDispatcher.register(
+                ttId,
+                SleuthSpyDispatcher.ListenerKind.TT,
+                new TtAdviceListener(ttId, q, recordStore, dropOnFull)
+            );
 
             transformer.addEnhancer(target, enhancer);
             enhancerAdded = true;
@@ -109,20 +101,10 @@ public final class TtRecordEngine {
                     // ignore
                 }
             }
-            if (interceptorRegistered) {
-                try {
-                    TtInterceptor.unregister(ttId);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-                try {
-                    SleuthSpyDispatcher d = this.spyDispatcher;
-                    if (d != null) {
-                        d.unregister(ttId);
-                    }
-                } catch (Exception ignore) {
-                    // ignore
-                }
+            try {
+                spyDispatcher.unregister(ttId);
+            } catch (Exception ignore) {
+                // ignore
             }
             throw e;
         }
@@ -190,12 +172,8 @@ public final class TtRecordEngine {
     public boolean stop(String ttId) {
         TtSession session = activeSessions.remove(ttId);
         if (session == null) {
-            TtInterceptor.unregister(ttId);
             try {
-                SleuthSpyDispatcher d = this.spyDispatcher;
-                if (d != null) {
-                    d.unregister(ttId);
-                }
+                spyDispatcher.unregister(ttId);
             } catch (Exception ignore) {
                 // ignore
             }
@@ -207,28 +185,13 @@ public final class TtRecordEngine {
         } catch (Exception ignored) {
             // best-effort
         } finally {
-            TtInterceptor.unregister(ttId);
             try {
-                SleuthSpyDispatcher d = this.spyDispatcher;
-                if (d != null) {
-                    d.unregister(ttId);
-                }
+                spyDispatcher.unregister(ttId);
             } catch (Exception ignore) {
                 // ignore
             }
         }
         return true;
-    }
-
-    private static boolean isDispatcherInstalled(SleuthSpyDispatcher dispatcher) {
-        try {
-            if (!com.javasleuth.bootstrap.spy.SleuthSpyAPI.isInited()) {
-                return false;
-            }
-            return com.javasleuth.bootstrap.spy.SleuthSpyAPI.getSpy() == dispatcher;
-        } catch (Throwable t) {
-            return false;
-        }
     }
 
     private void appendOrSend(StringBuilder buf, StreamSink sink, String text) {

@@ -1,196 +1,229 @@
 package com.javasleuth.core.command;
 
 import com.javasleuth.core.command.impl.*;
-import com.javasleuth.foundation.config.ProductionConfig;
-import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
-import com.javasleuth.core.monitoring.MetricsCollector;
-import com.javasleuth.foundation.security.AuditLogger;
-import com.javasleuth.foundation.security.AuthenticationManager;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.security.AuthenticationManager.UserRole;
-import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
-import com.javasleuth.foundation.util.PerformanceOptimizer;
-import com.javasleuth.core.vmtool.VmToolSessionRegistry;
-import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import java.lang.instrument.Instrumentation;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 
 public class BuiltinCommandProvider implements CommandProvider {
-    private final Instrumentation instrumentation;
-    private final SleuthClassFileTransformer transformer;
-    private final MetricsCollector metricsCollector;
-    private final ProductionConfig config;
-    private final AuditLogger auditLogger;
-    private final Runnable shutdownHook;
-    private final AuthenticationManager authenticationManager;
-    private final DangerousCommandConfirmationManager dangerousConfirm;
-    private final JobManager jobManager;
-    private final VmToolSessionRegistry vmToolSessionRegistry;
-    private final PerformanceOptimizer performanceOptimizer;
-    private final SleuthSpyDispatcher spyDispatcher;
-
-    public BuiltinCommandProvider(Instrumentation instrumentation,
-                                  SleuthClassFileTransformer transformer,
-                                  MetricsCollector metricsCollector,
-                                  ProductionConfig config,
-                                  AuditLogger auditLogger,
-                                  Runnable shutdownHook,
-                                  AuthenticationManager authenticationManager,
-                                  DangerousCommandConfirmationManager dangerousConfirm,
-                                  JobManager jobManager,
-                                  VmToolSessionRegistry vmToolSessionRegistry,
-                                  PerformanceOptimizer performanceOptimizer,
-                                  SleuthSpyDispatcher spyDispatcher) {
-        if (authenticationManager == null) {
-            throw new IllegalArgumentException("authenticationManager is required");
-        }
-        if (dangerousConfirm == null) {
-            throw new IllegalArgumentException("dangerousConfirm is required");
-        }
-        if (jobManager == null) {
-            throw new IllegalArgumentException("jobManager is required");
-        }
-        if (vmToolSessionRegistry == null) {
-            throw new IllegalArgumentException("vmToolSessionRegistry is required");
-        }
-        if (performanceOptimizer == null) {
-            throw new IllegalArgumentException("performanceOptimizer is required");
-        }
-        if (spyDispatcher == null) {
-            throw new IllegalArgumentException("spyDispatcher is required");
-        }
-        this.instrumentation = instrumentation;
-        this.transformer = transformer;
-        this.metricsCollector = metricsCollector;
-        this.config = config;
-        this.auditLogger = auditLogger;
-        this.shutdownHook = shutdownHook;
-        this.authenticationManager = authenticationManager;
-        this.dangerousConfirm = dangerousConfirm;
-        this.jobManager = jobManager;
-        this.vmToolSessionRegistry = vmToolSessionRegistry;
-        this.performanceOptimizer = performanceOptimizer;
-        this.spyDispatcher = spyDispatcher;
-    }
-
     @Override
     public String getName() {
         return "builtin";
     }
 
     @Override
-    public Map<String, Command> getCommands() {
-        Map<String, Command> commands = new HashMap<>();
-
-        JobManager jobManager = this.jobManager;
-        VmToolSessionRegistry vmToolSessionRegistry = this.vmToolSessionRegistry;
-        PerformanceOptimizer performanceOptimizer = this.performanceOptimizer;
-        SleuthSpyDispatcher spyDispatcher = this.spyDispatcher;
-
-        commands.put("dashboard", new DashboardCommand(instrumentation));
-        commands.put("thread", new ThreadCommand(instrumentation));
-        commands.put("sc", new SearchClassCommand(instrumentation));
-        commands.put("sm", new SearchMethodCommand(instrumentation));
-        commands.put("watch", new WatchCommand(instrumentation, transformer, config, jobManager, spyDispatcher));
-        commands.put("trace", new TraceCommand(instrumentation, transformer, config, jobManager, spyDispatcher));
-        commands.put("tt", new TtCommand(instrumentation, transformer, config, jobManager, spyDispatcher));
-        commands.put("jobs", new JobsCommand(jobManager));
-        commands.put("redefine", new RedefineCommand(instrumentation));
-        commands.put("mc", new MemoryCompilerCommand());
-        commands.put("retransform", new RetransformCommand(instrumentation));
-
-        commands.put("profiler", new ProfilerCommand(instrumentation));
-        commands.put("monitor", new MonitorCommand(instrumentation, transformer, jobManager, spyDispatcher));
-        commands.put("stack", new StackCommand(instrumentation, transformer, config, jobManager, spyDispatcher));
-        commands.put("reset", new ResetCommand(instrumentation, transformer, jobManager, vmToolSessionRegistry));
-
-        commands.put("jvm", new JvmCommand(instrumentation));
-        commands.put("sysprop", new SysPropCommand(instrumentation, config));
-        commands.put("sysenv", new SysEnvCommand(instrumentation));
-        commands.put("vmoption", new VmOptionCommand(instrumentation));
-        commands.put("memory", new MemoryCommand(instrumentation));
-        commands.put("heapdump", new HeapDumpCommand(instrumentation));
-        commands.put("dump", new DumpCommand(instrumentation));
-        commands.put("getstatic", new GetStaticCommand(instrumentation));
-
-        commands.put("jad", new JadCommand(instrumentation));
-        commands.put("classloader", new ClassLoaderCommand(instrumentation));
-        commands.put("mbean", new MBeanCommand(instrumentation));
-        commands.put("logger", new LoggerCommand());
-        commands.put("vmtool", new VmToolCommand(instrumentation, transformer, config, dangerousConfirm, vmToolSessionRegistry));
-
-        commands.put("health", new HealthCommand(metricsCollector, performanceOptimizer));
-        commands.put("metrics", new MetricsCommand(metricsCollector));
-        commands.put("status", new StatusCommand(instrumentation, metricsCollector, transformer, config, performanceOptimizer, spyDispatcher));
-        commands.put("config", new ConfigCommand(config));
-        commands.put("audit", new AuditCommand(auditLogger));
-        commands.put("session", new SessionCommand(authenticationManager));
-        commands.put("perm", new PermCommand());
-        commands.put("version", new VersionCommand());
-
-        commands.put("quit", new QuitCommand());
-        commands.put("auth", new AuthCommand(authenticationManager));
-        commands.put("stop", new StopCommand(shutdownHook));
-
-        return commands;
+    public CommandProviderInfo getInfo() {
+        return CommandProviderInfo.builtin(
+            "builtin",
+            Collections.singletonList("core-diagnostics")
+        );
     }
 
     @Override
-    public Map<String, CommandMeta> getCommandMeta() {
-        Map<String, CommandMeta> meta = new HashMap<>();
+    public Collection<CommandDescriptor> getCommandDescriptors(CommandProviderContext context) {
+        Instrumentation instrumentation = context.requireInstrumentation();
+        List<CommandDescriptor> descriptors = new ArrayList<>();
 
-        meta.put("help", CommandMeta.viewer(true, false));
-        meta.put("sc", CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM));
-        meta.put("sm", CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM));
-        meta.put("jad", CommandMeta.operator(false, false).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(5));
-        meta.put("classloader", CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM));
+        add(descriptors, "dashboard", new DashboardCommand(instrumentation), CommandMeta.viewer(true, false));
+        add(descriptors, "thread", new ThreadCommand(instrumentation), CommandMeta.viewer(false, false));
+        add(descriptors, "sc", new SearchClassCommand(instrumentation), CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM));
+        add(descriptors, "sm", new SearchMethodCommand(instrumentation), CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM));
+        add(
+            descriptors,
+            "watch",
+            new WatchCommand(
+                instrumentation,
+                context.requireTransformer(),
+                context.requireConfig(),
+                context.requireJobManager(),
+                context.requireSpyDispatcher()
+            ),
+            CommandMeta.operator(false, true)
+        );
+        add(
+            descriptors,
+            "trace",
+            new TraceCommand(
+                instrumentation,
+                context.requireTransformer(),
+                context.requireConfig(),
+                context.requireJobManager(),
+                context.requireSpyDispatcher()
+            ),
+            CommandMeta.operator(false, true)
+        );
+        add(
+            descriptors,
+            "tt",
+            new TtCommand(
+                instrumentation,
+                context.requireTransformer(),
+                context.requireConfig(),
+                context.requireJobManager(),
+                context.requireSpyDispatcher()
+            ),
+            CommandMeta.operator(false, true)
+        );
+        add(descriptors, "jobs", new JobsCommand(context.requireJobManager()), CommandMeta.operator(true, false));
+        add(
+            descriptors,
+            "redefine",
+            new RedefineCommand(instrumentation),
+            CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(3)
+        );
+        add(
+            descriptors,
+            "mc",
+            new MemoryCompilerCommand(),
+            CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(3)
+        );
+        add(
+            descriptors,
+            "retransform",
+            new RetransformCommand(instrumentation),
+            CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(3)
+        );
 
-        meta.put("dashboard", CommandMeta.viewer(true, false));
-        meta.put("thread", CommandMeta.viewer(false, false));
-        meta.put("memory", CommandMeta.viewer(true, false));
-        meta.put("jvm", CommandMeta.viewer(true, false));
-        meta.put("health", CommandMeta.viewer(false, false));
-        meta.put("metrics", CommandMeta.viewer(false, false));
-        meta.put("status", CommandMeta.viewer(false, false));
-        meta.put("sysprop", CommandMeta.viewer(true, false).withSubcommandRole("set", UserRole.ADMIN));
-        meta.put("sysenv", CommandMeta.viewer(true, false));
-        meta.put("vmoption", CommandMeta.operator(true, false).withSubcommandRole("set", UserRole.ADMIN));
-        meta.put("mbean", CommandMeta.operator(false, false));
-        meta.put("session", CommandMeta.viewer(false, false));
-        meta.put("perm", CommandMeta.viewer(true, false));
-        meta.put("version", CommandMeta.viewer(true, false));
+        add(descriptors, "profiler", new ProfilerCommand(instrumentation), CommandMeta.operator(false, false));
+        add(
+            descriptors,
+            "monitor",
+            new MonitorCommand(
+                instrumentation,
+                context.requireTransformer(),
+                context.requireJobManager(),
+                context.requireSpyDispatcher()
+            ),
+            CommandMeta.operator(false, true)
+        );
+        add(
+            descriptors,
+            "stack",
+            new StackCommand(
+                instrumentation,
+                context.requireTransformer(),
+                context.requireConfig(),
+                context.requireJobManager(),
+                context.requireSpyDispatcher()
+            ),
+            CommandMeta.operator(false, true)
+        );
+        add(
+            descriptors,
+            "reset",
+            new ResetCommand(
+                instrumentation,
+                context.requireTransformer(),
+                context.requireJobManager(),
+                context.requireVmToolSessionRegistry()
+            ),
+            CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(1)
+        );
 
-        meta.put("watch", CommandMeta.operator(false, true));
-        meta.put("trace", CommandMeta.operator(false, true));
-        meta.put("monitor", CommandMeta.operator(false, true));
-        meta.put("tt", CommandMeta.operator(false, true));
-        meta.put("jobs", CommandMeta.operator(true, false));
-        meta.put("dump", CommandMeta.operator(false, false).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(5));
-        meta.put("getstatic", CommandMeta.operator(false, false));
-        meta.put("logger", CommandMeta.operator(true, false));
-        meta.put("profiler", CommandMeta.operator(false, false));
-        meta.put("stack", CommandMeta.operator(false, true));
+        add(descriptors, "jvm", new JvmCommand(instrumentation), CommandMeta.viewer(true, false));
+        add(
+            descriptors,
+            "sysprop",
+            new SysPropCommand(instrumentation, context.requireConfig()),
+            CommandMeta.viewer(true, false).withSubcommandRole("set", UserRole.ADMIN)
+        );
+        add(descriptors, "sysenv", new SysEnvCommand(instrumentation), CommandMeta.viewer(true, false));
+        add(
+            descriptors,
+            "vmoption",
+            new VmOptionCommand(instrumentation),
+            CommandMeta.operator(true, false).withSubcommandRole("set", UserRole.ADMIN)
+        );
+        add(descriptors, "memory", new MemoryCommand(instrumentation), CommandMeta.viewer(true, false));
+        add(
+            descriptors,
+            "heapdump",
+            new HeapDumpCommand(instrumentation, context.requirePerformanceOptimizer()),
+            CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(2)
+        );
+        add(
+            descriptors,
+            "dump",
+            new DumpCommand(instrumentation),
+            CommandMeta.operator(false, false).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(5)
+        );
+        add(descriptors, "getstatic", new GetStaticCommand(instrumentation), CommandMeta.operator(false, false));
 
-        meta.put("redefine", CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(3));
-        meta.put("retransform", CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(3));
-        meta.put("mc", CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(3));
-        meta.put("heapdump", CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(2));
-        meta.put("reset", CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(1));
-        meta.put("stop", CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(1));
+        add(
+            descriptors,
+            "jad",
+            new JadCommand(instrumentation),
+            CommandMeta.operator(false, false).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(5)
+        );
+        add(
+            descriptors,
+            "classloader",
+            new ClassLoaderCommand(instrumentation),
+            CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM)
+        );
+        add(descriptors, "mbean", new MBeanCommand(instrumentation), CommandMeta.operator(false, false));
+        add(descriptors, "logger", new LoggerCommand(), CommandMeta.operator(true, false));
+        add(
+            descriptors,
+            "vmtool",
+            new VmToolCommand(
+                instrumentation,
+                context.requireTransformer(),
+                context.requireConfig(),
+                context.requireDangerousConfirm(),
+                context.requireVmToolSessionRegistry()
+            ),
+            CommandMeta.operator(false, false)
+                .withImpact(CommandMeta.ImpactLevel.MEDIUM)
+                .withRateLimit(10)
+                .withSubcommandRole("invoke", UserRole.ADMIN)
+                .withSubcommandRole("invoke-static", UserRole.ADMIN)
+                .withSubcommandRole("invokestatic", UserRole.ADMIN)
+        );
 
-        meta.put("config", CommandMeta.admin(false, false));
-        meta.put("audit", CommandMeta.admin(false, false).withAudit(false));
-        meta.put("quit", CommandMeta.viewer(false, false));
-        meta.put("auth", CommandMeta.viewer(false, false));
+        add(
+            descriptors,
+            "health",
+            new HealthCommand(context.requireMetricsCollector(), context.requirePerformanceOptimizer()),
+            CommandMeta.viewer(false, false)
+        );
+        add(descriptors, "metrics", new MetricsCommand(context.requireMetricsCollector()), CommandMeta.viewer(false, false));
+        add(
+            descriptors,
+            "status",
+            new StatusCommand(
+                instrumentation,
+                context.requireMetricsCollector(),
+                context.requireTransformer(),
+                context.requireConfig(),
+                context.requirePerformanceOptimizer(),
+                context.requireSpyDispatcher()
+            ),
+            CommandMeta.viewer(false, false)
+        );
+        add(descriptors, "config", new ConfigCommand(context.requireConfig()), CommandMeta.admin(false, false));
+        add(descriptors, "audit", new AuditCommand(context.requireAuditLogger()), CommandMeta.admin(false, false).withAudit(false));
+        add(descriptors, "session", new SessionCommand(context.requireAuthenticationManager()), CommandMeta.viewer(false, false));
+        add(descriptors, "perm", new PermCommand(), CommandMeta.viewer(true, false));
+        add(descriptors, "version", new VersionCommand(), CommandMeta.viewer(true, false));
 
-        meta.put("vmtool", CommandMeta.operator(false, false)
-            .withImpact(CommandMeta.ImpactLevel.MEDIUM)
-            .withRateLimit(10)
-            .withSubcommandRole("invoke", UserRole.ADMIN)
-            .withSubcommandRole("invoke-static", UserRole.ADMIN)
-            .withSubcommandRole("invokestatic", UserRole.ADMIN));
+        add(descriptors, "quit", new QuitCommand(), CommandMeta.viewer(false, false));
+        add(descriptors, "auth", new AuthCommand(context.requireAuthenticationManager()), CommandMeta.viewer(false, false));
+        add(
+            descriptors,
+            "stop",
+            new StopCommand(context.getShutdownHook()),
+            CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(1)
+        );
 
-        return meta;
+        return descriptors;
+    }
+
+    private static void add(List<CommandDescriptor> descriptors, String name, Command command, CommandMeta meta) {
+        descriptors.add(CommandDescriptor.of(name, command, meta));
     }
 }

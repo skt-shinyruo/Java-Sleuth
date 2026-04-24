@@ -1,8 +1,6 @@
 package com.javasleuth.core.agent.core;
 
 import com.javasleuth.bootstrap.agent.AgentLifecycle;
-import com.javasleuth.bootstrap.monitor.BootstrapMonitorConfigStore;
-import com.javasleuth.bootstrap.monitor.VmToolInterceptor;
 import com.javasleuth.core.agent.runtime.AgentGlobalState;
 import com.javasleuth.core.agent.runtime.SleuthAgentRuntime;
 import com.javasleuth.foundation.util.SleuthLogger;
@@ -113,12 +111,6 @@ public final class SleuthAgentEntrypointSupport {
             clearBootstrapRegistriesBestEffort();
         } finally {
             attachedGate.set(false);
-            // 清理 attach 级别的 bootstrap 配置 Store，避免跨 attach 漂移。
-            try {
-                BootstrapMonitorConfigStore.clear();
-            } catch (Exception ignore) {
-                // best-effort
-            }
             // 通知 bootstrap 生命周期对象：回滚 sysprop + 释放/关闭本次 attach 的隔离 ClassLoader（best-effort）。
             try {
                 if (selfClassLoader != null) {
@@ -143,11 +135,6 @@ public final class SleuthAgentEntrypointSupport {
     }
 
     private static void clearBootstrapRegistriesBestEffort() {
-        try {
-            VmToolInterceptor.clearAll();
-        } catch (Exception ignore) {
-            // best-effort
-        }
-        AgentGlobalState.resetInterceptorsBestEffort();
+        AgentGlobalState.resetBootstrapAttachStateBestEffort();
     }
 }

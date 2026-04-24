@@ -1,19 +1,19 @@
 package com.javasleuth.foundation.util;
 
 import com.javasleuth.foundation.config.ConfigView;
-import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import java.lang.management.ManagementFactory;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.management.*;
 
-public class PerformanceOptimizer implements PerformanceOptimizerMBean {
-    private static PerformanceOptimizer instance;
+public class PerformanceOptimizer implements PerformanceOptimizerMBean, AutoCloseable {
     private final ConfigView config;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     private final ExecutorService commandExecutor;
     private final ScheduledExecutorService maintenanceExecutor;
@@ -51,7 +51,7 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
         }
     }
 
-    private PerformanceOptimizer(ConfigView config) {
+    public PerformanceOptimizer(ConfigView config) {
         if (config == null) {
             throw new IllegalArgumentException("config is required");
         }
@@ -84,17 +84,6 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
 
     private boolean isPerformanceLogEnabled() {
         return SleuthConfigSchema.LOGGING_PERFORMANCE_ENABLED.read(config);
-    }
-
-    public static synchronized PerformanceOptimizer getInstance(ConfigView config) {
-        if (instance == null) {
-            instance = new PerformanceOptimizer(config);
-        }
-        return instance;
-    }
-
-    public static synchronized PerformanceOptimizer getInstance() {
-        return getInstance(ProductionConfig.createDefault());
     }
 
     private <T> CompletableFuture<T> executeAsyncInternal(Supplier<T> operation, String operationName) {
@@ -227,7 +216,27 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
         }
     }
 
-    private void shutdownInternal() {
+    public <T> CompletableFuture<T> executeAsync(Supplier<T> operation, String operationName) {
+        return executeAsyncInternal(operation, operationName);
+    }
+
+    public <T> T getCachedResult(String key, Supplier<T> supplier) {
+        return getCachedResultInternal(key, supplier);
+    }
+
+    public void clearCache() {
+        clearCacheInternal();
+    }
+
+    public void clearExpiredCache() {
+        clearExpiredCacheInternal();
+    }
+
+    @Override
+    public void close() {
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
         if (isPerformanceLogEnabled()) {
             SleuthLogger.debug("Shutting down performance optimizer...");
         }
@@ -413,32 +422,4 @@ public class PerformanceOptimizer implements PerformanceOptimizerMBean {
         }
     }
 
-    // Static convenience methods for backward compatibility
-    public static <T> CompletableFuture<T> executeAsync(Supplier<T> operation, String operationName) {
-        return getInstance().executeAsyncInternal(operation, operationName);
-    }
-
-    public static <T> T getCachedResult(String key, Supplier<T> supplier) {
-        return getInstance().getCachedResultInternal(key, supplier);
-    }
-
-    public static void clearCache() {
-        getInstance().clearCacheInternal();
-    }
-
-    public static void clearExpiredCache() {
-        getInstance().clearExpiredCacheInternal();
-    }
-
-    public static synchronized void shutdown() {
-        PerformanceOptimizer inst = instance;
-        if (inst == null) {
-            return;
-        }
-        try {
-            inst.shutdownInternal();
-        } finally {
-            instance = null;
-        }
-    }
 }

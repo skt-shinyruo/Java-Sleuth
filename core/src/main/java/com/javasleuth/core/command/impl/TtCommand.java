@@ -11,7 +11,6 @@ import com.javasleuth.core.command.impl.tt.TtReplayTemplateGenerator;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.bootstrap.data.TtRecord;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
-import com.javasleuth.bootstrap.monitor.TtInterceptor;
 import com.javasleuth.bootstrap.util.SleuthValueFormatter;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import java.lang.instrument.Instrumentation;
@@ -78,11 +77,7 @@ public class TtCommand implements StreamCommand {
             case "replay":
                 return replay(args);
             case "clear":
-                if (isDispatcherInstalled(spyDispatcher)) {
-                    recordStore.clear();
-                } else {
-                    TtInterceptor.clear();
-                }
+                recordStore.clear();
                 return "TT records cleared.";
             case "stop":
                 return stop(args);
@@ -144,8 +139,7 @@ public class TtCommand implements StreamCommand {
         if (args.length >= 3) {
             n = parseInt(args[2], 50);
         }
-        List<TtRecord> records =
-            isDispatcherInstalled(spyDispatcher) ? recordStore.list(n) : TtInterceptor.list(n);
+        List<TtRecord> records = recordStore.list(n);
         if (records.isEmpty()) {
             return "No TT records.";
         }
@@ -173,7 +167,7 @@ public class TtCommand implements StreamCommand {
         } catch (NumberFormatException e) {
             return "Invalid recordId: " + args[2];
         }
-        TtRecord r = isDispatcherInstalled(spyDispatcher) ? recordStore.find(id) : TtInterceptor.find(id);
+        TtRecord r = recordStore.find(id);
         if (r == null) {
             return "Record not found: " + id;
         }
@@ -225,25 +219,11 @@ public class TtCommand implements StreamCommand {
             return "Invalid recordId: " + args[2];
         }
 
-        TtRecord r = isDispatcherInstalled(spyDispatcher) ? recordStore.find(id) : TtInterceptor.find(id);
+        TtRecord r = recordStore.find(id);
         if (r == null) {
             return "Record not found: " + id;
         }
         return replayGenerator.generate(r);
-    }
-
-    private static boolean isDispatcherInstalled(SleuthSpyDispatcher dispatcher) {
-        try {
-            if (dispatcher == null) {
-                return false;
-            }
-            if (!com.javasleuth.bootstrap.spy.SleuthSpyAPI.isInited()) {
-                return false;
-            }
-            return com.javasleuth.bootstrap.spy.SleuthSpyAPI.getSpy() == dispatcher;
-        } catch (Throwable t) {
-            return false;
-        }
     }
 
     private int parseInt(String raw, int def) {

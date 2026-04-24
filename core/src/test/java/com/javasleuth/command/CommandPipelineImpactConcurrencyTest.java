@@ -7,6 +7,7 @@ import com.javasleuth.foundation.security.AuthorizationManager;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.foundation.security.InputValidator;
+import com.javasleuth.foundation.util.PerformanceOptimizer;
 import org.junit.Test;
 
 import java.util.concurrent.CountDownLatch;
@@ -34,11 +35,12 @@ public class CommandPipelineImpactConcurrencyTest {
             try (
                 AuditLogger auditLogger = new AuditLogger(config);
                 AuthenticationManager authn = new AuthenticationManager(config, auditLogger);
-                DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger)
+                DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger);
+                PerformanceOptimizer optimizer = new PerformanceOptimizer(config)
             ) {
                 AuthorizationManager authz = new AuthorizationManager(config, auditLogger, authn);
                 InputValidator validator = new InputValidator(config, auditLogger);
-                CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config);
+                CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config, optimizer);
                 try {
 
             CountDownLatch started = new CountDownLatch(1);

@@ -1,5 +1,7 @@
 package com.javasleuth.test;
 
+import com.javasleuth.core.agent.runtime.AgentGlobalState;
+
 /**
  * Test-only global state reset helper.
  *
@@ -13,52 +15,6 @@ public final class SleuthTestState {
         String r = reason != null ? reason : "test_reset";
 
         // Bootstrap-side registries (spy/bridge layer)
-        try {
-            com.javasleuth.bootstrap.monitor.VmToolInterceptor.clearAll();
-        } catch (Exception ignore) {
-            // ignore
-        }
-        try {
-            com.javasleuth.bootstrap.monitor.BootstrapMonitorConfigStore.clear();
-        } catch (Exception ignore) {
-            // ignore
-        }
-        try {
-            com.javasleuth.bootstrap.monitor.WatchInterceptor.resetForDetach();
-        } catch (Exception ignore) {
-            // ignore
-        }
-        try {
-            com.javasleuth.bootstrap.monitor.TraceInterceptor.resetForDetach();
-        } catch (Exception ignore) {
-            // ignore
-        }
-        try {
-            com.javasleuth.bootstrap.monitor.MonitorInterceptor.resetForDetach();
-        } catch (Exception ignore) {
-            // ignore
-        }
-        try {
-            com.javasleuth.bootstrap.monitor.TtInterceptor.resetForDetach();
-        } catch (Exception ignore) {
-            // ignore
-        }
-        try {
-            com.javasleuth.bootstrap.monitor.StackInterceptor.resetForDetach();
-        } catch (Exception ignore) {
-            // ignore
-        }
-
-        // Runtime optimizers (MBeans / caches)
-        try {
-            com.javasleuth.foundation.util.PerformanceOptimizer.shutdown();
-        } catch (Exception ignore) {
-            // ignore
-        }
-        try {
-            com.javasleuth.foundation.util.MemoryOptimizer.shutdownInstance();
-        } catch (Exception ignore) {
-            // ignore
-        }
+        AgentGlobalState.resetBootstrapAttachStateBestEffort();
     }
 }

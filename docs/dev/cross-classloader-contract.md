@@ -9,6 +9,11 @@ Java-Sleuth uses a two-stage agent design similar to Arthas:
 Because of the classloader boundaries, some integration points are intentionally bound by **strings + reflection**.
 These are **stable contracts** and must not be renamed casually.
 
+Implementation rule:
+
+- Thin-agent side reflection for these contracts is centralized in `agent/src/main/java/com/javasleuth/agent/CrossClassLoaderFacade.java`.
+- New thin-agent startup logic must go through that facade instead of scattering new `Class.forName(...)` / `getMethod(...)` calls in `SleuthAgent`.
+
 ## Contract Items
 
 ### Bootstrap-visible classes (must remain JDK-only)

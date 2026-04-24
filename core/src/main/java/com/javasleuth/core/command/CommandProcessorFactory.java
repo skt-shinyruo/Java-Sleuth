@@ -12,7 +12,9 @@ public final class CommandProcessorFactory {
         java.lang.instrument.Instrumentation instrumentation,
         com.javasleuth.core.enhancement.SleuthClassFileTransformer transformer
     ) {
-        return new CommandProcessor(createComponents(instrumentation, transformer, null));
+        return new CommandProcessor(createComponents(
+            CommandProcessorFactoryRequest.builder(instrumentation, transformer).build()
+        ));
     }
 
     public static CommandProcessor createDefault(
@@ -20,7 +22,37 @@ public final class CommandProcessorFactory {
         com.javasleuth.core.enhancement.SleuthClassFileTransformer transformer,
         Runnable shutdownHook
     ) {
-        return new CommandProcessor(createComponents(instrumentation, transformer, shutdownHook));
+        return new CommandProcessor(createComponents(
+            CommandProcessorFactoryRequest.builder(instrumentation, transformer)
+                .withShutdownHook(shutdownHook)
+                .build()
+        ));
+    }
+
+    public static CommandProcessor create(CommandProcessorFactoryRequest request) {
+        return new CommandProcessor(createComponents(request));
+    }
+
+    public static CommandProcessorComponents createComponents(CommandProcessorFactoryRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("request is required");
+        }
+        return createComponents(
+            request.getInstrumentation(),
+            request.getTransformer(),
+            request.getShutdownHook(),
+            request.getConfig(),
+            request.getAuditLogger(),
+            request.getAuthenticationManager(),
+            request.getAuthorizationManager(),
+            request.getDangerousConfirm(),
+            request.getClientSessionRegistry(),
+            request.getMetricsCollector(),
+            request.getJobManager(),
+            request.getVmToolSessionRegistry(),
+            request.getPerformanceOptimizer(),
+            request.getSpyDispatcher()
+        );
     }
 
     public static CommandProcessor create(
@@ -35,20 +67,16 @@ public final class CommandProcessorFactory {
         com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry,
         com.javasleuth.core.monitoring.MetricsCollector metricsCollector
     ) {
-        return create(
-            instrumentation,
-            transformer,
-            shutdownHook,
-            config,
-            auditLogger,
-            authenticationManager,
-            authorizationManager,
-            dangerousConfirm,
-            clientSessionRegistry,
-            metricsCollector,
-            null,
-            null
-        );
+        return create(CommandProcessorFactoryRequest.builder(instrumentation, transformer)
+            .withShutdownHook(shutdownHook)
+            .withConfig(config)
+            .withAuditLogger(auditLogger)
+            .withAuthenticationManager(authenticationManager)
+            .withAuthorizationManager(authorizationManager)
+            .withDangerousConfirm(dangerousConfirm)
+            .withClientSessionRegistry(clientSessionRegistry)
+            .withMetricsCollector(metricsCollector)
+            .build());
     }
 
     public static CommandProcessor create(
@@ -65,21 +93,18 @@ public final class CommandProcessorFactory {
         JobManager jobManager,
         com.javasleuth.core.vmtool.VmToolSessionRegistry vmToolSessionRegistry
     ) {
-        CommandProcessorComponents components = createComponents(
-            instrumentation,
-            transformer,
-            shutdownHook,
-            config,
-            auditLogger,
-            authenticationManager,
-            authorizationManager,
-            dangerousConfirm,
-            clientSessionRegistry,
-            metricsCollector,
-            jobManager,
-            vmToolSessionRegistry
-        );
-        return new CommandProcessor(components);
+        return create(CommandProcessorFactoryRequest.builder(instrumentation, transformer)
+            .withShutdownHook(shutdownHook)
+            .withConfig(config)
+            .withAuditLogger(auditLogger)
+            .withAuthenticationManager(authenticationManager)
+            .withAuthorizationManager(authorizationManager)
+            .withDangerousConfirm(dangerousConfirm)
+            .withClientSessionRegistry(clientSessionRegistry)
+            .withMetricsCollector(metricsCollector)
+            .withJobManager(jobManager)
+            .withVmToolSessionRegistry(vmToolSessionRegistry)
+            .build());
     }
 
     public static CommandProcessor create(
@@ -98,23 +123,20 @@ public final class CommandProcessorFactory {
         com.javasleuth.foundation.util.PerformanceOptimizer performanceOptimizer,
         com.javasleuth.core.spy.SleuthSpyDispatcher spyDispatcher
     ) {
-        CommandProcessorComponents components = createComponents(
-            instrumentation,
-            transformer,
-            shutdownHook,
-            config,
-            auditLogger,
-            authenticationManager,
-            authorizationManager,
-            dangerousConfirm,
-            clientSessionRegistry,
-            metricsCollector,
-            jobManager,
-            vmToolSessionRegistry,
-            performanceOptimizer,
-            spyDispatcher
-        );
-        return new CommandProcessor(components);
+        return create(CommandProcessorFactoryRequest.builder(instrumentation, transformer)
+            .withShutdownHook(shutdownHook)
+            .withConfig(config)
+            .withAuditLogger(auditLogger)
+            .withAuthenticationManager(authenticationManager)
+            .withAuthorizationManager(authorizationManager)
+            .withDangerousConfirm(dangerousConfirm)
+            .withClientSessionRegistry(clientSessionRegistry)
+            .withMetricsCollector(metricsCollector)
+            .withJobManager(jobManager)
+            .withVmToolSessionRegistry(vmToolSessionRegistry)
+            .withPerformanceOptimizer(performanceOptimizer)
+            .withSpyDispatcher(spyDispatcher)
+            .build());
     }
 
     public static CommandProcessorComponents createComponents(
@@ -122,22 +144,9 @@ public final class CommandProcessorFactory {
         com.javasleuth.core.enhancement.SleuthClassFileTransformer transformer,
         Runnable shutdownHook
     ) {
-        return createComponents(
-            instrumentation,
-            transformer,
-            shutdownHook,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null
-        );
+        return createComponents(CommandProcessorFactoryRequest.builder(instrumentation, transformer)
+            .withShutdownHook(shutdownHook)
+            .build());
     }
 
     public static CommandProcessorComponents createComponents(
@@ -152,22 +161,16 @@ public final class CommandProcessorFactory {
         com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry,
         com.javasleuth.core.monitoring.MetricsCollector metricsCollector
     ) {
-        return createComponents(
-            instrumentation,
-            transformer,
-            shutdownHook,
-            config,
-            auditLogger,
-            authenticationManager,
-            authorizationManager,
-            dangerousConfirm,
-            clientSessionRegistry,
-            metricsCollector,
-            null,
-            null,
-            null,
-            null
-        );
+        return createComponents(CommandProcessorFactoryRequest.builder(instrumentation, transformer)
+            .withShutdownHook(shutdownHook)
+            .withConfig(config)
+            .withAuditLogger(auditLogger)
+            .withAuthenticationManager(authenticationManager)
+            .withAuthorizationManager(authorizationManager)
+            .withDangerousConfirm(dangerousConfirm)
+            .withClientSessionRegistry(clientSessionRegistry)
+            .withMetricsCollector(metricsCollector)
+            .build());
     }
 
     public static CommandProcessorComponents createComponents(
@@ -184,22 +187,18 @@ public final class CommandProcessorFactory {
         JobManager jobManager,
         com.javasleuth.core.vmtool.VmToolSessionRegistry vmToolSessionRegistry
     ) {
-        return createComponents(
-            instrumentation,
-            transformer,
-            shutdownHook,
-            config,
-            auditLogger,
-            authenticationManager,
-            authorizationManager,
-            dangerousConfirm,
-            clientSessionRegistry,
-            metricsCollector,
-            jobManager,
-            vmToolSessionRegistry,
-            null,
-            null
-        );
+        return createComponents(CommandProcessorFactoryRequest.builder(instrumentation, transformer)
+            .withShutdownHook(shutdownHook)
+            .withConfig(config)
+            .withAuditLogger(auditLogger)
+            .withAuthenticationManager(authenticationManager)
+            .withAuthorizationManager(authorizationManager)
+            .withDangerousConfirm(dangerousConfirm)
+            .withClientSessionRegistry(clientSessionRegistry)
+            .withMetricsCollector(metricsCollector)
+            .withJobManager(jobManager)
+            .withVmToolSessionRegistry(vmToolSessionRegistry)
+            .build());
     }
 
     public static CommandProcessorComponents createComponents(
@@ -258,7 +257,7 @@ public final class CommandProcessorFactory {
         com.javasleuth.core.vmtool.VmToolSessionRegistry vmsr =
             vmToolSessionRegistry != null ? vmToolSessionRegistry : new com.javasleuth.core.vmtool.VmToolSessionRegistry();
         com.javasleuth.foundation.util.PerformanceOptimizer perf =
-            performanceOptimizer != null ? performanceOptimizer : com.javasleuth.foundation.util.PerformanceOptimizer.getInstance(cfg);
+            performanceOptimizer != null ? performanceOptimizer : new com.javasleuth.foundation.util.PerformanceOptimizer(cfg);
         com.javasleuth.core.spy.SleuthSpyDispatcher dispatcher =
             spyDispatcher != null ? spyDispatcher : new com.javasleuth.core.spy.SleuthSpyDispatcher();
 
@@ -294,7 +293,7 @@ public final class CommandProcessorFactory {
             com.javasleuth.foundation.util.SleuthLogger.debug("Failed to record initial audit dropped count: " + e.getMessage(), e);
         }
 
-        BuiltinCommandProvider builtinProvider = new BuiltinCommandProvider(
+        CommandProviderContext providerContext = new CommandProviderContext(
             instrumentation,
             transformer,
             metrics,
@@ -308,6 +307,7 @@ public final class CommandProcessorFactory {
             perf,
             dispatcher
         );
+        BuiltinCommandProvider builtinProvider = new BuiltinCommandProvider();
 
         com.javasleuth.core.command.plugin.CommandProviderLoader providerLoader =
             new com.javasleuth.core.command.plugin.CommandProviderLoader(cfg, audit, CommandProcessorFactory.class.getClassLoader());
@@ -319,10 +319,11 @@ public final class CommandProcessorFactory {
             metrics,
             audit,
             loadedProviders.getProviders(),
-            loadedProviders.getPluginClassLoader()
+            loadedProviders.getPluginClassLoader(),
+            providerContext
         );
 
-        CommandPipeline pipeline = new CommandPipeline(inputValidator, authz, dc, cfg);
+        CommandPipeline pipeline = new CommandPipeline(inputValidator, authz, dc, cfg, perf);
 
         com.javasleuth.core.command.session.ClientSessionIndex sessionIndex = new com.javasleuth.core.command.session.ClientSessionIndex();
 
@@ -372,7 +373,7 @@ public final class CommandProcessorFactory {
                 closeables.add(dc);
             }
             if (ownsPerformanceOptimizer) {
-                closeables.add(() -> com.javasleuth.foundation.util.PerformanceOptimizer.shutdown());
+                closeables.add(perf);
             }
             if (ownsVmToolSessionRegistry) {
                 closeables.add(() -> vmsr.shutdown(instrumentation, transformer, "shutdown"));
