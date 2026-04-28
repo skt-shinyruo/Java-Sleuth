@@ -6,10 +6,13 @@ import com.javasleuth.bootstrap.monitor.VmToolInterceptor;
 import com.javasleuth.bootstrap.monitor.WatchInterceptor;
 import com.javasleuth.bootstrap.data.TraceResult;
 import com.javasleuth.bootstrap.data.WatchResult;
+import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
+import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
 import com.javasleuth.test.SleuthTestState;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Proxy;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
@@ -34,6 +37,7 @@ public class AttachSessionContextTest {
             Assert.assertNotNull(session.getMetricsCollector());
             Assert.assertNotNull(session.getJobManager());
             Assert.assertNotNull(session.getVmToolSessionRegistry());
+            Assert.assertNotNull(session.getEnhancementSessionRegistry());
             Assert.assertNotNull(session.getSpyDispatcher());
         } finally {
             session.close();
@@ -44,7 +48,12 @@ public class AttachSessionContextTest {
     @Test
     public void close_clearsBootstrapAttachScopeStores() throws Exception {
         AttachSessionContext session = AttachSessionContext.create(fakeInstrumentation(), () -> {});
+        AtomicInteger closed = new AtomicInteger(0);
         try {
+            session.getEnhancementSessionRegistry().register(
+                EnhancementSessionDescriptor.builder("attach-close-watch", EnhancementSessionKind.WATCH).build(),
+                reason -> closed.incrementAndGet()
+            );
             BootstrapMonitorConfigStore.setWatchDropOnFull(false);
             BootstrapMonitorConfigStore.setTraceDropOnFull(false);
             WatchInterceptor.registerWatch("legacy-watch", new LinkedBlockingQueue<WatchResult>(2));
@@ -57,6 +66,8 @@ public class AttachSessionContextTest {
         Assert.assertEquals(0, WatchInterceptor.getActiveWatchCount());
         Assert.assertEquals(0, TraceInterceptor.getActiveTraceCount());
         Assert.assertTrue(VmToolInterceptor.listTrackStats().isEmpty());
+        Assert.assertEquals(1, closed.get());
+        Assert.assertEquals(0, session.getEnhancementSessionRegistry().size());
         Assert.assertNull(readBootstrapConfigField("watchDropOnFull"));
         Assert.assertNull(readBootstrapConfigField("traceDropOnFull"));
     }

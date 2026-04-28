@@ -4,6 +4,8 @@ import com.javasleuth.core.command.Command;
 import com.javasleuth.core.command.JobManager;
 import com.javasleuth.core.agent.runtime.AgentGlobalState;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionCloseSummary;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.vmtool.VmToolSessionRegistry;
 import java.lang.instrument.Instrumentation;
 import java.util.HashSet;
@@ -23,12 +25,23 @@ public class ResetCommand implements Command {
     private final SleuthClassFileTransformer transformer;
     private final JobManager jobManager;
     private final VmToolSessionRegistry vmToolSessionRegistry;
+    private final EnhancementSessionRegistry enhancementSessionRegistry;
 
     public ResetCommand(
         Instrumentation instrumentation,
         SleuthClassFileTransformer transformer,
         JobManager jobManager,
         VmToolSessionRegistry vmToolSessionRegistry
+    ) {
+        this(instrumentation, transformer, jobManager, vmToolSessionRegistry, null);
+    }
+
+    public ResetCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        JobManager jobManager,
+        VmToolSessionRegistry vmToolSessionRegistry,
+        EnhancementSessionRegistry enhancementSessionRegistry
     ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
@@ -40,6 +53,7 @@ public class ResetCommand implements Command {
         }
         this.jobManager = jobManager;
         this.vmToolSessionRegistry = vmToolSessionRegistry;
+        this.enhancementSessionRegistry = enhancementSessionRegistry;
     }
 
     @Override
@@ -48,7 +62,21 @@ public class ResetCommand implements Command {
 
         Set<String> enhanced = new HashSet<>(transformer.getEnhancedClassNames());
 
-        // Clear vmtool sessions first (remove its enhancers best-effort).
+        int enhancementSessions = 0;
+        int enhancementClosed = 0;
+        int enhancementFailed = 0;
+        try {
+            if (enhancementSessionRegistry != null) {
+                EnhancementSessionCloseSummary summary = enhancementSessionRegistry.closeAll("reset");
+                enhancementSessions = summary.getTotal();
+                enhancementClosed = summary.getClosed();
+                enhancementFailed = summary.getFailed();
+            }
+        } catch (Exception ignore) {
+            enhancementFailed++;
+        }
+
+        // Compatibility fallback for sessions that predate the unified registry.
         try {
             vmToolSessionRegistry.stopAll(instrumentation, transformer, "reset");
         } catch (Exception ignore) {
@@ -87,6 +115,9 @@ public class ResetCommand implements Command {
         }
 
         return "Reset done. jobsStopped=" + stoppedJobs +
+            ", enhancementSessions=" + enhancementSessions +
+            ", enhancementClosed=" + enhancementClosed +
+            ", enhancementFailed=" + enhancementFailed +
             ", enhancedClasses=" + enhanced.size() +
             ", retransformed=" + retransformCount +
             ", skipped=" + skipped;

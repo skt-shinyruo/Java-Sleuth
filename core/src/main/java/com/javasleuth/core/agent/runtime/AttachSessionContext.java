@@ -6,6 +6,7 @@ import com.javasleuth.core.command.CommandProcessorFactoryRequest;
 import com.javasleuth.core.command.JobManager;
 import com.javasleuth.core.command.session.ClientSessionRegistry;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.monitoring.MetricsCollector;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.vmtool.VmToolSessionRegistry;
@@ -35,6 +36,7 @@ final class AttachSessionContext implements AutoCloseable {
     private final MetricsCollector metricsCollector;
     private final JobManager jobManager;
     private final VmToolSessionRegistry vmToolSessionRegistry;
+    private final EnhancementSessionRegistry enhancementSessionRegistry;
     private final CommandProcessor commandProcessor;
     private final SleuthSpyDispatcher spyDispatcher;
     private final Thread commandThread;
@@ -49,6 +51,7 @@ final class AttachSessionContext implements AutoCloseable {
         MetricsCollector metricsCollector,
         JobManager jobManager,
         VmToolSessionRegistry vmToolSessionRegistry,
+        EnhancementSessionRegistry enhancementSessionRegistry,
         CommandProcessor commandProcessor,
         SleuthSpyDispatcher spyDispatcher,
         Thread commandThread
@@ -60,6 +63,7 @@ final class AttachSessionContext implements AutoCloseable {
         this.metricsCollector = metricsCollector;
         this.jobManager = jobManager;
         this.vmToolSessionRegistry = vmToolSessionRegistry;
+        this.enhancementSessionRegistry = enhancementSessionRegistry;
         this.commandProcessor = commandProcessor;
         this.spyDispatcher = spyDispatcher;
         this.commandThread = commandThread;
@@ -77,6 +81,7 @@ final class AttachSessionContext implements AutoCloseable {
         MetricsCollector metricsCollector = null;
         JobManager jobManager = null;
         VmToolSessionRegistry vmToolSessionRegistry = null;
+        EnhancementSessionRegistry enhancementSessionRegistry = null;
         CommandProcessor commandProcessor = null;
         SleuthSpyDispatcher spyDispatcher = null;
         Thread commandThread = null;
@@ -108,6 +113,7 @@ final class AttachSessionContext implements AutoCloseable {
             metricsCollector = new MetricsCollector(config);
             jobManager = new JobManager();
             vmToolSessionRegistry = new VmToolSessionRegistry(spyDispatcher);
+            enhancementSessionRegistry = new EnhancementSessionRegistry();
 
             commandProcessor = CommandProcessorFactory.create(
                 CommandProcessorFactoryRequest.builder(inst, transformer)
@@ -121,6 +127,7 @@ final class AttachSessionContext implements AutoCloseable {
                     .withMetricsCollector(metricsCollector)
                     .withJobManager(jobManager)
                     .withVmToolSessionRegistry(vmToolSessionRegistry)
+                    .withEnhancementSessionRegistry(enhancementSessionRegistry)
                     .withPerformanceOptimizer(services.getPerformanceOptimizer())
                     .withSpyDispatcher(spyDispatcher)
                     .build()
@@ -137,6 +144,7 @@ final class AttachSessionContext implements AutoCloseable {
                 metricsCollector,
                 jobManager,
                 vmToolSessionRegistry,
+                enhancementSessionRegistry,
                 commandProcessor,
                 spyDispatcher,
                 commandThread
@@ -150,6 +158,7 @@ final class AttachSessionContext implements AutoCloseable {
                 metricsCollector,
                 jobManager,
                 vmToolSessionRegistry,
+                enhancementSessionRegistry,
                 commandProcessor,
                 spyDispatcher
             );
@@ -207,6 +216,10 @@ final class AttachSessionContext implements AutoCloseable {
         return vmToolSessionRegistry;
     }
 
+    public EnhancementSessionRegistry getEnhancementSessionRegistry() {
+        return enhancementSessionRegistry;
+    }
+
     public CommandProcessor getCommandProcessor() {
         return commandProcessor;
     }
@@ -220,15 +233,13 @@ final class AttachSessionContext implements AutoCloseable {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-
-        destroySpyBestEffort(spyDispatcher);
-
         Instrumentation inst = instrumentation;
         SleuthClassFileTransformer tx = transformer;
         Set<String> enhanced = snapshotEnhancedClassNames(tx);
 
         shutdownCommandProcessorBestEffort(commandProcessor);
-        shutdownAttachResourcesBestEffort(inst, tx, jobManager, clientSessionRegistry, vmToolSessionRegistry);
+        shutdownAttachResourcesBestEffort(inst, tx, jobManager, clientSessionRegistry, vmToolSessionRegistry, enhancementSessionRegistry);
+        destroySpyBestEffort(spyDispatcher);
         removeEnhancersBestEffort(tx);
         rollbackEnhancedClassesBestEffort(inst, enhanced);
         removeTransformerBestEffort(inst, tx);
@@ -244,10 +255,12 @@ final class AttachSessionContext implements AutoCloseable {
         MetricsCollector metricsCollector,
         JobManager jobManager,
         VmToolSessionRegistry vmToolSessionRegistry,
+        EnhancementSessionRegistry enhancementSessionRegistry,
         CommandProcessor commandProcessor,
         SleuthSpyDispatcher spyDispatcher
     ) {
         shutdownCommandProcessorBestEffort(commandProcessor);
+        shutdownEnhancementSessionsBestEffort(enhancementSessionRegistry, "startup_failed");
         shutdownJobManagerBestEffort(jobManager, "startup_failed");
         shutdownMetricsBestEffort(metricsCollector);
         shutdownVmToolSessionsBestEffort(instrumentation, transformer, vmToolSessionRegistry, "startup_failed");
@@ -310,12 +323,24 @@ final class AttachSessionContext implements AutoCloseable {
         SleuthClassFileTransformer transformer,
         JobManager jobManager,
         ClientSessionRegistry clientSessionRegistry,
-        VmToolSessionRegistry vmToolSessionRegistry
+        VmToolSessionRegistry vmToolSessionRegistry,
+        EnhancementSessionRegistry enhancementSessionRegistry
     ) {
+        shutdownEnhancementSessionsBestEffort(enhancementSessionRegistry, "shutdown");
         shutdownJobManagerBestEffort(jobManager, "shutdown");
         shutdownClientSessionsBestEffort(clientSessionRegistry, "shutdown");
         shutdownVmToolSessionsBestEffort(instrumentation, transformer, vmToolSessionRegistry, "shutdown");
         AgentGlobalState.resetBootstrapAttachStateBestEffort();
+    }
+
+    private static void shutdownEnhancementSessionsBestEffort(EnhancementSessionRegistry enhancementSessionRegistry, String reason) {
+        try {
+            if (enhancementSessionRegistry != null) {
+                enhancementSessionRegistry.closeAll(reason);
+            }
+        } catch (Exception ignore) {
+            // best-effort
+        }
     }
 
     private static void shutdownJobManagerBestEffort(JobManager jobManager, String reason) {
