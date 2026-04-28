@@ -144,7 +144,7 @@ public class CommandMetaCapabilityTest {
 Run:
 
 ```bash
-mvn -pl core -Dtest=CommandMetaCapabilityTest test
+mvn -pl core -am -Dtest=CommandMetaCapabilityTest test
 ```
 
 Expected: compile failure because `CommandCapability` and the new `CommandMeta` methods do not exist.
@@ -390,7 +390,7 @@ Add these private helpers near the bottom of `CommandMeta`, before `defaultRequi
 Run:
 
 ```bash
-mvn -pl core -Dtest=CommandMetaCapabilityTest test
+mvn -pl core -am -Dtest=CommandMetaCapabilityTest test
 ```
 
 Expected: PASS.
@@ -559,7 +559,7 @@ public class PrecheckPipelineBootstrapCapabilityTest {
 Run:
 
 ```bash
-mvn -pl core -Dtest=PrecheckPipelineBootstrapCapabilityTest test
+mvn -pl core -am -Dtest=PrecheckPipelineBootstrapCapabilityTest test
 ```
 
 Expected: the first test fails because the precheck still ignores metadata; the third test fails because the command name `watch` still triggers the hard-coded switch.
@@ -620,7 +620,7 @@ Delete the entire `requiredBootstrapClassForCommand(String cmd)` method.
 Run:
 
 ```bash
-mvn -pl core -Dtest=PrecheckPipelineBootstrapCapabilityTest test
+mvn -pl core -am -Dtest=PrecheckPipelineBootstrapCapabilityTest test
 ```
 
 Expected: PASS.
@@ -793,7 +793,7 @@ public class BuiltinCommandCapabilityTest {
 Run:
 
 ```bash
-mvn -pl core -Dtest=BuiltinCommandCapabilityTest test
+mvn -pl core -am -Dtest=BuiltinCommandCapabilityTest test
 ```
 
 Expected: assertion failures because built-in commands do not yet declare the new metadata.
@@ -879,7 +879,7 @@ writesDisk(CommandMeta.operator(false, false).withImpact(CommandMeta.ImpactLevel
 Run:
 
 ```bash
-mvn -pl core -Dtest=BuiltinCommandCapabilityTest test
+mvn -pl core -am -Dtest=BuiltinCommandCapabilityTest test
 ```
 
 Expected: PASS.
@@ -978,7 +978,7 @@ git commit -m "docs: describe command capability metadata"
 Run:
 
 ```bash
-mvn -pl core -Dtest=CommandMetaCapabilityTest,PrecheckPipelineBootstrapCapabilityTest,BuiltinCommandCapabilityTest test
+mvn -pl core -am -Dtest=CommandMetaCapabilityTest,PrecheckPipelineBootstrapCapabilityTest,BuiltinCommandCapabilityTest test
 ```
 
 Expected: PASS.
@@ -988,7 +988,7 @@ Expected: PASS.
 Run:
 
 ```bash
-mvn -pl core test
+mvn -pl core -am test
 ```
 
 Expected: PASS.
