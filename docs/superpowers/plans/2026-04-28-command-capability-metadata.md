@@ -96,7 +96,7 @@ public class CommandMetaCapabilityTest {
     @Test
     public void blankBootstrapClassesAreIgnored() {
         CommandMeta meta = CommandMeta.viewer(false, false)
-            .requiresBootstrap(null)
+            .requiresBootstrap((String) null)
             .requiresBootstrap("")
             .requiresBootstrap("   ");
 
