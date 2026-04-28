@@ -124,7 +124,8 @@ public class BuiltinCommandProvider implements CommandProvider {
                 instrumentation,
                 context.requireTransformer(),
                 context.requireJobManager(),
-                context.requireVmToolSessionRegistry()
+                context.requireVmToolSessionRegistry(),
+                context.requireEnhancementSessionRegistry()
             ),
             CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(1)
         );
