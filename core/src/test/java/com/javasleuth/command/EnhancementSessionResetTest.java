@@ -1,13 +1,16 @@
 package com.javasleuth.core.command;
 
 import com.javasleuth.core.command.impl.ResetCommand;
+import com.javasleuth.core.command.impl.StatusCommand;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
 import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
+import com.javasleuth.core.monitoring.MetricsCollector;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.vmtool.VmToolSessionRegistry;
 import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.util.PerformanceOptimizer;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Proxy;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -45,6 +48,42 @@ public class EnhancementSessionResetTest {
         Assert.assertTrue(result.contains("enhancementSessions=2"));
         Assert.assertTrue(result.contains("enhancementClosed=2"));
         Assert.assertTrue(result.contains("enhancementFailed=0"));
+    }
+
+    @Test
+    public void statusReportsEnhancementSessionCountsByKind() throws Exception {
+        ProductionConfig config = ProductionConfig.createDefault();
+        EnhancementSessionRegistry enhancementRegistry = new EnhancementSessionRegistry();
+        enhancementRegistry.register(
+            EnhancementSessionDescriptor.builder("trace-status-test", EnhancementSessionKind.TRACE).build(),
+            reason -> {}
+        );
+        enhancementRegistry.register(
+            EnhancementSessionDescriptor.builder("vmtool-status-test", EnhancementSessionKind.VMTOOL).build(),
+            reason -> {}
+        );
+
+        PerformanceOptimizer optimizer = new PerformanceOptimizer(config);
+        try {
+            StatusCommand command = new StatusCommand(
+                fakeInstrumentation(),
+                new MetricsCollector(config),
+                new SleuthClassFileTransformer(config),
+                config,
+                optimizer,
+                new SleuthSpyDispatcher(),
+                enhancementRegistry
+            );
+
+            String output = command.execute(new String[]{"status"});
+
+            Assert.assertTrue(output.contains("-- Enhancement Sessions --"));
+            Assert.assertTrue(output.contains("Active Sessions: 2"));
+            Assert.assertTrue(output.contains("Trace: 1"));
+            Assert.assertTrue(output.contains("VmTool: 1"));
+        } finally {
+            optimizer.close();
+        }
     }
 
     private static Instrumentation fakeInstrumentation() {
