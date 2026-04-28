@@ -40,7 +40,8 @@ public class BuiltinCommandProvider implements CommandProvider {
                 context.requireTransformer(),
                 context.requireConfig(),
                 context.requireJobManager(),
-                context.requireSpyDispatcher()
+                context.requireSpyDispatcher(),
+                context.requireEnhancementSessionRegistry()
             ),
             CommandMeta.operator(false, true)
         );
@@ -52,7 +53,8 @@ public class BuiltinCommandProvider implements CommandProvider {
                 context.requireTransformer(),
                 context.requireConfig(),
                 context.requireJobManager(),
-                context.requireSpyDispatcher()
+                context.requireSpyDispatcher(),
+                context.requireEnhancementSessionRegistry()
             ),
             CommandMeta.operator(false, true)
         );
@@ -64,7 +66,8 @@ public class BuiltinCommandProvider implements CommandProvider {
                 context.requireTransformer(),
                 context.requireConfig(),
                 context.requireJobManager(),
-                context.requireSpyDispatcher()
+                context.requireSpyDispatcher(),
+                context.requireEnhancementSessionRegistry()
             ),
             CommandMeta.operator(false, true)
         );
@@ -96,7 +99,8 @@ public class BuiltinCommandProvider implements CommandProvider {
                 instrumentation,
                 context.requireTransformer(),
                 context.requireJobManager(),
-                context.requireSpyDispatcher()
+                context.requireSpyDispatcher(),
+                context.requireEnhancementSessionRegistry()
             ),
             CommandMeta.operator(false, true)
         );
@@ -108,7 +112,8 @@ public class BuiltinCommandProvider implements CommandProvider {
                 context.requireTransformer(),
                 context.requireConfig(),
                 context.requireJobManager(),
-                context.requireSpyDispatcher()
+                context.requireSpyDispatcher(),
+                context.requireEnhancementSessionRegistry()
             ),
             CommandMeta.operator(false, true)
         );

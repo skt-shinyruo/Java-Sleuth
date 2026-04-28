@@ -11,6 +11,7 @@ import com.javasleuth.core.command.impl.tt.TtReplayTemplateGenerator;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.bootstrap.data.TtRecord;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.bootstrap.util.SleuthValueFormatter;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import java.lang.instrument.Instrumentation;
@@ -41,13 +42,24 @@ public class TtCommand implements StreamCommand {
         JobManager jobManager,
         SleuthSpyDispatcher spyDispatcher
     ) {
+        this(instrumentation, transformer, config, jobManager, spyDispatcher, null);
+    }
+
+    public TtCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        JobManager jobManager,
+        SleuthSpyDispatcher spyDispatcher,
+        EnhancementSessionRegistry sessionRegistry
+    ) {
         if (jobManager == null) {
             throw new IllegalArgumentException("jobManager");
         }
         this.recordParser = new TtRecordParser();
         this.recordStore = new TtRecordStore();
         this.spyDispatcher = spyDispatcher;
-        this.recordEngine = new TtRecordEngine(instrumentation, transformer, config, recordStore, spyDispatcher);
+        this.recordEngine = new TtRecordEngine(instrumentation, transformer, config, recordStore, spyDispatcher, sessionRegistry);
         this.replayGenerator = new TtReplayTemplateGenerator();
         this.jobManager = jobManager;
     }

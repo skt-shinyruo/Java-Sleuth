@@ -2,6 +2,7 @@ package com.javasleuth.core.command;
 
 import com.javasleuth.core.command.session.ClientSessionRegistry;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.monitoring.MetricsCollector;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.vmtool.VmToolSessionRegistry;
@@ -33,6 +34,7 @@ public final class CommandProcessorFactoryRequest {
     private final VmToolSessionRegistry vmToolSessionRegistry;
     private final PerformanceOptimizer performanceOptimizer;
     private final SleuthSpyDispatcher spyDispatcher;
+    private final EnhancementSessionRegistry enhancementSessionRegistry;
 
     private CommandProcessorFactoryRequest(Builder builder) {
         this.instrumentation = builder.instrumentation;
@@ -49,6 +51,7 @@ public final class CommandProcessorFactoryRequest {
         this.vmToolSessionRegistry = builder.vmToolSessionRegistry;
         this.performanceOptimizer = builder.performanceOptimizer;
         this.spyDispatcher = builder.spyDispatcher;
+        this.enhancementSessionRegistry = builder.enhancementSessionRegistry;
     }
 
     public static Builder builder(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
@@ -111,6 +114,10 @@ public final class CommandProcessorFactoryRequest {
         return spyDispatcher;
     }
 
+    public EnhancementSessionRegistry getEnhancementSessionRegistry() {
+        return enhancementSessionRegistry;
+    }
+
     public static final class Builder {
         private final Instrumentation instrumentation;
         private final SleuthClassFileTransformer transformer;
@@ -126,6 +133,7 @@ public final class CommandProcessorFactoryRequest {
         private VmToolSessionRegistry vmToolSessionRegistry;
         private PerformanceOptimizer performanceOptimizer;
         private SleuthSpyDispatcher spyDispatcher;
+        private EnhancementSessionRegistry enhancementSessionRegistry;
 
         private Builder(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
             this.instrumentation = instrumentation;
@@ -189,6 +197,11 @@ public final class CommandProcessorFactoryRequest {
 
         public Builder withSpyDispatcher(SleuthSpyDispatcher spyDispatcher) {
             this.spyDispatcher = spyDispatcher;
+            return this;
+        }
+
+        public Builder withEnhancementSessionRegistry(EnhancementSessionRegistry enhancementSessionRegistry) {
+            this.enhancementSessionRegistry = enhancementSessionRegistry;
             return this;
         }
 

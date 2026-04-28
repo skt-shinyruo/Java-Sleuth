@@ -1,6 +1,7 @@
 package com.javasleuth.core.command;
 
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.monitoring.MetricsCollector;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.vmtool.VmToolSessionRegistry;
@@ -30,6 +31,7 @@ public final class CommandProviderContext {
     private final VmToolSessionRegistry vmToolSessionRegistry;
     private final PerformanceOptimizer performanceOptimizer;
     private final SleuthSpyDispatcher spyDispatcher;
+    private final EnhancementSessionRegistry enhancementSessionRegistry;
 
     public CommandProviderContext(
         Instrumentation instrumentation,
@@ -45,6 +47,38 @@ public final class CommandProviderContext {
         PerformanceOptimizer performanceOptimizer,
         SleuthSpyDispatcher spyDispatcher
     ) {
+        this(
+            instrumentation,
+            transformer,
+            metricsCollector,
+            config,
+            auditLogger,
+            shutdownHook,
+            authenticationManager,
+            dangerousConfirm,
+            jobManager,
+            vmToolSessionRegistry,
+            performanceOptimizer,
+            spyDispatcher,
+            null
+        );
+    }
+
+    public CommandProviderContext(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        MetricsCollector metricsCollector,
+        ProductionConfig config,
+        AuditLogger auditLogger,
+        Runnable shutdownHook,
+        AuthenticationManager authenticationManager,
+        DangerousCommandConfirmationManager dangerousConfirm,
+        JobManager jobManager,
+        VmToolSessionRegistry vmToolSessionRegistry,
+        PerformanceOptimizer performanceOptimizer,
+        SleuthSpyDispatcher spyDispatcher,
+        EnhancementSessionRegistry enhancementSessionRegistry
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.metricsCollector = metricsCollector;
@@ -57,6 +91,7 @@ public final class CommandProviderContext {
         this.vmToolSessionRegistry = vmToolSessionRegistry;
         this.performanceOptimizer = performanceOptimizer;
         this.spyDispatcher = spyDispatcher;
+        this.enhancementSessionRegistry = enhancementSessionRegistry;
     }
 
     public Instrumentation getInstrumentation() {
@@ -149,6 +184,14 @@ public final class CommandProviderContext {
 
     public SleuthSpyDispatcher requireSpyDispatcher() {
         return requireNonNull(spyDispatcher, "spyDispatcher");
+    }
+
+    public EnhancementSessionRegistry getEnhancementSessionRegistry() {
+        return enhancementSessionRegistry;
+    }
+
+    public EnhancementSessionRegistry requireEnhancementSessionRegistry() {
+        return requireNonNull(enhancementSessionRegistry, "enhancementSessionRegistry");
     }
 
     private static <T> T requireNonNull(T value, String name) {
