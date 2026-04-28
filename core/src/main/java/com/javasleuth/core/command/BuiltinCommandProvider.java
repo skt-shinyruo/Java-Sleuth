@@ -1,6 +1,8 @@
 package com.javasleuth.core.command;
 
+import com.javasleuth.core.agent.runtime.BootstrapBridge;
 import com.javasleuth.core.command.impl.*;
+import com.javasleuth.foundation.security.CommandCapability;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.security.AuthenticationManager.UserRole;
 import java.lang.instrument.Instrumentation;
@@ -43,7 +45,7 @@ public class BuiltinCommandProvider implements CommandProvider {
                 context.requireSpyDispatcher(),
                 context.requireEnhancementSessionRegistry()
             ),
-            CommandMeta.operator(false, true)
+            instrumentationStreamMeta()
         );
         add(
             descriptors,
@@ -56,7 +58,7 @@ public class BuiltinCommandProvider implements CommandProvider {
                 context.requireSpyDispatcher(),
                 context.requireEnhancementSessionRegistry()
             ),
-            CommandMeta.operator(false, true)
+            instrumentationStreamMeta()
         );
         add(
             descriptors,
@@ -69,7 +71,7 @@ public class BuiltinCommandProvider implements CommandProvider {
                 context.requireSpyDispatcher(),
                 context.requireEnhancementSessionRegistry()
             ),
-            CommandMeta.operator(false, true)
+            instrumentationStreamMeta()
         );
         add(descriptors, "jobs", new JobsCommand(context.requireJobManager()), CommandMeta.operator(true, false));
         add(
@@ -82,7 +84,9 @@ public class BuiltinCommandProvider implements CommandProvider {
             descriptors,
             "mc",
             new MemoryCompilerCommand(),
-            CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(3)
+            writesDisk(
+                CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(3)
+            )
         );
         add(
             descriptors,
@@ -102,7 +106,7 @@ public class BuiltinCommandProvider implements CommandProvider {
                 context.requireSpyDispatcher(),
                 context.requireEnhancementSessionRegistry()
             ),
-            CommandMeta.operator(false, true)
+            instrumentationStreamMeta()
         );
         add(
             descriptors,
@@ -115,7 +119,7 @@ public class BuiltinCommandProvider implements CommandProvider {
                 context.requireSpyDispatcher(),
                 context.requireEnhancementSessionRegistry()
             ),
-            CommandMeta.operator(false, true)
+            instrumentationStreamMeta()
         );
         add(
             descriptors,
@@ -149,13 +153,15 @@ public class BuiltinCommandProvider implements CommandProvider {
             descriptors,
             "heapdump",
             new HeapDumpCommand(instrumentation, context.requirePerformanceOptimizer()),
-            CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(2)
+            writesDisk(
+                CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(2)
+            )
         );
         add(
             descriptors,
             "dump",
             new DumpCommand(instrumentation),
-            CommandMeta.operator(false, false).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(5)
+            writesDisk(CommandMeta.operator(false, false).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(5))
         );
         add(descriptors, "getstatic", new GetStaticCommand(instrumentation), CommandMeta.operator(false, false));
 
@@ -185,6 +191,8 @@ public class BuiltinCommandProvider implements CommandProvider {
                 context.requireEnhancementSessionRegistry()
             ),
             CommandMeta.operator(false, false)
+                .requiresBootstrap(BootstrapBridge.SPY_API)
+                .withCapability(CommandCapability.LONG_RUNNING)
                 .withImpact(CommandMeta.ImpactLevel.MEDIUM)
                 .withRateLimit(10)
                 .withSubcommandRole("invoke", UserRole.ADMIN)
@@ -233,5 +241,15 @@ public class BuiltinCommandProvider implements CommandProvider {
 
     private static void add(List<CommandDescriptor> descriptors, String name, Command command, CommandMeta meta) {
         descriptors.add(CommandDescriptor.of(name, command, meta));
+    }
+
+    private static CommandMeta instrumentationStreamMeta() {
+        return CommandMeta.operator(false, true)
+            .requiresBootstrap(BootstrapBridge.SPY_API)
+            .withCapability(CommandCapability.LONG_RUNNING);
+    }
+
+    private static CommandMeta writesDisk(CommandMeta meta) {
+        return meta.withCapability(CommandCapability.WRITES_DISK);
     }
 }
