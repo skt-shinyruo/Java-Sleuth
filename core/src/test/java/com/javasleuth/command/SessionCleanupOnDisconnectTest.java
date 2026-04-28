@@ -2,11 +2,15 @@ package com.javasleuth.core.command;
 
 import com.javasleuth.core.command.impl.TraceCommand;
 import com.javasleuth.core.command.impl.TtCommand;
+import com.javasleuth.core.command.impl.VmToolCommand;
 import com.javasleuth.core.command.impl.WatchCommand;
 import com.javasleuth.core.command.session.ClientSessionRegistry;
 import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
+import com.javasleuth.core.vmtool.VmToolSessionRegistry;
 import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.security.AuditLogger;
+import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.bootstrap.monitor.TraceInterceptor;
@@ -101,6 +105,60 @@ public class SessionCleanupOnDisconnectTest {
             stopThread(watchThread);
             stopThread(traceThread);
             stopThread(ttThread);
+        }
+    }
+
+    @Test
+    public void testVmToolTrackIsCleanedOnSessionClose() throws Exception {
+        SleuthSpyAPI.destroy();
+
+        String clientId = "test-client-" + UUID.randomUUID();
+        String clientInfo = "unit-test";
+        String sessionId = "test-session-" + UUID.randomUUID();
+
+        ClientSessionRegistry clientRegistry = new ClientSessionRegistry();
+        clientRegistry.close(clientId, "test_setup_cleanup");
+
+        Instrumentation inst = fakeInstrumentationWithLoadedClasses(DummyTarget.class);
+        ProductionConfig config = ProductionConfig.createDefault();
+        AuditLogger auditLogger = new AuditLogger(config);
+        DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger);
+        SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(config);
+        SleuthSpyDispatcher dispatcher = new SleuthSpyDispatcher();
+        VmToolSessionRegistry vmToolRegistry = new VmToolSessionRegistry(dispatcher);
+        EnhancementSessionRegistry enhancementRegistry = new EnhancementSessionRegistry();
+        SleuthSpyAPI.setSpy(dispatcher);
+        SleuthSpyAPI.init();
+
+        try {
+            ClientSession session = clientRegistry.open(clientId, clientInfo, sessionId);
+            CommandContext context = new CommandContext(clientId, clientInfo, sessionId, false, session);
+            CommandContextHolder.set(context);
+            String result = new VmToolCommand(
+                inst,
+                transformer,
+                config,
+                dangerousConfirm,
+                vmToolRegistry,
+                enhancementRegistry
+            ).execute(new String[]{"vmtool", "track", DummyTarget.class.getName()});
+
+            Assert.assertTrue(result.contains("vmtool track started"));
+            Assert.assertEquals(1, vmToolRegistry.listSessions().size());
+            Assert.assertEquals(1, enhancementRegistry.size());
+
+            clientRegistry.close(clientId, "disconnect");
+
+            Assert.assertTrue(vmToolRegistry.listSessions().isEmpty());
+            Assert.assertEquals(0, enhancementRegistry.size());
+        } finally {
+            CommandContextHolder.clear();
+            clientRegistry.close(clientId, "test_teardown_cleanup");
+            vmToolRegistry.shutdown(inst, transformer, "test_teardown_cleanup");
+            enhancementRegistry.closeAll("test_teardown_cleanup");
+            dangerousConfirm.close();
+            auditLogger.close();
+            SleuthSpyAPI.destroy();
         }
     }
 

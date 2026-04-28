@@ -180,7 +180,8 @@ public class BuiltinCommandProvider implements CommandProvider {
                 context.requireTransformer(),
                 context.requireConfig(),
                 context.requireDangerousConfirm(),
-                context.requireVmToolSessionRegistry()
+                context.requireVmToolSessionRegistry(),
+                context.requireEnhancementSessionRegistry()
             ),
             CommandMeta.operator(false, false)
                 .withImpact(CommandMeta.ImpactLevel.MEDIUM)
