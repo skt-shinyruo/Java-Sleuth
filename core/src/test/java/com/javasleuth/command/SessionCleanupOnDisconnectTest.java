@@ -1,11 +1,14 @@
 package com.javasleuth.core.command;
 
+import com.javasleuth.core.command.impl.MonitorCommand;
+import com.javasleuth.core.command.impl.StackCommand;
 import com.javasleuth.core.command.impl.TraceCommand;
 import com.javasleuth.core.command.impl.TtCommand;
 import com.javasleuth.core.command.impl.VmToolCommand;
 import com.javasleuth.core.command.impl.WatchCommand;
 import com.javasleuth.core.command.session.ClientSessionRegistry;
 import com.javasleuth.core.command.session.ClientSession;
+import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.vmtool.VmToolSessionRegistry;
 import com.javasleuth.foundation.config.ProductionConfig;
@@ -13,6 +16,8 @@ import com.javasleuth.foundation.security.AuditLogger;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
+import com.javasleuth.bootstrap.monitor.MonitorInterceptor;
+import com.javasleuth.bootstrap.monitor.StackInterceptor;
 import com.javasleuth.bootstrap.monitor.TraceInterceptor;
 import com.javasleuth.bootstrap.monitor.TtInterceptor;
 import com.javasleuth.bootstrap.monitor.WatchInterceptor;
@@ -159,6 +164,70 @@ public class SessionCleanupOnDisconnectTest {
             dangerousConfirm.close();
             auditLogger.close();
             SleuthSpyAPI.destroy();
+        }
+    }
+
+    @Test
+    public void testMonitorAndStackAreCleanedOnSessionClose() throws Exception {
+        MonitorInterceptor.unregisterAllMonitors();
+        StackInterceptor.unregisterAll();
+        SleuthSpyAPI.destroy();
+
+        String clientId = "test-client-" + UUID.randomUUID();
+        String clientInfo = "unit-test";
+        String sessionId = "test-session-" + UUID.randomUUID();
+
+        ClientSessionRegistry registry = new ClientSessionRegistry();
+        registry.close(clientId, "test_setup_cleanup");
+
+        Instrumentation inst = fakeInstrumentationWithLoadedClasses(DummyTarget.class);
+        ProductionConfig config = ProductionConfig.createDefault();
+        SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(config);
+        JobManager jobManager = new JobManager();
+        SleuthSpyDispatcher dispatcher = new SleuthSpyDispatcher();
+        EnhancementSessionRegistry enhancementRegistry = new EnhancementSessionRegistry();
+        SleuthSpyAPI.setSpy(dispatcher);
+        SleuthSpyAPI.init();
+
+        Thread monitorThread = null;
+        Thread stackThread = null;
+        try {
+            ClientSession session = registry.open(clientId, clientInfo, sessionId);
+            CommandContext context = new CommandContext(clientId, clientInfo, sessionId, true, session);
+
+            monitorThread = startInThreadWithContext(context, () -> {
+                try {
+                    new MonitorCommand(inst, transformer, jobManager, dispatcher, enhancementRegistry)
+                        .execute(new String[]{"monitor", DummyTarget.class.getName(), "doWork", "-n", "30", "-i", "1000"});
+                } catch (Exception ignore) {
+                }
+            });
+            stackThread = startInThreadWithContext(context, () -> {
+                try {
+                    new StackCommand(inst, transformer, config, jobManager, dispatcher, enhancementRegistry)
+                        .execute(new String[]{"stack", DummyTarget.class.getName(), "doWork", "-n", "10", "-t", "30"});
+                } catch (Exception ignore) {
+                }
+            });
+
+            awaitAtLeast("monitor", dispatcher::getActiveMonitorCount, 1, 5000);
+            awaitAtLeast("stack", dispatcher::getActiveStackCount, 1, 5000);
+            awaitAtLeast("enhancement-monitor", () -> enhancementRegistry.countByKind().get(EnhancementSessionKind.MONITOR), 1, 5000);
+            awaitAtLeast("enhancement-stack", () -> enhancementRegistry.countByKind().get(EnhancementSessionKind.STACK), 1, 5000);
+
+            registry.close(clientId, "disconnect");
+
+            awaitEquals("monitor", dispatcher::getActiveMonitorCount, 0, 5000);
+            awaitEquals("stack", dispatcher::getActiveStackCount, 0, 5000);
+            awaitEquals("enhancement sessions", enhancementRegistry::size, 0, 5000);
+        } finally {
+            registry.close(clientId, "test_teardown_cleanup");
+            enhancementRegistry.closeAll("test_teardown_cleanup");
+            MonitorInterceptor.unregisterAllMonitors();
+            StackInterceptor.unregisterAll();
+            SleuthSpyAPI.destroy();
+            stopThread(monitorThread);
+            stopThread(stackThread);
         }
     }
 
