@@ -8,6 +8,9 @@ import com.javasleuth.core.command.StreamCommand;
 import com.javasleuth.core.command.StreamSink;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.core.enhancement.ClassEnhancer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
+import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.TraceEnhancer;
 import com.javasleuth.bootstrap.monitor.TraceAggregator;
@@ -22,6 +25,7 @@ import com.javasleuth.foundation.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -38,6 +42,7 @@ public class TraceCommand implements StreamCommand {
     private final ConfigView config;
     private final JobManager jobManager;
     private final SleuthSpyDispatcher spyDispatcher;
+    private final EnhancementSessionRegistry sessionRegistry;
     private final ConcurrentHashMap<String, TraceSession> activeSessions = new ConcurrentHashMap<>();
 
     public TraceCommand(
@@ -56,6 +61,17 @@ public class TraceCommand implements StreamCommand {
         JobManager jobManager,
         SleuthSpyDispatcher spyDispatcher
     ) {
+        this(instrumentation, transformer, config, jobManager, spyDispatcher, null);
+    }
+
+    public TraceCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        JobManager jobManager,
+        SleuthSpyDispatcher spyDispatcher,
+        EnhancementSessionRegistry sessionRegistry
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.config = config;
@@ -64,6 +80,7 @@ public class TraceCommand implements StreamCommand {
         }
         this.jobManager = jobManager;
         this.spyDispatcher = spyDispatcher;
+        this.sessionRegistry = sessionRegistry;
     }
 
     @Override
@@ -252,8 +269,19 @@ public class TraceCommand implements StreamCommand {
             // Create trace session
             TraceSession session = new TraceSession(traceId, targetClass, targetClassName, methodPattern, resultQueue, enhancer);
             activeSessions.put(traceId, session);
+            registerEnhancementSession(
+                traceId,
+                classPattern,
+                methodPattern,
+                targetClassName,
+                resolved.getLoaderId(),
+                maxDepth,
+                maxCount,
+                timeoutSeconds
+            );
         } catch (Exception e) {
             // Rollback partial state best-effort.
+            activeSessions.remove(traceId);
             if (enhancerAdded) {
                 try {
                     transformer.removeEnhancer(targetClass, enhancer);
@@ -281,7 +309,7 @@ public class TraceCommand implements StreamCommand {
             clientSession = ctx != null ? ctx.getClientSession() : null;
             if (clientSession != null) {
                 cleanupKey = "trace:" + traceId;
-                clientSession.registerCleanup(cleanupKey, () -> stopTrace(traceId));
+                clientSession.registerCleanup(cleanupKey, () -> closeTraceSession(traceId, "client_cleanup"));
             }
         } catch (Exception ignore) {
             // ignore
@@ -346,7 +374,7 @@ public class TraceCommand implements StreamCommand {
 
         } finally {
             // Cleanup
-            stopTrace(traceId);
+            closeTraceSession(traceId, "completed");
             if (clientSession != null && cleanupKey != null) {
                 clientSession.removeCleanup(cleanupKey);
             }
@@ -361,7 +389,14 @@ public class TraceCommand implements StreamCommand {
         return result.toString();
     }
 
-    private void stopTrace(String traceId) {
+    private void closeTraceSession(String traceId, String reason) {
+        if (sessionRegistry != null && sessionRegistry.close(traceId, reason)) {
+            return;
+        }
+        stopTraceInternal(traceId);
+    }
+
+    private void stopTraceInternal(String traceId) {
         TraceSession session = activeSessions.remove(traceId);
         if (session != null) {
             try {
@@ -386,6 +421,33 @@ public class TraceCommand implements StreamCommand {
                 SleuthLogger.warn("Error stopping trace: " + e.getMessage(), e);
             }
         }
+    }
+
+    private void registerEnhancementSession(String traceId,
+                                            String classPattern,
+                                            String methodPattern,
+                                            String targetClassName,
+                                            int loaderId,
+                                            int maxDepth,
+                                            int maxCount,
+                                            long timeoutSeconds) {
+        if (sessionRegistry == null) {
+            return;
+        }
+        CommandContext ctx = CommandContextHolder.get();
+        EnhancementSessionDescriptor.Builder builder = EnhancementSessionDescriptor
+            .builder(traceId, EnhancementSessionKind.TRACE)
+            .withCommandName("trace")
+            .withClassPattern(classPattern)
+            .withMethodPattern(methodPattern)
+            .withTargetClassNames(Collections.singletonList(targetClassName))
+            .withLoaderIds(Collections.singletonList(Integer.valueOf(loaderId)))
+            .withDetails("maxDepth=" + maxDepth + ", maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds);
+        if (ctx != null) {
+            builder.withClientId(ctx.getClientId())
+                .withClientSessionId(ctx.getSessionId());
+        }
+        sessionRegistry.register(builder.build(), reason -> stopTraceInternal(traceId));
     }
 
     private String formatTraceResult(TraceResult result, int eventNumber) {

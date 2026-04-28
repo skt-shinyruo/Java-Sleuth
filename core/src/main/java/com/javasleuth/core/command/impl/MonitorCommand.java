@@ -7,10 +7,14 @@ import com.javasleuth.core.command.StreamCommand;
 import com.javasleuth.core.command.StreamSink;
 import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.core.enhancement.ClassEnhancer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
+import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.enhancement.MonitorEnhancer;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.MonitorAdviceListener;
+import com.javasleuth.foundation.util.LoadedClassResolver;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import com.javasleuth.foundation.util.StringUtils;
 import java.lang.instrument.Instrumentation;
@@ -33,6 +37,7 @@ public class MonitorCommand implements StreamCommand {
     private final SleuthClassFileTransformer transformer;
     private final JobManager jobManager;
     private final SleuthSpyDispatcher spyDispatcher;
+    private final EnhancementSessionRegistry sessionRegistry;
     private final ConcurrentHashMap<String, MonitorSession> activeSessions = new ConcurrentHashMap<>();
 
     public MonitorCommand(
@@ -49,6 +54,16 @@ public class MonitorCommand implements StreamCommand {
         JobManager jobManager,
         SleuthSpyDispatcher spyDispatcher
     ) {
+        this(instrumentation, transformer, jobManager, spyDispatcher, null);
+    }
+
+    public MonitorCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        JobManager jobManager,
+        SleuthSpyDispatcher spyDispatcher,
+        EnhancementSessionRegistry sessionRegistry
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         if (jobManager == null) {
@@ -56,6 +71,7 @@ public class MonitorCommand implements StreamCommand {
         }
         this.jobManager = jobManager;
         this.spyDispatcher = spyDispatcher;
+        this.sessionRegistry = sessionRegistry;
     }
 
     @Override
@@ -208,6 +224,12 @@ public class MonitorCommand implements StreamCommand {
         MonitorSession session = new MonitorSession(monitorId, classPattern, methodPattern, enhanced);
         session.monitorListener = monitorListener;
         activeSessions.put(monitorId, session);
+        try {
+            registerEnhancementSession(monitorId, classPattern, methodPattern, enhanced, intervalMs, rounds);
+        } catch (Exception e) {
+            stopMonitorInternal(monitorId);
+            throw e;
+        }
 
         ClientSession clientSession = null;
         String cleanupKey = null;
@@ -216,7 +238,7 @@ public class MonitorCommand implements StreamCommand {
             clientSession = ctx != null ? ctx.getClientSession() : null;
             if (clientSession != null) {
                 cleanupKey = "monitor:" + monitorId;
-                clientSession.registerCleanup(cleanupKey, () -> stopMonitor(monitorId));
+                clientSession.registerCleanup(cleanupKey, () -> closeMonitorSession(monitorId, "client_cleanup"));
             }
         } catch (Exception ignore) {
             // ignore
@@ -255,7 +277,7 @@ public class MonitorCommand implements StreamCommand {
                 done++;
             }
         } finally {
-            stopMonitor(monitorId);
+            closeMonitorSession(monitorId, "completed");
             if (clientSession != null && cleanupKey != null) {
                 clientSession.removeCleanup(cleanupKey);
             }
@@ -270,7 +292,14 @@ public class MonitorCommand implements StreamCommand {
         return out.toString();
     }
 
-    private void stopMonitor(String monitorId) {
+    private void closeMonitorSession(String monitorId, String reason) {
+        if (sessionRegistry != null && sessionRegistry.close(monitorId, reason)) {
+            return;
+        }
+        stopMonitorInternal(monitorId);
+    }
+
+    private void stopMonitorInternal(String monitorId) {
         MonitorSession session = activeSessions.remove(monitorId);
         if (session == null) {
             try {
@@ -297,6 +326,42 @@ public class MonitorCommand implements StreamCommand {
                 // ignore
             }
         }
+    }
+
+    private void registerEnhancementSession(String monitorId,
+                                            String classPattern,
+                                            String methodPattern,
+                                            List<MonitorSession.EnhancedClass> enhanced,
+                                            long intervalMs,
+                                            int rounds) {
+        if (sessionRegistry == null) {
+            return;
+        }
+        List<String> targetClassNames = new ArrayList<>();
+        List<Integer> loaderIds = new ArrayList<>();
+        if (enhanced != null) {
+            for (MonitorSession.EnhancedClass ec : enhanced) {
+                if (ec == null || ec.clazz == null) {
+                    continue;
+                }
+                targetClassNames.add(ec.className);
+                loaderIds.add(Integer.valueOf(LoadedClassResolver.loaderId(ec.clazz.getClassLoader())));
+            }
+        }
+        CommandContext ctx = CommandContextHolder.get();
+        EnhancementSessionDescriptor.Builder builder = EnhancementSessionDescriptor
+            .builder(monitorId, EnhancementSessionKind.MONITOR)
+            .withCommandName("monitor")
+            .withClassPattern(classPattern)
+            .withMethodPattern(methodPattern)
+            .withTargetClassNames(targetClassNames)
+            .withLoaderIds(loaderIds)
+            .withDetails("intervalMs=" + intervalMs + ", rounds=" + rounds);
+        if (ctx != null) {
+            builder.withClientId(ctx.getClientId())
+                .withClientSessionId(ctx.getSessionId());
+        }
+        sessionRegistry.register(builder.build(), reason -> stopMonitorInternal(monitorId));
     }
 
     private String formatSnapshot(Map<String, MonitorAdviceListener.MethodStatsSnapshot> snap, int round, int rounds) {

@@ -5,6 +5,7 @@ import com.javasleuth.core.command.impl.TtCommand;
 import com.javasleuth.core.command.impl.WatchCommand;
 import com.javasleuth.core.command.session.ClientSessionRegistry;
 import com.javasleuth.core.command.session.ClientSession;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
@@ -47,6 +48,7 @@ public class SessionCleanupOnDisconnectTest {
         SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(config);
         JobManager jobManager = new JobManager();
         SleuthSpyDispatcher dispatcher = new SleuthSpyDispatcher();
+        EnhancementSessionRegistry enhancementRegistry = new EnhancementSessionRegistry();
         SleuthSpyAPI.setSpy(dispatcher);
         SleuthSpyAPI.init();
 
@@ -59,21 +61,21 @@ public class SessionCleanupOnDisconnectTest {
 
             watchThread = startInThreadWithContext(context, () -> {
                 try {
-                    new WatchCommand(inst, transformer, config, jobManager, dispatcher)
+                    new WatchCommand(inst, transformer, config, jobManager, dispatcher, enhancementRegistry)
                         .execute(new String[]{"watch", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
             });
             traceThread = startInThreadWithContext(context, () -> {
                 try {
-                    new TraceCommand(inst, transformer, config, jobManager, dispatcher)
+                    new TraceCommand(inst, transformer, config, jobManager, dispatcher, enhancementRegistry)
                         .execute(new String[]{"trace", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
             });
             ttThread = startInThreadWithContext(context, () -> {
                 try {
-                    new TtCommand(inst, transformer, config, jobManager, dispatcher)
+                    new TtCommand(inst, transformer, config, jobManager, dispatcher, enhancementRegistry)
                         .execute(new String[]{"tt", DummyTarget.class.getName(), "doWork", "-t", "30"});
                 } catch (Exception ignore) {
                 }
@@ -82,12 +84,14 @@ public class SessionCleanupOnDisconnectTest {
             awaitAtLeast("watch", dispatcher::getActiveWatchCount, 1, 5000);
             awaitAtLeast("trace", dispatcher::getActiveTraceCount, 1, 5000);
             awaitAtLeast("tt", dispatcher::getActiveTtCount, 1, 5000);
+            awaitAtLeast("enhancement sessions", enhancementRegistry::size, 3, 5000);
 
             registry.close(clientId, "disconnect");
 
             awaitEquals("watch", dispatcher::getActiveWatchCount, 0, 5000);
             awaitEquals("trace", dispatcher::getActiveTraceCount, 0, 5000);
             awaitEquals("tt", dispatcher::getActiveTtCount, 0, 5000);
+            awaitEquals("enhancement sessions", enhancementRegistry::size, 0, 5000);
         } finally {
             registry.close(clientId, "test_teardown_cleanup");
             WatchInterceptor.unregisterAllWatches();

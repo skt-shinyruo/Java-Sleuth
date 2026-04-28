@@ -7,12 +7,17 @@ import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.bootstrap.data.StackTraceResult;
 import com.javasleuth.core.enhancement.ClassEnhancer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
+import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.StackEnhancer;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.StackAdviceListener;
+import com.javasleuth.foundation.util.LoadedClassResolver;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
+import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,6 +29,7 @@ public final class StackTraceLiteEngine {
     private final SleuthClassFileTransformer transformer;
     private final ConfigView config;
     private final SleuthSpyDispatcher spyDispatcher;
+    private final EnhancementSessionRegistry sessionRegistry;
     private final ConcurrentHashMap<String, StackSession> activeSessions = new ConcurrentHashMap<>();
 
     public StackTraceLiteEngine(
@@ -32,10 +38,21 @@ public final class StackTraceLiteEngine {
         ConfigView config,
         SleuthSpyDispatcher spyDispatcher
     ) {
+        this(instrumentation, transformer, config, spyDispatcher, null);
+    }
+
+    public StackTraceLiteEngine(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        SleuthSpyDispatcher spyDispatcher,
+        EnhancementSessionRegistry sessionRegistry
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.config = config;
         this.spyDispatcher = spyDispatcher;
+        this.sessionRegistry = sessionRegistry;
     }
 
     public String start(
@@ -85,8 +102,10 @@ public final class StackTraceLiteEngine {
             instrumentation.retransformClasses(target);
 
             activeSessions.put(stackId, new StackSession(stackId, target, methodPattern, q, enhancer));
+            registerEnhancementSession(stackId, classPattern, methodPattern, target, maxCount, timeoutSeconds, depth);
         } catch (Exception e) {
             // Rollback partial state best-effort.
+            activeSessions.remove(stackId);
             if (enhancerAdded) {
                 try {
                     transformer.removeEnhancer(target, enhancer);
@@ -114,7 +133,7 @@ public final class StackTraceLiteEngine {
             clientSession = ctx != null ? ctx.getClientSession() : null;
             if (clientSession != null) {
                 cleanupKey = "stack:" + stackId;
-                clientSession.registerCleanup(cleanupKey, () -> stop(stackId));
+                clientSession.registerCleanup(cleanupKey, () -> closeStackSession(stackId, "client_cleanup"));
             }
         } catch (Exception ignore) {
             // ignore
@@ -144,7 +163,7 @@ public final class StackTraceLiteEngine {
                 }
             }
         } finally {
-            stop(stackId);
+            closeStackSession(stackId, "completed");
             if (clientSession != null && cleanupKey != null) {
                 try {
                     clientSession.removeCleanup(cleanupKey);
@@ -164,6 +183,17 @@ public final class StackTraceLiteEngine {
     }
 
     public boolean stop(String stackId) {
+        return closeStackSession(stackId, "stop");
+    }
+
+    private boolean closeStackSession(String stackId, String reason) {
+        if (sessionRegistry != null && sessionRegistry.close(stackId, reason)) {
+            return true;
+        }
+        return stopInternal(stackId);
+    }
+
+    private boolean stopInternal(String stackId) {
         StackSession session = activeSessions.remove(stackId);
         if (session == null) {
             try {
@@ -186,6 +216,32 @@ public final class StackTraceLiteEngine {
             }
         }
         return true;
+    }
+
+    private void registerEnhancementSession(String stackId,
+                                            String classPattern,
+                                            String methodPattern,
+                                            Class<?> target,
+                                            int maxCount,
+                                            long timeoutSeconds,
+                                            int depth) {
+        if (sessionRegistry == null) {
+            return;
+        }
+        CommandContext ctx = CommandContextHolder.get();
+        EnhancementSessionDescriptor.Builder builder = EnhancementSessionDescriptor
+            .builder(stackId, EnhancementSessionKind.STACK)
+            .withCommandName("stack")
+            .withClassPattern(classPattern)
+            .withMethodPattern(methodPattern)
+            .withTargetClassNames(Collections.singletonList(target.getName()))
+            .withLoaderIds(Collections.singletonList(Integer.valueOf(LoadedClassResolver.loaderId(target.getClassLoader()))))
+            .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds + ", depth=" + depth);
+        if (ctx != null) {
+            builder.withClientId(ctx.getClientId())
+                .withClientSessionId(ctx.getSessionId());
+        }
+        sessionRegistry.register(builder.build(), reason -> stopInternal(stackId));
     }
 
     private void appendOrSend(StringBuilder buf, StreamSink sink, String text) {

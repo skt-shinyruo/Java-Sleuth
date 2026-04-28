@@ -7,6 +7,9 @@ import com.javasleuth.core.command.StreamCommand;
 import com.javasleuth.core.command.StreamSink;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.core.enhancement.ClassEnhancer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
+import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.WatchEnhancer;
 import com.javasleuth.bootstrap.data.WatchResult;
@@ -22,6 +25,7 @@ import com.javasleuth.foundation.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -38,6 +42,7 @@ public class WatchCommand implements StreamCommand {
     private final ConfigView config;
     private final JobManager jobManager;
     private final SleuthSpyDispatcher spyDispatcher;
+    private final EnhancementSessionRegistry sessionRegistry;
     private final ConcurrentHashMap<String, WatchSession> activeSessions = new ConcurrentHashMap<>();
 
     public WatchCommand(
@@ -56,6 +61,17 @@ public class WatchCommand implements StreamCommand {
         JobManager jobManager,
         SleuthSpyDispatcher spyDispatcher
     ) {
+        this(instrumentation, transformer, config, jobManager, spyDispatcher, null);
+    }
+
+    public WatchCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        JobManager jobManager,
+        SleuthSpyDispatcher spyDispatcher,
+        EnhancementSessionRegistry sessionRegistry
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.config = config;
@@ -64,6 +80,7 @@ public class WatchCommand implements StreamCommand {
         }
         this.jobManager = jobManager;
         this.spyDispatcher = spyDispatcher;
+        this.sessionRegistry = sessionRegistry;
     }
 
     @Override
@@ -252,8 +269,18 @@ public class WatchCommand implements StreamCommand {
             // Create watch session
             WatchSession session = new WatchSession(watchId, targetClass, targetClassName, methodPattern, resultQueue, enhancer);
             activeSessions.put(watchId, session);
+            registerEnhancementSession(
+                watchId,
+                classPattern,
+                methodPattern,
+                targetClassName,
+                resolved.getLoaderId(),
+                maxCount,
+                timeoutSeconds
+            );
         } catch (Exception e) {
             // Rollback partial state best-effort.
+            activeSessions.remove(watchId);
             if (enhancerAdded) {
                 try {
                     transformer.removeEnhancer(targetClass, enhancer);
@@ -281,7 +308,7 @@ public class WatchCommand implements StreamCommand {
             clientSession = ctx != null ? ctx.getClientSession() : null;
             if (clientSession != null) {
                 cleanupKey = "watch:" + watchId;
-                clientSession.registerCleanup(cleanupKey, () -> stopWatch(watchId));
+                clientSession.registerCleanup(cleanupKey, () -> closeWatchSession(watchId, "client_cleanup"));
             }
         } catch (Exception ignore) {
             // ignore
@@ -340,7 +367,7 @@ public class WatchCommand implements StreamCommand {
 
         } finally {
             // Cleanup
-            stopWatch(watchId);
+            closeWatchSession(watchId, "completed");
             if (clientSession != null && cleanupKey != null) {
                 clientSession.removeCleanup(cleanupKey);
             }
@@ -355,7 +382,14 @@ public class WatchCommand implements StreamCommand {
         return result.toString();
     }
 
-    private void stopWatch(String watchId) {
+    private void closeWatchSession(String watchId, String reason) {
+        if (sessionRegistry != null && sessionRegistry.close(watchId, reason)) {
+            return;
+        }
+        stopWatchInternal(watchId);
+    }
+
+    private void stopWatchInternal(String watchId) {
         WatchSession session = activeSessions.remove(watchId);
         if (session != null) {
             try {
@@ -380,6 +414,32 @@ public class WatchCommand implements StreamCommand {
                 SleuthLogger.warn("Error stopping watch: " + e.getMessage(), e);
             }
         }
+    }
+
+    private void registerEnhancementSession(String watchId,
+                                            String classPattern,
+                                            String methodPattern,
+                                            String targetClassName,
+                                            int loaderId,
+                                            int maxCount,
+                                            long timeoutSeconds) {
+        if (sessionRegistry == null) {
+            return;
+        }
+        CommandContext ctx = CommandContextHolder.get();
+        EnhancementSessionDescriptor.Builder builder = EnhancementSessionDescriptor
+            .builder(watchId, EnhancementSessionKind.WATCH)
+            .withCommandName("watch")
+            .withClassPattern(classPattern)
+            .withMethodPattern(methodPattern)
+            .withTargetClassNames(Collections.singletonList(targetClassName))
+            .withLoaderIds(Collections.singletonList(Integer.valueOf(loaderId)))
+            .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds);
+        if (ctx != null) {
+            builder.withClientId(ctx.getClientId())
+                .withClientSessionId(ctx.getSessionId());
+        }
+        sessionRegistry.register(builder.build(), reason -> stopWatchInternal(watchId));
     }
 
     private String formatWatchResult(WatchResult result, int eventNumber) {

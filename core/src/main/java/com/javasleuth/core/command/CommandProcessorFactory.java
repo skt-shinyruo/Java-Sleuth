@@ -51,7 +51,8 @@ public final class CommandProcessorFactory {
             request.getJobManager(),
             request.getVmToolSessionRegistry(),
             request.getPerformanceOptimizer(),
-            request.getSpyDispatcher()
+            request.getSpyDispatcher(),
+            request.getEnhancementSessionRegistry()
         );
     }
 
@@ -217,6 +218,42 @@ public final class CommandProcessorFactory {
         com.javasleuth.foundation.util.PerformanceOptimizer performanceOptimizer,
         com.javasleuth.core.spy.SleuthSpyDispatcher spyDispatcher
     ) {
+        return createComponents(
+            instrumentation,
+            transformer,
+            shutdownHook,
+            config,
+            auditLogger,
+            authenticationManager,
+            authorizationManager,
+            dangerousConfirm,
+            clientSessionRegistry,
+            metricsCollector,
+            jobManager,
+            vmToolSessionRegistry,
+            performanceOptimizer,
+            spyDispatcher,
+            null
+        );
+    }
+
+    public static CommandProcessorComponents createComponents(
+        java.lang.instrument.Instrumentation instrumentation,
+        com.javasleuth.core.enhancement.SleuthClassFileTransformer transformer,
+        Runnable shutdownHook,
+        com.javasleuth.foundation.config.ProductionConfig config,
+        com.javasleuth.foundation.security.AuditLogger auditLogger,
+        com.javasleuth.foundation.security.AuthenticationManager authenticationManager,
+        com.javasleuth.foundation.security.AuthorizationManager authorizationManager,
+        com.javasleuth.foundation.security.DangerousCommandConfirmationManager dangerousConfirm,
+        com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry,
+        com.javasleuth.core.monitoring.MetricsCollector metricsCollector,
+        JobManager jobManager,
+        com.javasleuth.core.vmtool.VmToolSessionRegistry vmToolSessionRegistry,
+        com.javasleuth.foundation.util.PerformanceOptimizer performanceOptimizer,
+        com.javasleuth.core.spy.SleuthSpyDispatcher spyDispatcher,
+        com.javasleuth.core.enhancement.session.EnhancementSessionRegistry enhancementSessionRegistry
+    ) {
         if (instrumentation == null) {
             throw new IllegalArgumentException("instrumentation is required");
         }
@@ -227,6 +264,7 @@ public final class CommandProcessorFactory {
         boolean ownsJobManager = jobManager == null;
         boolean ownsVmToolSessionRegistry = vmToolSessionRegistry == null;
         boolean ownsPerformanceOptimizer = performanceOptimizer == null;
+        boolean ownsEnhancementSessionRegistry = enhancementSessionRegistry == null;
 
         com.javasleuth.foundation.config.ProductionConfig cfg =
             config != null ? config : com.javasleuth.foundation.config.ProductionConfig.createDefault();
@@ -260,6 +298,10 @@ public final class CommandProcessorFactory {
             performanceOptimizer != null ? performanceOptimizer : new com.javasleuth.foundation.util.PerformanceOptimizer(cfg);
         com.javasleuth.core.spy.SleuthSpyDispatcher dispatcher =
             spyDispatcher != null ? spyDispatcher : new com.javasleuth.core.spy.SleuthSpyDispatcher();
+        com.javasleuth.core.enhancement.session.EnhancementSessionRegistry enhancementSessions =
+            enhancementSessionRegistry != null
+                ? enhancementSessionRegistry
+                : new com.javasleuth.core.enhancement.session.EnhancementSessionRegistry();
 
         com.javasleuth.foundation.config.model.SleuthConfig typedConfig =
             com.javasleuth.foundation.config.model.SleuthConfigParser.parse(cfg.snapshot());
@@ -305,7 +347,8 @@ public final class CommandProcessorFactory {
             jm,
             vmsr,
             perf,
-            dispatcher
+            dispatcher,
+            enhancementSessions
         );
         BuiltinCommandProvider builtinProvider = new BuiltinCommandProvider();
 
@@ -359,7 +402,8 @@ public final class CommandProcessorFactory {
             || ownsClientSessionRegistry
             || ownsJobManager
             || ownsVmToolSessionRegistry
-            || ownsPerformanceOptimizer) {
+            || ownsPerformanceOptimizer
+            || ownsEnhancementSessionRegistry) {
             java.util.ArrayList<AutoCloseable> closeables = new java.util.ArrayList<>();
 
             // Close order is reversed: add dependencies first so they close last.
@@ -383,6 +427,9 @@ public final class CommandProcessorFactory {
             }
             if (ownsJobManager) {
                 closeables.add(() -> jm.shutdown("shutdown"));
+            }
+            if (ownsEnhancementSessionRegistry) {
+                closeables.add(() -> enhancementSessions.closeAll("shutdown"));
             }
 
             ownedResources = new CommandProcessorOwnedResources(closeables.toArray(new AutoCloseable[0]));
@@ -413,6 +460,7 @@ public final class CommandProcessorFactory {
             dc,
             csr,
             sessionIndex,
+            enhancementSessions,
             registry,
             pipeline,
             clientHandler,

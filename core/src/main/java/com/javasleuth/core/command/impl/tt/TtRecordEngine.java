@@ -7,12 +7,17 @@ import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.bootstrap.data.TtRecord;
 import com.javasleuth.core.enhancement.ClassEnhancer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
+import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.TtEnhancer;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.TtAdviceListener;
+import com.javasleuth.foundation.util.LoadedClassResolver;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
+import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,6 +30,7 @@ public final class TtRecordEngine {
     private final ConfigView config;
     private final TtRecordStore recordStore;
     private final SleuthSpyDispatcher spyDispatcher;
+    private final EnhancementSessionRegistry sessionRegistry;
     private final ConcurrentHashMap<String, TtSession> activeSessions = new ConcurrentHashMap<>();
 
     public TtRecordEngine(
@@ -34,6 +40,17 @@ public final class TtRecordEngine {
         TtRecordStore recordStore,
         SleuthSpyDispatcher spyDispatcher
     ) {
+        this(instrumentation, transformer, config, recordStore, spyDispatcher, null);
+    }
+
+    public TtRecordEngine(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        TtRecordStore recordStore,
+        SleuthSpyDispatcher spyDispatcher,
+        EnhancementSessionRegistry sessionRegistry
+    ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
         this.config = config;
@@ -42,6 +59,7 @@ public final class TtRecordEngine {
         }
         this.recordStore = recordStore;
         this.spyDispatcher = spyDispatcher;
+        this.sessionRegistry = sessionRegistry;
     }
 
     public String record(
@@ -87,8 +105,10 @@ public final class TtRecordEngine {
 
             TtSession session = new TtSession(ttId, target, methodPattern, q, enhancer);
             activeSessions.put(ttId, session);
+            registerEnhancementSession(ttId, classPattern, methodPattern, target, maxCount, timeoutSeconds);
         } catch (Exception e) {
             // Rollback partial state best-effort.
+            activeSessions.remove(ttId);
             if (enhancerAdded) {
                 try {
                     transformer.removeEnhancer(target, enhancer);
@@ -116,7 +136,7 @@ public final class TtRecordEngine {
             clientSession = ctx != null ? ctx.getClientSession() : null;
             if (clientSession != null) {
                 cleanupKey = "tt:" + ttId;
-                clientSession.registerCleanup(cleanupKey, () -> stop(ttId));
+                clientSession.registerCleanup(cleanupKey, () -> closeTtSession(ttId, "client_cleanup"));
             }
         } catch (Exception ignore) {
             // ignore
@@ -150,7 +170,7 @@ public final class TtRecordEngine {
                 }
             }
         } finally {
-            stop(ttId);
+            closeTtSession(ttId, "completed");
             if (clientSession != null && cleanupKey != null) {
                 try {
                     clientSession.removeCleanup(cleanupKey);
@@ -170,6 +190,17 @@ public final class TtRecordEngine {
     }
 
     public boolean stop(String ttId) {
+        return closeTtSession(ttId, "stop");
+    }
+
+    private boolean closeTtSession(String ttId, String reason) {
+        if (sessionRegistry != null && sessionRegistry.close(ttId, reason)) {
+            return true;
+        }
+        return stopInternal(ttId);
+    }
+
+    private boolean stopInternal(String ttId) {
         TtSession session = activeSessions.remove(ttId);
         if (session == null) {
             try {
@@ -192,6 +223,31 @@ public final class TtRecordEngine {
             }
         }
         return true;
+    }
+
+    private void registerEnhancementSession(String ttId,
+                                            String classPattern,
+                                            String methodPattern,
+                                            Class<?> target,
+                                            int maxCount,
+                                            long timeoutSeconds) {
+        if (sessionRegistry == null) {
+            return;
+        }
+        CommandContext ctx = CommandContextHolder.get();
+        EnhancementSessionDescriptor.Builder builder = EnhancementSessionDescriptor
+            .builder(ttId, EnhancementSessionKind.TT)
+            .withCommandName("tt")
+            .withClassPattern(classPattern)
+            .withMethodPattern(methodPattern)
+            .withTargetClassNames(Collections.singletonList(target.getName()))
+            .withLoaderIds(Collections.singletonList(Integer.valueOf(LoadedClassResolver.loaderId(target.getClassLoader()))))
+            .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds);
+        if (ctx != null) {
+            builder.withClientId(ctx.getClientId())
+                .withClientSessionId(ctx.getSessionId());
+        }
+        sessionRegistry.register(builder.build(), reason -> stopInternal(ttId));
     }
 
     private void appendOrSend(StringBuilder buf, StreamSink sink, String text) {

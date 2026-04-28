@@ -25,6 +25,7 @@ public final class CommandProcessorComponents {
 
     private final com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry;
     private final com.javasleuth.core.command.session.ClientSessionIndex sessionIndex;
+    private final com.javasleuth.core.enhancement.session.EnhancementSessionRegistry enhancementSessionRegistry;
 
     private final CommandRegistry registry;
     private final CommandPipeline pipeline;
@@ -51,6 +52,7 @@ public final class CommandProcessorComponents {
         com.javasleuth.foundation.security.DangerousCommandConfirmationManager dangerousConfirm,
         com.javasleuth.core.command.session.ClientSessionRegistry clientSessionRegistry,
         com.javasleuth.core.command.session.ClientSessionIndex sessionIndex,
+        com.javasleuth.core.enhancement.session.EnhancementSessionRegistry enhancementSessionRegistry,
         CommandRegistry registry,
         CommandPipeline pipeline,
         com.javasleuth.core.command.server.CommandClientHandler clientHandler,
@@ -74,6 +76,7 @@ public final class CommandProcessorComponents {
         this.dangerousConfirm = dangerousConfirm;
         this.clientSessionRegistry = clientSessionRegistry;
         this.sessionIndex = sessionIndex;
+        this.enhancementSessionRegistry = enhancementSessionRegistry;
         this.registry = registry;
         this.pipeline = pipeline;
         this.clientHandler = clientHandler;
@@ -141,6 +144,10 @@ public final class CommandProcessorComponents {
 
     public com.javasleuth.core.command.session.ClientSessionIndex getSessionIndex() {
         return sessionIndex;
+    }
+
+    public com.javasleuth.core.enhancement.session.EnhancementSessionRegistry getEnhancementSessionRegistry() {
+        return enhancementSessionRegistry;
     }
 
     public CommandRegistry getRegistry() {

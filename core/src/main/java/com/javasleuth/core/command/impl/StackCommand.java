@@ -7,6 +7,7 @@ import com.javasleuth.core.command.impl.stack.StackTraceLiteEngine;
 import com.javasleuth.core.command.impl.stack.StackTraceLiteParser;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.ManagementFactory;
@@ -39,9 +40,20 @@ public class StackCommand implements StreamCommand {
         JobManager jobManager,
         SleuthSpyDispatcher spyDispatcher
     ) {
+        this(instrumentation, transformer, config, jobManager, spyDispatcher, null);
+    }
+
+    public StackCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        JobManager jobManager,
+        SleuthSpyDispatcher spyDispatcher,
+        EnhancementSessionRegistry sessionRegistry
+    ) {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
         this.traceParser = new StackTraceLiteParser();
-        this.traceEngine = new StackTraceLiteEngine(instrumentation, transformer, config, spyDispatcher);
+        this.traceEngine = new StackTraceLiteEngine(instrumentation, transformer, config, spyDispatcher, sessionRegistry);
         if (jobManager == null) {
             throw new IllegalArgumentException("jobManager");
         }
