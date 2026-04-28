@@ -19,6 +19,7 @@
   - `docs/dev/implementation-summary.md` - 实现概览与架构说明
   - `docs/dev/testing-report.md` - 测试说明与报告
   - `docs/dev/intellij-idea-debugging.md` - 在 IntelliJ IDEA 中调试（双进程：Launcher/Target JVM）
+  - `docs/dev/command-provider-metadata.md` - 命令提供者元数据与能力声明
 
 - 运维
   - `docs/ops/index.md` - 运维文档索引
