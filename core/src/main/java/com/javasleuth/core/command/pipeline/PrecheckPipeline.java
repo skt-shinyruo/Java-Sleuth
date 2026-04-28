@@ -9,8 +9,10 @@ import com.javasleuth.foundation.security.AuthorizationManager;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.foundation.security.InputValidator;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * 命令 precheck 阶段（validate/authz/confirm）显式化。
@@ -150,8 +152,10 @@ public final class PrecheckPipeline {
             }
 
             String cmd = name.trim().toLowerCase(Locale.ROOT);
-            String required = requiredBootstrapClassForCommand(cmd);
-            if (required == null) {
+            Set<String> required = state.meta != null
+                ? state.meta.getRequiredBootstrapClasses()
+                : Collections.<String>emptySet();
+            if (required.isEmpty()) {
                 return null;
             }
 
@@ -160,33 +164,16 @@ public final class PrecheckPipeline {
                 return null;
             }
 
-            if (BootstrapBridge.canEnableEnhancement(required, null)) {
-                return null;
+            for (String requiredClass : required) {
+                if (BootstrapBridge.canEnableEnhancement(requiredClass, null)) {
+                    continue;
+                }
+                return PrecheckDecision.denied(
+                    BootstrapBridge.formatDisabledMessage(cmd, requiredClass),
+                    state.argsForChecks
+                );
             }
-
-            return PrecheckDecision.denied(BootstrapBridge.formatDisabledMessage(cmd, required), state.argsForChecks);
-        }
-
-        private static String requiredBootstrapClassForCommand(String cmd) {
-            if (cmd == null) {
-                return null;
-            }
-            switch (cmd) {
-                case "watch":
-                    return BootstrapBridge.SPY_API;
-                case "trace":
-                    return BootstrapBridge.SPY_API;
-                case "monitor":
-                    return BootstrapBridge.SPY_API;
-                case "tt":
-                    return BootstrapBridge.SPY_API;
-                case "stack":
-                    return BootstrapBridge.SPY_API;
-                case "vmtool":
-                    return BootstrapBridge.SPY_API;
-                default:
-                    return null;
-            }
+            return null;
         }
 
         private static boolean isHelpLikeInvocation(String[] args) {
