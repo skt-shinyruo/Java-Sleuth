@@ -7,6 +7,9 @@ import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
+import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.foundation.security.SecurityValidator;
 import com.javasleuth.foundation.util.LoadedClassResolver;
@@ -39,6 +42,7 @@ public class VmToolCommand implements Command {
     private final ConfigView config;
     private final DangerousCommandConfirmationManager dangerousConfirm;
     private final VmToolSessionRegistry registry;
+    private final EnhancementSessionRegistry enhancementSessionRegistry;
 
     public VmToolCommand(
         Instrumentation instrumentation,
@@ -46,6 +50,17 @@ public class VmToolCommand implements Command {
         ConfigView config,
         DangerousCommandConfirmationManager dangerousConfirm,
         VmToolSessionRegistry registry
+    ) {
+        this(instrumentation, transformer, config, dangerousConfirm, registry, null);
+    }
+
+    public VmToolCommand(
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        DangerousCommandConfirmationManager dangerousConfirm,
+        VmToolSessionRegistry registry,
+        EnhancementSessionRegistry enhancementSessionRegistry
     ) {
         this.instrumentation = instrumentation;
         this.transformer = transformer;
@@ -58,6 +73,7 @@ public class VmToolCommand implements Command {
         }
         this.dangerousConfirm = dangerousConfirm;
         this.registry = registry;
+        this.enhancementSessionRegistry = enhancementSessionRegistry;
     }
 
     @Override
@@ -138,12 +154,13 @@ public class VmToolCommand implements Command {
             classLimit
         );
         if (r != null && r.isOk() && r.getSession() != null) {
+            registerEnhancementSession(classPattern, r.getSession());
             CommandContext ctx = CommandContextHolder.get();
             ClientSession clientSession = ctx != null ? ctx.getClientSession() : null;
             if (clientSession != null) {
                 String trackId = r.getSession().getId();
                 String cleanupKey = "vmtool:" + trackId;
-                clientSession.registerCleanup(cleanupKey, () -> registry.stopTrack(instrumentation, transformer, trackId));
+                clientSession.registerCleanup(cleanupKey, () -> stopTrackAndRegistrySession(trackId, "client_cleanup"));
             }
         }
         return r != null ? r.getMessage() : "vmtool track failed.";
@@ -160,7 +177,53 @@ public class VmToolCommand implements Command {
         if (clientSession != null && trackId != null && !trackId.trim().isEmpty()) {
             clientSession.removeCleanup("vmtool:" + trackId.trim());
         }
-        return registry.stopTrack(instrumentation, transformer, trackId).getMessage();
+        return stopTrackAndRegistrySession(trackId, "stop").getMessage();
+    }
+
+    private VmToolSessionRegistry.StopResult stopTrackAndRegistrySession(String trackId, String reason) {
+        VmToolSessionRegistry.StopResult result = registry.stopTrack(instrumentation, transformer, trackId);
+        if (enhancementSessionRegistry != null && trackId != null && !trackId.trim().isEmpty()) {
+            enhancementSessionRegistry.close(trackId.trim(), reason);
+        }
+        return result;
+    }
+
+    private void registerEnhancementSession(String classPattern, VmToolSessionRegistry.TrackSession session) {
+        if (enhancementSessionRegistry == null || session == null) {
+            return;
+        }
+
+        List<String> targetClassNames = new ArrayList<>();
+        List<Integer> loaderIds = new ArrayList<>();
+        for (VmToolSessionRegistry.EnhancedClass enhancedClass : session.getEnhancedClasses()) {
+            if (enhancedClass == null) {
+                continue;
+            }
+            targetClassNames.add(enhancedClass.getClassName());
+            loaderIds.add(Integer.valueOf(enhancedClass.getLoaderId()));
+        }
+
+        CommandContext ctx = CommandContextHolder.get();
+        EnhancementSessionDescriptor.Builder builder = EnhancementSessionDescriptor
+            .builder(session.getId(), EnhancementSessionKind.VMTOOL)
+            .withCommandName("vmtool")
+            .withClassPattern(classPattern)
+            .withTargetClassNames(targetClassNames)
+            .withLoaderIds(loaderIds)
+            .withCreatedAtMs(session.getCreatedAtMs())
+            .withDetails("base=" + session.getBaseClassName()
+                + ", includeSubclasses=" + session.isIncludeSubclasses()
+                + ", maxEntries=" + session.getMaxEntries());
+        if (ctx != null) {
+            builder.withClientId(ctx.getClientId())
+                .withClientSessionId(ctx.getSessionId());
+        }
+
+        String trackId = session.getId();
+        enhancementSessionRegistry.register(
+            builder.build(),
+            reason -> registry.stopTrack(instrumentation, transformer, trackId)
+        );
     }
 
     private String handleTracks() {
