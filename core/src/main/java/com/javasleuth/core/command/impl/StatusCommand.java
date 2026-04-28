@@ -3,6 +3,8 @@ package com.javasleuth.core.command.impl;
 import com.javasleuth.core.agent.runtime.BootstrapBridge;
 import com.javasleuth.core.command.Command;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.bootstrap.monitor.MonitorInterceptor;
 import com.javasleuth.bootstrap.monitor.StackInterceptor;
 import com.javasleuth.bootstrap.monitor.TraceInterceptor;
@@ -25,6 +27,7 @@ public class StatusCommand implements Command {
     private final ConfigView config;
     private final PerformanceOptimizer performanceOptimizer;
     private final SleuthSpyDispatcher spyDispatcher;
+    private final EnhancementSessionRegistry enhancementSessionRegistry;
 
     public StatusCommand(
         Instrumentation instrumentation,
@@ -33,6 +36,18 @@ public class StatusCommand implements Command {
         ConfigView config,
         PerformanceOptimizer performanceOptimizer,
         SleuthSpyDispatcher spyDispatcher
+    ) {
+        this(instrumentation, metricsCollector, transformer, config, performanceOptimizer, spyDispatcher, null);
+    }
+
+    public StatusCommand(
+        Instrumentation instrumentation,
+        MetricsCollector metricsCollector,
+        SleuthClassFileTransformer transformer,
+        ConfigView config,
+        PerformanceOptimizer performanceOptimizer,
+        SleuthSpyDispatcher spyDispatcher,
+        EnhancementSessionRegistry enhancementSessionRegistry
     ) {
         this.instrumentation = instrumentation;
         this.metricsCollector = metricsCollector;
@@ -43,6 +58,7 @@ public class StatusCommand implements Command {
         }
         this.performanceOptimizer = performanceOptimizer;
         this.spyDispatcher = spyDispatcher;
+        this.enhancementSessionRegistry = enhancementSessionRegistry;
     }
 
     @Override
@@ -158,6 +174,9 @@ public class StatusCommand implements Command {
         status.append("Legacy Active Monitors: ").append(MonitorInterceptor.getActiveMonitorCount()).append("\n");
         status.append("Legacy Active TT Sessions: ").append(TtInterceptor.getActiveTtCount()).append("\n");
 
+        status.append("\n-- Enhancement Sessions --\n");
+        appendEnhancementSessionStatus(status);
+
         // Configuration status
         status.append("\n-- Configuration Status --\n");
         status.append("Bind Address: ").append(config.getString("server.bind.address", "127.0.0.1")).append("\n");
@@ -220,6 +239,30 @@ public class StatusCommand implements Command {
         }
 
         return status.toString();
+    }
+
+    private void appendEnhancementSessionStatus(StringBuilder status) {
+        if (enhancementSessionRegistry == null) {
+            status.append("Active Sessions: unavailable\n");
+            return;
+        }
+        Map<EnhancementSessionKind, Integer> counts = enhancementSessionRegistry.countByKind();
+        status.append("Active Sessions: ").append(enhancementSessionRegistry.size()).append("\n");
+        appendEnhancementCount(status, counts, EnhancementSessionKind.WATCH, "Watch");
+        appendEnhancementCount(status, counts, EnhancementSessionKind.TRACE, "Trace");
+        appendEnhancementCount(status, counts, EnhancementSessionKind.MONITOR, "Monitor");
+        appendEnhancementCount(status, counts, EnhancementSessionKind.STACK, "Stack");
+        appendEnhancementCount(status, counts, EnhancementSessionKind.TT, "TT");
+        appendEnhancementCount(status, counts, EnhancementSessionKind.VMTOOL, "VmTool");
+        appendEnhancementCount(status, counts, EnhancementSessionKind.OTHER, "Other");
+    }
+
+    private void appendEnhancementCount(StringBuilder status,
+                                        Map<EnhancementSessionKind, Integer> counts,
+                                        EnhancementSessionKind kind,
+                                        String label) {
+        Integer value = counts != null ? counts.get(kind) : null;
+        status.append(label).append(": ").append(value != null ? value.intValue() : 0).append("\n");
     }
 
     @Override

@@ -208,7 +208,8 @@ public class BuiltinCommandProvider implements CommandProvider {
                 context.requireTransformer(),
                 context.requireConfig(),
                 context.requirePerformanceOptimizer(),
-                context.requireSpyDispatcher()
+                context.requireSpyDispatcher(),
+                context.requireEnhancementSessionRegistry()
             ),
             CommandMeta.viewer(false, false)
         );
