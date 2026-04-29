@@ -145,6 +145,30 @@ public final class SleuthConfigSchema {
             .build()
     );
 
+    public static final ConfigKey<Integer> PERFORMANCE_COMMAND_STREAM_EXECUTOR_CORE = register(
+        ConfigKey.intKey("performance.command.stream.executor.core")
+            .defaultValue(2)
+            .longRange(1, 64)
+            .failurePolicy(ConfigKey.FailurePolicy.CLAMP_AND_WARN)
+            .build()
+    );
+
+    public static final ConfigKey<Integer> PERFORMANCE_COMMAND_STREAM_EXECUTOR_MAX = register(
+        ConfigKey.intKey("performance.command.stream.executor.max")
+            .defaultValue(4)
+            .longRange(1, 64)
+            .failurePolicy(ConfigKey.FailurePolicy.CLAMP_AND_WARN)
+            .build()
+    );
+
+    public static final ConfigKey<Integer> PERFORMANCE_COMMAND_STREAM_EXECUTOR_QUEUE_CAPACITY = register(
+        ConfigKey.intKey("performance.command.stream.executor.queue.capacity")
+            .defaultValue(32)
+            .longRange(1, 10000)
+            .failurePolicy(ConfigKey.FailurePolicy.CLAMP_AND_WARN)
+            .build()
+    );
+
     public static final ConfigKey<Long> PERFORMANCE_COMMAND_TIMEOUT_MS = register(
         ConfigKey.longKey("performance.command.timeout")
             .defaultValue(60000L)
