@@ -56,7 +56,7 @@ public class CommandProcessorSecurityBoundaryTest {
         config.clearRuntimeConfig();
         try {
             config.setRuntimeConfig("server.bind.address", "0.0.0.0");
-            config.setRuntimeConfig("server.port", "0");
+            config.setRuntimeConfig("server.port", String.valueOf(allocatePort()));
 
             ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
             ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
@@ -97,7 +97,7 @@ public class CommandProcessorSecurityBoundaryTest {
         config.clearRuntimeConfig();
         try {
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
-            config.setRuntimeConfig("server.port", "0");
+            config.setRuntimeConfig("server.port", String.valueOf(allocatePort()));
 
             ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
             ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
@@ -137,6 +137,15 @@ public class CommandProcessorSecurityBoundaryTest {
             Thread.sleep(50);
         }
         return isServerSocketOpen(processor);
+    }
+
+    private static int allocatePort() throws Exception {
+        ServerSocket socket = new ServerSocket(0);
+        try {
+            return socket.getLocalPort();
+        } finally {
+            socket.close();
+        }
     }
 
     private static boolean isServerSocketOpen(CommandProcessor processor) throws Exception {

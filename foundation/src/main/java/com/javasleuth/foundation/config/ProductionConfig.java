@@ -1,6 +1,8 @@
 package com.javasleuth.foundation.config;
 
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
+import com.javasleuth.foundation.config.schema.ConfigKey;
+import com.javasleuth.foundation.config.schema.ConfigValidationResult;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
@@ -155,7 +157,15 @@ public class ProductionConfig implements ConfigView, MutableConfig {
     @Override
     public void setRuntimeConfig(String key, String value, ConfigUpdateSource source) {
         validateRuntimeOverrideKey(key);
-        runtimeStore.set(key, value, source);
+        ConfigKey<?> schemaKey = SleuthConfigSchema.byKey(key);
+        if (schemaKey == null) {
+            throw new IllegalArgumentException("Unknown config key: " + key);
+        }
+        ConfigValidationResult result = schemaKey.validateRuntimeValue(value);
+        if (result == null || !result.isValid()) {
+            throw new IllegalArgumentException(result != null ? result.getError() : "Invalid config " + key);
+        }
+        runtimeStore.set(key, result.getNormalizedValue(), source);
     }
 
     @Override
