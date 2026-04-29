@@ -16,6 +16,11 @@ public class AgentLifecycleTest {
     private static final String TEST_KEY = "sleuth.test.agentLifecycle.key";
 
     @Test
+    public void contractVersionIsOne() {
+        Assert.assertEquals(1, AgentLifecycle.contractVersion());
+    }
+
+    @Test
     public void lifecycleContract_exclusiveToken_rollbackAndDetach() throws Exception {
         Class<?> lifecycle = Class.forName(LIFECYCLE_CLASS);
 
@@ -89,4 +94,3 @@ public class AgentLifecycleTest {
         }
     }
 }
-

@@ -14,6 +14,13 @@ import org.junit.Test;
 public class CrossClassLoaderReflectionContractTest {
 
     @Test
+    public void lifecycleExposesContractVersion() throws Exception {
+        Class<?> lifecycle = Class.forName("com.javasleuth.bootstrap.agent.AgentLifecycle");
+        Method method = lifecycle.getMethod("contractVersion");
+        Assert.assertEquals(Integer.TYPE, method.getReturnType());
+    }
+
+    @Test
     public void contract_bootstrapBridgeClasses_and_reflectionSignatures_exist() throws Exception {
         Class<?> lifecycle = Class.forName("com.javasleuth.bootstrap.agent.AgentLifecycle");
 

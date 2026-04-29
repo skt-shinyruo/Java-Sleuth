@@ -24,6 +24,10 @@ public final class AgentLifecycle {
 
     private AgentLifecycle() {}
 
+    public static int contractVersion() {
+        return 1;
+    }
+
     /**
      * Try to begin a new attach session.
      *
