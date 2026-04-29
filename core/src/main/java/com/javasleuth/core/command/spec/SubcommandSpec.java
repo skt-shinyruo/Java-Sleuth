@@ -9,6 +9,9 @@ public final class SubcommandSpec {
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Subcommand name must not be blank");
         }
+        if (spec == null) {
+            throw new IllegalArgumentException("Subcommand spec must not be null");
+        }
         this.name = name;
         this.description = description;
         this.spec = spec;

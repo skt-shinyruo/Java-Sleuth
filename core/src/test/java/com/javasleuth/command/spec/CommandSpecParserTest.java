@@ -85,6 +85,32 @@ public class CommandSpecParserTest {
     }
 
     @Test
+    public void duplicateArgumentNameRejectedByBuilder() {
+        try {
+            CommandSpec.builder("dup")
+                .argument(ArgumentSpec.required("name"))
+                .argument(ArgumentSpec.optional("name"))
+                .build();
+            Assert.fail("Expected duplicate argument name to fail");
+        } catch (IllegalArgumentException e) {
+            Assert.assertTrue(e.getMessage().contains("Duplicate argument name: name"));
+        }
+    }
+
+    @Test
+    public void duplicateOptionAliasOrNameRejectedByBuilder() {
+        try {
+            CommandSpec.builder("dup")
+                .option(OptionSpec.flag("first").alias("--x").build())
+                .option(OptionSpec.integer("x").build())
+                .build();
+            Assert.fail("Expected duplicate option token to fail");
+        } catch (IllegalArgumentException e) {
+            Assert.assertTrue(e.getMessage().contains("Duplicate option name: x"));
+        }
+    }
+
+    @Test
     public void repeatableOptionPreservesInputOrder() {
         ParsedCommand parsed = CommandSpecParser.parse(sampleSpec(), new String[] {
             "watch", "A", "m", "--condition", "first", "--condition=second", "--condition", "third"

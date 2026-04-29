@@ -30,7 +30,7 @@ public class CommandHelpRendererTest {
         Assert.assertTrue(help.contains("Usage: monitor <class-pattern> <method-pattern> [options]"));
         Assert.assertTrue(help.contains("class-pattern"));
         Assert.assertTrue(help.contains("method-pattern"));
-        Assert.assertTrue(help.contains("--interval, -i"));
+        Assert.assertTrue(help.contains("--interval <long>, -i <long>"));
         Assert.assertTrue(help.contains("default: 5000"));
         Assert.assertTrue(help.contains("range: 1..86400000"));
         Assert.assertTrue(help.contains("Subcommands:"));
@@ -50,5 +50,15 @@ public class CommandHelpRendererTest {
         Assert.assertEquals("thread", subcommand.getName());
         Assert.assertEquals("Inspect thread state", subcommand.getDescription());
         Assert.assertSame(threadSpec, subcommand.getSpec());
+    }
+
+    @Test
+    public void subcommandBuilderRejectsNullSpec() {
+        try {
+            SubcommandSpec.builder("thread").build();
+            Assert.fail("Expected null subcommand spec to fail");
+        } catch (IllegalArgumentException e) {
+            Assert.assertTrue(e.getMessage().contains("Subcommand spec must not be null"));
+        }
     }
 }

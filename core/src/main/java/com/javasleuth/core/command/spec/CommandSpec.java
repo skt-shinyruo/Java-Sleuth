@@ -4,7 +4,11 @@ import com.javasleuth.foundation.security.CommandMeta;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 public final class CommandSpec {
     private final String name;
@@ -128,7 +132,42 @@ public final class CommandSpec {
         }
 
         public CommandSpec build() {
+            validateUniqueArguments();
+            validateUniqueOptions();
             return new CommandSpec(this);
+        }
+
+        private void validateUniqueArguments() {
+            Set<String> names = new LinkedHashSet<>();
+            for (ArgumentSpec argument : arguments) {
+                if (!names.add(argument.getName())) {
+                    throw new IllegalArgumentException("Duplicate argument name: " + argument.getName());
+                }
+            }
+        }
+
+        private void validateUniqueOptions() {
+            Map<String, OptionSpec> tokens = new LinkedHashMap<>();
+            for (OptionSpec option : options) {
+                String canonical = "--" + option.getName();
+                OptionSpec previous = tokens.put(canonical, option);
+                if (previous != null && previous != option) {
+                    throw new IllegalArgumentException("Duplicate option name: " + option.getName());
+                }
+                Set<String> aliases = new LinkedHashSet<>();
+                for (String alias : option.getAliases()) {
+                    if (canonical.equals(alias)) {
+                        continue;
+                    }
+                    if (!aliases.add(alias)) {
+                        throw new IllegalArgumentException("Duplicate option alias: " + alias);
+                    }
+                    previous = tokens.put(alias, option);
+                    if (previous != null && previous != option) {
+                        throw new IllegalArgumentException("Duplicate option alias: " + alias);
+                    }
+                }
+            }
         }
     }
 }
