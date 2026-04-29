@@ -65,12 +65,19 @@ public final class CommandSpecParser {
     private static Map<String, OptionSpec> buildOptionIndex(CommandSpec spec) {
         Map<String, OptionSpec> index = new LinkedHashMap<>();
         for (OptionSpec option : spec.getOptions()) {
-            index.put("--" + option.getName(), option);
+            putOptionToken(index, "--" + option.getName(), option);
             for (String alias : option.getAliases()) {
-                index.put(alias, option);
+                putOptionToken(index, alias, option);
             }
         }
         return index;
+    }
+
+    private static void putOptionToken(Map<String, OptionSpec> index, String token, OptionSpec option) {
+        OptionSpec previous = index.put(token, option);
+        if (previous != null && previous != option) {
+            throw new IllegalArgumentException("Duplicate option token in spec: " + token);
+        }
     }
 
     private static Map<String, List<Object>> defaultOptions(CommandSpec spec) {

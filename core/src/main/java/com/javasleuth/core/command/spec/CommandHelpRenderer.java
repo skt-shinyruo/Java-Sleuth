@@ -56,11 +56,15 @@ public final class CommandHelpRenderer {
 
     private static String optionNames(OptionSpec option) {
         List<String> orderedNames = new ArrayList<>();
-        orderedNames.add("--" + option.getName());
+        List<String> rawNames = new ArrayList<>();
+        orderedNames.add(optionDisplayName("--" + option.getName(), option));
+        rawNames.add("--" + option.getName());
         for (String alias : option.getAliases()) {
-            if (!orderedNames.contains(alias)) {
-                orderedNames.add(alias);
+            if (rawNames.contains(alias)) {
+                continue;
             }
+            rawNames.add(alias);
+            orderedNames.add(optionDisplayName(alias, option));
         }
         StringBuilder names = new StringBuilder();
         for (String name : orderedNames) {
@@ -70,6 +74,23 @@ public final class CommandHelpRenderer {
             names.append(name);
         }
         return names.toString();
+    }
+
+    private static String optionDisplayName(String name, OptionSpec option) {
+        if (option.getType() == OptionSpec.Type.FLAG) {
+            return name;
+        }
+        return name + " " + optionTypeSuffix(option);
+    }
+
+    private static String optionTypeSuffix(OptionSpec option) {
+        if (option.getType() == OptionSpec.Type.INTEGER) {
+            return "<int>";
+        }
+        if (option.getType() == OptionSpec.Type.LONG) {
+            return "<long>";
+        }
+        return "<value>";
     }
 
     private static String optionDetails(OptionSpec option) {
