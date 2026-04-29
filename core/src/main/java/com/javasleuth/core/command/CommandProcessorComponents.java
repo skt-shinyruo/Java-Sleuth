@@ -36,6 +36,39 @@ public final class CommandProcessorComponents {
     private final com.javasleuth.core.command.server.ShutdownCoordinator shutdownCoordinator;
     private final AutoCloseable ownedResources;
 
+    static CommandProcessorComponents from(
+        RuntimeServices services,
+        CommandSubsystem commandSubsystem,
+        ServerSubsystem serverSubsystem,
+        AutoCloseable ownedResources
+    ) {
+        return new CommandProcessorComponents(
+            services.instrumentation,
+            services.transformer,
+            services.shutdownHook,
+            serverSubsystem.running,
+            serverSubsystem.commandCounter,
+            serverSubsystem.clientExecutor,
+            services.metricsCollector,
+            services.config,
+            services.auditLogger,
+            services.inputValidator,
+            services.authenticationManager,
+            services.authorizationManager,
+            services.dangerousConfirm,
+            services.clientSessionRegistry,
+            serverSubsystem.sessionIndex,
+            services.enhancementSessionRegistry,
+            commandSubsystem.registry,
+            commandSubsystem.pipeline,
+            serverSubsystem.clientHandler,
+            serverSubsystem.bootstrapper,
+            serverSubsystem.acceptor,
+            serverSubsystem.shutdownCoordinator,
+            ownedResources
+        );
+    }
+
     CommandProcessorComponents(
         java.lang.instrument.Instrumentation instrumentation,
         com.javasleuth.core.enhancement.SleuthClassFileTransformer transformer,
