@@ -1,6 +1,7 @@
 package com.javasleuth.core.command;
 
 import com.javasleuth.core.command.session.ClientSession;
+import com.javasleuth.core.command.spec.ParsedCommand;
 
 public class CommandContext {
     private final String clientId;
@@ -11,9 +12,10 @@ public class CommandContext {
     private final boolean streaming;
     private final ClientSession clientSession;
     private final CancellationToken cancellationToken;
+    private final ParsedCommand parsedCommand;
 
     public CommandContext(String clientId, String clientInfo, String sessionId, boolean streaming) {
-        this(clientId, clientInfo, sessionId, null, null, streaming, null, CancellationToken.NONE);
+        this(clientId, clientInfo, sessionId, null, null, streaming, null, CancellationToken.NONE, null);
     }
 
     public CommandContext(String clientId,
@@ -23,7 +25,7 @@ public class CommandContext {
                           String commandName,
                           boolean streaming,
                           ClientSession clientSession) {
-        this(clientId, clientInfo, sessionId, connId, commandName, streaming, clientSession, CancellationToken.NONE);
+        this(clientId, clientInfo, sessionId, connId, commandName, streaming, clientSession, CancellationToken.NONE, null);
     }
 
     public CommandContext(String clientId,
@@ -34,6 +36,18 @@ public class CommandContext {
                           boolean streaming,
                           ClientSession clientSession,
                           CancellationToken cancellationToken) {
+        this(clientId, clientInfo, sessionId, connId, commandName, streaming, clientSession, cancellationToken, null);
+    }
+
+    private CommandContext(String clientId,
+                           String clientInfo,
+                           String sessionId,
+                           String connId,
+                           String commandName,
+                           boolean streaming,
+                           ClientSession clientSession,
+                           CancellationToken cancellationToken,
+                           ParsedCommand parsedCommand) {
         this.clientId = clientId;
         this.clientInfo = clientInfo;
         this.sessionId = sessionId;
@@ -42,6 +56,7 @@ public class CommandContext {
         this.streaming = streaming;
         this.clientSession = clientSession;
         this.cancellationToken = cancellationToken != null ? cancellationToken : CancellationToken.NONE;
+        this.parsedCommand = parsedCommand;
     }
 
     public CommandContext(String clientId,
@@ -88,7 +103,15 @@ public class CommandContext {
         return cancellationToken != null ? cancellationToken : CancellationToken.NONE;
     }
 
+    public ParsedCommand getParsedCommand() {
+        return parsedCommand;
+    }
+
     public CommandContext withCancellationToken(CancellationToken token) {
-        return new CommandContext(clientId, clientInfo, sessionId, connId, commandName, streaming, clientSession, token);
+        return new CommandContext(clientId, clientInfo, sessionId, connId, commandName, streaming, clientSession, token, parsedCommand);
+    }
+
+    public CommandContext withParsedCommand(ParsedCommand parsed) {
+        return new CommandContext(clientId, clientInfo, sessionId, connId, commandName, streaming, clientSession, cancellationToken, parsed);
     }
 }
