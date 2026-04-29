@@ -33,7 +33,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class CommandExecutionEngine {
     private final ProductionConfig config;
-    private final ThreadPoolExecutor commandExecutor;
+    private final ThreadPoolExecutor shortCommandExecutor;
+    private final ThreadPoolExecutor streamCommandExecutor;
 
     private static final Object HIGH_IMPACT_LOCK = new Object();
     private static volatile Semaphore HIGH_IMPACT_SEMAPHORE;
@@ -43,26 +44,38 @@ public final class CommandExecutionEngine {
         this.config = config;
         SleuthConfig typed = SleuthConfigParser.parse(config.snapshot());
         PerformanceConfig perf = typed.performance();
-        final int coreSize = perf.getCommandExecutorCoreSize();
-        final int maxSize = perf.getCommandExecutorMaxSize();
-        final int queueCapacity = perf.getCommandExecutorQueueCapacity();
+        this.shortCommandExecutor = newExecutor(
+            "sleuth-cmd-short",
+            perf.getCommandExecutorCoreSize(),
+            perf.getCommandExecutorMaxSize(),
+            perf.getCommandExecutorQueueCapacity()
+        );
+        this.streamCommandExecutor = newExecutor(
+            "sleuth-cmd-stream",
+            perf.getCommandStreamExecutorCoreSize(),
+            perf.getCommandStreamExecutorMaxSize(),
+            perf.getCommandStreamExecutorQueueCapacity()
+        );
+    }
 
-        BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>(queueCapacity);
+    private static ThreadPoolExecutor newExecutor(String threadName, int coreSize, int maxSize, int queueCapacity) {
+        BlockingQueue<Runnable> queue = new LinkedBlockingQueue<Runnable>(queueCapacity);
         ThreadPoolExecutor tpe = new ThreadPoolExecutor(
             coreSize,
             Math.max(coreSize, maxSize),
             60L,
             TimeUnit.SECONDS,
             queue,
-            SleuthThreadFactory.daemon("sleuth-cmd-exec"),
+            SleuthThreadFactory.daemon(threadName),
             new ThreadPoolExecutor.AbortPolicy()
         );
         tpe.allowCoreThreadTimeOut(true);
-        this.commandExecutor = tpe;
+        return tpe;
     }
 
     public void shutdown() {
-        SleuthExecutors.shutdownAndAwait(commandExecutor, "command-exec", 5, TimeUnit.SECONDS);
+        SleuthExecutors.shutdownAndAwait(shortCommandExecutor, "short-command-exec", 5, TimeUnit.SECONDS);
+        SleuthExecutors.shutdownAndAwait(streamCommandExecutor, "stream-command-exec", 5, TimeUnit.SECONDS);
     }
 
     public String executeSync(Command command, String[] args, CommandMeta meta, long timeoutMs, CommandContext context) throws Exception {
@@ -198,12 +211,12 @@ public final class CommandExecutionEngine {
             }
         });
         try {
-            commandExecutor.execute(task);
+            shortCommandExecutor.execute(task);
         } catch (RejectedExecutionException rejected) {
             if (permit != null) {
                 permit.release();
             }
-            throw new Exception("Server is busy: command execution queue is full");
+            throw new Exception("Server is busy: short command execution queue is full");
         }
 
         try {
@@ -212,7 +225,7 @@ public final class CommandExecutionEngine {
             task.cancel(true);
             boolean removed = false;
             try {
-                removed = commandExecutor.remove(task);
+                removed = shortCommandExecutor.remove(task);
             } catch (Exception ignore) {
                 // 忽略
             }
@@ -235,7 +248,7 @@ public final class CommandExecutionEngine {
             task.cancel(true);
             boolean removed = false;
             try {
-                removed = commandExecutor.remove(task);
+                removed = shortCommandExecutor.remove(task);
             } catch (Exception ignore) {
                 // 忽略
             }
@@ -270,12 +283,12 @@ public final class CommandExecutionEngine {
             return null;
         });
         try {
-            commandExecutor.execute(task);
+            streamCommandExecutor.execute(task);
         } catch (RejectedExecutionException rejected) {
             if (permit != null) {
                 permit.release();
             }
-            throw new Exception("Server is busy: command execution queue is full");
+            throw new Exception("Server is busy: stream command execution queue is full");
         }
 
         try {
@@ -284,7 +297,7 @@ public final class CommandExecutionEngine {
             task.cancel(true);
             boolean removed = false;
             try {
-                removed = commandExecutor.remove(task);
+                removed = streamCommandExecutor.remove(task);
             } catch (Exception ignore) {
                 // 忽略
             }
@@ -310,7 +323,7 @@ public final class CommandExecutionEngine {
             task.cancel(true);
             boolean removed = false;
             try {
-                removed = commandExecutor.remove(task);
+                removed = streamCommandExecutor.remove(task);
             } catch (Exception ignore) {
                 // 忽略
             }

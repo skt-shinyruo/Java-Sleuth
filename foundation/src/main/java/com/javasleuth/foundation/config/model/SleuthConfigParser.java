@@ -113,6 +113,14 @@ public final class SleuthConfigParser {
         }
         int cmdExecQueueCapacity = SleuthConfigSchema.PERFORMANCE_COMMAND_EXECUTOR_QUEUE_CAPACITY.read(config);
 
+        int streamExecCore = SleuthConfigSchema.PERFORMANCE_COMMAND_STREAM_EXECUTOR_CORE.read(config);
+        int streamExecMax = SleuthConfigSchema.PERFORMANCE_COMMAND_STREAM_EXECUTOR_MAX.read(config);
+        if (streamExecMax < streamExecCore) {
+            SleuthLogger.warn("Config normalized: performance.command.stream.executor.max < core, auto-adjusted to core");
+            streamExecMax = streamExecCore;
+        }
+        int streamExecQueueCapacity = SleuthConfigSchema.PERFORMANCE_COMMAND_STREAM_EXECUTOR_QUEUE_CAPACITY.read(config);
+
         long timeoutMs = SleuthConfigSchema.PERFORMANCE_COMMAND_TIMEOUT_MS.read(config);
         long maxTimeoutMs = SleuthConfigSchema.PERFORMANCE_COMMAND_TIMEOUT_MAX_MS.read(config);
         if (maxTimeoutMs > 0 && timeoutMs > maxTimeoutMs) {
@@ -132,6 +140,9 @@ public final class SleuthConfigParser {
             cmdExecCore,
             cmdExecMax,
             cmdExecQueueCapacity,
+            streamExecCore,
+            streamExecMax,
+            streamExecQueueCapacity,
             timeoutMs,
             maxTimeoutMs,
             forceGc

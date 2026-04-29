@@ -10,6 +10,9 @@ public final class PerformanceConfig {
     private final int commandExecutorCoreSize;
     private final int commandExecutorMaxSize;
     private final int commandExecutorQueueCapacity;
+    private final int commandStreamExecutorCoreSize;
+    private final int commandStreamExecutorMaxSize;
+    private final int commandStreamExecutorQueueCapacity;
     private final long commandTimeoutMs;
     private final long commandTimeoutMaxMs;
     private final boolean maintenanceForceGc;
@@ -21,6 +24,9 @@ public final class PerformanceConfig {
         int commandExecutorCoreSize,
         int commandExecutorMaxSize,
         int commandExecutorQueueCapacity,
+        int commandStreamExecutorCoreSize,
+        int commandStreamExecutorMaxSize,
+        int commandStreamExecutorQueueCapacity,
         long commandTimeoutMs,
         long commandTimeoutMaxMs,
         boolean maintenanceForceGc
@@ -31,6 +37,9 @@ public final class PerformanceConfig {
         this.commandExecutorCoreSize = commandExecutorCoreSize;
         this.commandExecutorMaxSize = commandExecutorMaxSize;
         this.commandExecutorQueueCapacity = commandExecutorQueueCapacity;
+        this.commandStreamExecutorCoreSize = commandStreamExecutorCoreSize;
+        this.commandStreamExecutorMaxSize = commandStreamExecutorMaxSize;
+        this.commandStreamExecutorQueueCapacity = commandStreamExecutorQueueCapacity;
         this.commandTimeoutMs = commandTimeoutMs;
         this.commandTimeoutMaxMs = commandTimeoutMaxMs;
         this.maintenanceForceGc = maintenanceForceGc;
@@ -60,6 +69,18 @@ public final class PerformanceConfig {
         return commandExecutorQueueCapacity;
     }
 
+    public int getCommandStreamExecutorCoreSize() {
+        return commandStreamExecutorCoreSize;
+    }
+
+    public int getCommandStreamExecutorMaxSize() {
+        return commandStreamExecutorMaxSize;
+    }
+
+    public int getCommandStreamExecutorQueueCapacity() {
+        return commandStreamExecutorQueueCapacity;
+    }
+
     public long getCommandTimeoutMs() {
         return commandTimeoutMs;
     }
@@ -72,4 +93,3 @@ public final class PerformanceConfig {
         return maintenanceForceGc;
     }
 }
-
