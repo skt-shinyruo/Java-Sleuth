@@ -1,5 +1,6 @@
 package com.javasleuth.core.command.impl;
 
+import com.javasleuth.core.command.CancellationToken;
 import com.javasleuth.core.command.JobManager;
 import com.javasleuth.core.command.CommandContext;
 import com.javasleuth.core.command.CommandContextHolder;
@@ -256,10 +257,12 @@ public class MonitorCommand implements StreamCommand {
 
         StringBuilder out = new StringBuilder();
         int done = 0;
+        CancellationToken token = currentCancellationToken();
         try {
-            for (int i = 0; i < rounds; i++) {
+            for (int i = 0; i < rounds && !token.isCancelled(); i++) {
                 try {
                     Thread.sleep(Math.max(1, intervalMs));
+                    token.throwIfCancelled();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     appendOrSend(out, sink, "\nMonitor interrupted");
@@ -405,6 +408,11 @@ public class MonitorCommand implements StreamCommand {
         } else {
             buf.append(text).append("\n");
         }
+    }
+
+    private static CancellationToken currentCancellationToken() {
+        CommandContext ctx = CommandContextHolder.get();
+        return ctx != null ? ctx.getCancellationToken() : CancellationToken.NONE;
     }
 
     private int parseInt(String raw, int def) {
