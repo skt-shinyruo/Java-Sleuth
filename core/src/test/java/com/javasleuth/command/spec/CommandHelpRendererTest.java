@@ -37,4 +37,18 @@ public class CommandHelpRendererTest {
         Assert.assertTrue(help.contains("thread - Inspect thread state"));
         Assert.assertTrue(help.contains("monitor *Service* doWork -i 1000"));
     }
+
+    @Test
+    public void buildsSubcommandSpecsWithFluentApi() {
+        CommandSpec threadSpec = CommandSpec.builder("thread").build();
+
+        SubcommandSpec subcommand = SubcommandSpec.builder("thread")
+            .description("Inspect thread state")
+            .spec(threadSpec)
+            .build();
+
+        Assert.assertEquals("thread", subcommand.getName());
+        Assert.assertEquals("Inspect thread state", subcommand.getDescription());
+        Assert.assertSame(threadSpec, subcommand.getSpec());
+    }
 }

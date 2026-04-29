@@ -14,6 +14,10 @@ public final class SubcommandSpec {
         this.spec = spec;
     }
 
+    public static Builder builder(String name) {
+        return new Builder(name);
+    }
+
     public static SubcommandSpec of(String name, String description, CommandSpec spec) {
         return new SubcommandSpec(name, description, spec);
     }
@@ -28,5 +32,32 @@ public final class SubcommandSpec {
 
     public CommandSpec getSpec() {
         return spec;
+    }
+
+    public static final class Builder {
+        private final String name;
+        private String description;
+        private CommandSpec spec;
+
+        private Builder(String name) {
+            if (name == null || name.trim().isEmpty()) {
+                throw new IllegalArgumentException("Subcommand name must not be blank");
+            }
+            this.name = name;
+        }
+
+        public Builder description(String description) {
+            this.description = description;
+            return this;
+        }
+
+        public Builder spec(CommandSpec spec) {
+            this.spec = spec;
+            return this;
+        }
+
+        public SubcommandSpec build() {
+            return new SubcommandSpec(name, description, spec);
+        }
     }
 }

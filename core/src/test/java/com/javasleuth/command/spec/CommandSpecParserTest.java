@@ -93,6 +93,17 @@ public class CommandSpecParserTest {
         Assert.assertEquals(Arrays.asList("first", "second", "third"), parsed.optionValues("condition"));
     }
 
+    @Test
+    public void buildsArgumentSpecsWithFluentApi() {
+        ArgumentSpec required = ArgumentSpec.builder("class-pattern").required(true).build();
+        ArgumentSpec optional = ArgumentSpec.builder("limit").required(false).build();
+
+        Assert.assertEquals("class-pattern", required.getName());
+        Assert.assertTrue(required.isRequired());
+        Assert.assertEquals("limit", optional.getName());
+        Assert.assertFalse(optional.isRequired());
+    }
+
     private static void assertCode(String code, String... args) {
         try {
             CommandSpecParser.parse(sampleSpec(), args);
