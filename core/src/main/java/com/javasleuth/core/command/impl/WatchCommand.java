@@ -7,6 +7,9 @@ import com.javasleuth.core.command.CommandContextHolder;
 import com.javasleuth.core.command.StreamCommand;
 import com.javasleuth.core.command.StreamSink;
 import com.javasleuth.foundation.config.ConfigView;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.config.model.MonitoringConfig;
+import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.core.enhancement.ClassEnhancer;
 import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
 import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
@@ -239,7 +242,8 @@ public class WatchCommand implements StreamCommand {
         Class<?> targetClass = resolved.getClazz();
 
         String watchId = UUID.randomUUID().toString();
-        BlockingQueue<WatchResult> resultQueue = new LinkedBlockingQueue<>(config.getInt("monitoring.watch.queue.capacity", 1000));
+        MonitoringConfig monitoring = SleuthConfigParser.parse(configSnapshot()).monitoring();
+        BlockingQueue<WatchResult> resultQueue = new LinkedBlockingQueue<>(monitoring.getWatchQueueCapacity());
         if (targetClass == null) {
             String msg = "Target class not found in loaded classes: " + targetClassName;
             if (sink != null) {
@@ -253,7 +257,7 @@ public class WatchCommand implements StreamCommand {
             captureParams, captureReturn, captureException, watchId);
         boolean enhancerAdded = false;
         try {
-            boolean dropOnFull = config.getBoolean("monitoring.watch.drop.on.full", true);
+            boolean dropOnFull = monitoring.isWatchDropOnFull();
             spyDispatcher.register(
                 watchId,
                 SleuthSpyDispatcher.ListenerKind.WATCH,
@@ -394,6 +398,10 @@ public class WatchCommand implements StreamCommand {
         }
         result.append(summary);
         return result.toString();
+    }
+
+    private ConfigView configSnapshot() {
+        return config instanceof ProductionConfig ? ((ProductionConfig) config).snapshot() : config;
     }
 
     private void closeWatchSession(String watchId, String reason) {

@@ -6,6 +6,9 @@ import com.javasleuth.core.command.CommandContextHolder;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.foundation.config.ConfigView;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.config.model.SleuthConfigParser;
+import com.javasleuth.foundation.config.model.VmToolConfig;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
 import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
@@ -117,8 +120,9 @@ public class VmToolCommand implements Command {
         Integer loaderId = null;
         boolean allowFirst = false;
         boolean includeSubclasses = false;
-        int maxEntries = config.getInt("vmtool.track.max.entries", 500);
-        int classLimit = config.getInt("vmtool.track.class.limit", 50);
+        VmToolConfig vmTool = SleuthConfigParser.parse(configSnapshot()).vmTool();
+        int maxEntries = vmTool.getTrackMaxEntries();
+        int classLimit = vmTool.getTrackClassLimit();
 
         for (int i = 3; i < args.length; i++) {
             String a = args[i];
@@ -164,6 +168,10 @@ public class VmToolCommand implements Command {
             }
         }
         return r != null ? r.getMessage() : "vmtool track failed.";
+    }
+
+    private ConfigView configSnapshot() {
+        return config instanceof ProductionConfig ? ((ProductionConfig) config).snapshot() : config;
     }
 
     private String handleStop(String[] args) {

@@ -31,10 +31,11 @@ public final class SleuthConfigParser {
         PerformanceConfig performance = parsePerformance(config);
         JobsConfig jobs = parseJobs(config);
         MonitoringConfig monitoring = parseMonitoring(config);
+        VmToolConfig vmTool = parseVmTool(config);
         LoggingConfig logging = parseLogging(config);
         PluginsConfig plugins = parsePlugins(config);
 
-        return new SleuthConfig(server, protocol, security, performance, jobs, monitoring, logging, plugins);
+        return new SleuthConfig(server, protocol, security, performance, jobs, monitoring, vmTool, logging, plugins);
     }
 
     private static ServerConfig parseServer(ConfigView config) {
@@ -180,6 +181,12 @@ public final class SleuthConfigParser {
             traceQueue,
             traceDrop
         );
+    }
+
+    private static VmToolConfig parseVmTool(ConfigView config) {
+        int maxEntries = SleuthConfigSchema.VMTOOL_TRACK_MAX_ENTRIES.read(config);
+        int classLimit = SleuthConfigSchema.VMTOOL_TRACK_CLASS_LIMIT.read(config);
+        return new VmToolConfig(maxEntries, classLimit);
     }
 
     private static LoggingConfig parseLogging(ConfigView config) {

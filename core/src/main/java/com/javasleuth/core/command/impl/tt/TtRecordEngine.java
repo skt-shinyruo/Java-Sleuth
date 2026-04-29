@@ -6,6 +6,9 @@ import com.javasleuth.core.command.CommandContextHolder;
 import com.javasleuth.core.command.StreamSink;
 import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.foundation.config.ConfigView;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.config.model.MonitoringConfig;
+import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.bootstrap.data.TtRecord;
 import com.javasleuth.core.enhancement.ClassEnhancer;
 import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
@@ -87,12 +90,13 @@ public final class TtRecordEngine {
         }
 
         String ttId = UUID.randomUUID().toString();
-        BlockingQueue<TtRecord> q = new LinkedBlockingQueue<>(config.getInt("monitoring.watch.queue.capacity", 1000));
+        MonitoringConfig monitoring = SleuthConfigParser.parse(configSnapshot()).monitoring();
+        BlockingQueue<TtRecord> q = new LinkedBlockingQueue<>(monitoring.getWatchQueueCapacity());
 
         ClassEnhancer enhancer = new TtEnhancer(target.getName(), methodPattern, null, ttId);
         boolean enhancerAdded = false;
         try {
-            boolean dropOnFull = config.getBoolean("monitoring.watch.drop.on.full", true);
+            boolean dropOnFull = monitoring.isWatchDropOnFull();
             spyDispatcher.register(
                 ttId,
                 SleuthSpyDispatcher.ListenerKind.TT,
@@ -201,6 +205,10 @@ public final class TtRecordEngine {
         }
         out.append(summary);
         return out.toString();
+    }
+
+    private ConfigView configSnapshot() {
+        return config instanceof ProductionConfig ? ((ProductionConfig) config).snapshot() : config;
     }
 
     public boolean stop(String ttId) {

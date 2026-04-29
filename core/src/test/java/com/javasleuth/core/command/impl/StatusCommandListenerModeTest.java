@@ -16,6 +16,72 @@ import org.junit.Test;
 public class StatusCommandListenerModeTest {
 
     @Test
+    public void statusDisplaysNormalizedValuesForInvalidExplicitSystemProperties() throws Exception {
+        System.setProperty("sleuth.server.port", "70000");
+        System.setProperty("sleuth.security.input.validation", "maybe");
+        System.setProperty("sleuth.monitoring.metrics.enabled", "maybe");
+
+        ProductionConfig config = null;
+        MetricsCollector metricsCollector = null;
+        try {
+            config = ProductionConfig.createDefault();
+            metricsCollector = new MetricsCollector(config);
+            try (PerformanceOptimizer performanceOptimizer = new PerformanceOptimizer(config)) {
+                StatusCommand command = new StatusCommand(
+                    fakeInstrumentation(),
+                    metricsCollector,
+                    null,
+                    config,
+                    performanceOptimizer,
+                    null
+                );
+
+                String status = command.execute(new String[]{"status"});
+
+                Assert.assertTrue(status.contains("Server Port: 3658"));
+                Assert.assertTrue(status.contains("Input Validation: ENABLED"));
+                Assert.assertTrue(status.contains("Metrics Collection: ENABLED"));
+                Assert.assertFalse(status.contains("Server Port: 70000"));
+            }
+        } finally {
+            System.clearProperty("sleuth.server.port");
+            System.clearProperty("sleuth.security.input.validation");
+            System.clearProperty("sleuth.monitoring.metrics.enabled");
+            if (metricsCollector != null) {
+                metricsCollector.shutdown();
+            }
+        }
+    }
+
+    @Test
+    public void statusDisplaysValidRuntimeOverrides() throws Exception {
+        ProductionConfig config = ProductionConfig.createDefault();
+        config.setRuntimeConfig("server.port", "12345");
+        config.setRuntimeConfig("security.input.validation", "false");
+        config.setRuntimeConfig("monitoring.metrics.enabled", "false");
+
+        MetricsCollector metricsCollector = new MetricsCollector(config);
+        try (PerformanceOptimizer performanceOptimizer = new PerformanceOptimizer(config)) {
+            StatusCommand command = new StatusCommand(
+                fakeInstrumentation(),
+                metricsCollector,
+                null,
+                config,
+                performanceOptimizer,
+                null
+            );
+
+            String status = command.execute(new String[]{"status"});
+
+            Assert.assertTrue(status.contains("Server Port: 12345"));
+            Assert.assertTrue(status.contains("Input Validation: DISABLED"));
+            Assert.assertTrue(status.contains("Metrics Collection: DISABLED"));
+        } finally {
+            metricsCollector.shutdown();
+        }
+    }
+
+    @Test
     public void statusDoesNotPromoteLegacyRegistriesToPrimaryListenerCounts_whenDispatcherIsUnavailable() throws Exception {
         WatchInterceptor.unregisterAllWatches();
         TraceInterceptor.unregisterAllTraces();
