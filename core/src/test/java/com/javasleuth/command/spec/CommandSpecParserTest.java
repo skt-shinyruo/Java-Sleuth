@@ -75,6 +75,11 @@ public class CommandSpecParserTest {
     }
 
     @Test
+    public void overflowingNegativeIntegerValueFailsAsInvalid() {
+        assertNegativeNumberCode("E_ARGS_INVALID", "adjust", "--count", "-2147483649");
+    }
+
+    @Test
     public void duplicateNonRepeatableOptionFails() {
         assertCode("E_ARGS_DUPLICATE", "watch", "A", "m", "--count", "1", "--count=2");
     }
@@ -94,6 +99,17 @@ public class CommandSpecParserTest {
             Assert.fail("Expected " + code);
         } catch (CommandSpecParseException e) {
             Assert.assertEquals(code, e.getCode());
+            Assert.assertTrue(e.getMessage().startsWith(code + ": "));
+        }
+    }
+
+    private static void assertNegativeNumberCode(String code, String... args) {
+        try {
+            CommandSpecParser.parse(negativeNumberSpec(), args);
+            Assert.fail("Expected " + code);
+        } catch (CommandSpecParseException e) {
+            Assert.assertEquals(code, e.getCode());
+            Assert.assertNotEquals("E_ARGS_MISSING", e.getCode());
             Assert.assertTrue(e.getMessage().startsWith(code + ": "));
         }
     }

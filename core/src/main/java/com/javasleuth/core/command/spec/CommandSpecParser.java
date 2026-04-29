@@ -145,22 +145,13 @@ public final class CommandSpecParser {
     }
 
     private static boolean isNegativeNumericLiteral(OptionSpec option, String token) {
-        if (token == null || token.length() <= 1 || !token.startsWith("-")) {
+        if (token == null || token.length() <= 1) {
             return false;
         }
-        try {
-            if (option.getType() == OptionSpec.Type.INTEGER) {
-                Integer.parseInt(token);
-                return true;
-            }
-            if (option.getType() == OptionSpec.Type.LONG) {
-                Long.parseLong(token);
-                return true;
-            }
-            return false;
-        } catch (NumberFormatException e) {
+        if (option.getType() != OptionSpec.Type.INTEGER && option.getType() != OptionSpec.Type.LONG) {
             return false;
         }
+        return token.matches("-[0-9]+");
     }
 
     private static ParsedOptionToken splitOptionToken(String token) {
