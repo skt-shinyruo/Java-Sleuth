@@ -1,5 +1,6 @@
 package com.javasleuth.core.command.spec;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -83,6 +84,7 @@ public final class OptionSpec {
         private final Type type;
         private final List<String> aliases = new ArrayList<>();
         private Object defaultValue;
+        private boolean defaultValueSet;
         private Long min;
         private Long max;
         private boolean repeatable;
@@ -105,6 +107,7 @@ public final class OptionSpec {
 
         public Builder defaultValue(Object value) {
             this.defaultValue = value;
+            this.defaultValueSet = true;
             return this;
         }
 
@@ -120,7 +123,96 @@ public final class OptionSpec {
         }
 
         public OptionSpec build() {
+            validateRangeConfiguration();
+            if (defaultValueSet) {
+                defaultValue = normalizeDefaultValue(defaultValue);
+                validateDefaultRange();
+            }
             return new OptionSpec(this);
+        }
+
+        private void validateRangeConfiguration() {
+            if (min == null && max == null) {
+                return;
+            }
+            if (type != Type.INTEGER && type != Type.LONG) {
+                throw new IllegalArgumentException("Range is only supported for numeric options: " + name);
+            }
+            if (min > max) {
+                throw new IllegalArgumentException("Range minimum must not exceed maximum for option " + name);
+            }
+        }
+
+        private Object normalizeDefaultValue(Object value) {
+            if (value == null) {
+                throw new IllegalArgumentException("Default value for option " + name + " must not be null");
+            }
+            if (type == Type.FLAG) {
+                if (value instanceof Boolean) {
+                    return value;
+                }
+                throw invalidDefaultValue();
+            }
+            if (type == Type.STRING) {
+                if (value instanceof String) {
+                    return value;
+                }
+                throw invalidDefaultValue();
+            }
+            if (type == Type.INTEGER) {
+                try {
+                    return Integer.valueOf(toWholeNumber(value).intValueExact());
+                } catch (ArithmeticException e) {
+                    throw invalidDefaultValue();
+                }
+            }
+            if (type == Type.LONG) {
+                try {
+                    return Long.valueOf(toWholeNumber(value).longValueExact());
+                } catch (ArithmeticException e) {
+                    throw invalidDefaultValue();
+                }
+            }
+            throw invalidDefaultValue();
+        }
+
+        private BigDecimal toWholeNumber(Object value) {
+            if (!(value instanceof Number)) {
+                throw invalidDefaultValue();
+            }
+            BigDecimal decimal;
+            try {
+                if (value instanceof Float || value instanceof Double) {
+                    decimal = BigDecimal.valueOf(((Number) value).doubleValue());
+                } else {
+                    decimal = new BigDecimal(value.toString());
+                }
+            } catch (NumberFormatException e) {
+                throw invalidDefaultValue();
+            }
+            try {
+                return new BigDecimal(decimal.toBigIntegerExact());
+            } catch (ArithmeticException e) {
+                throw invalidDefaultValue();
+            }
+        }
+
+        private void validateDefaultRange() {
+            if (!hasConfiguredRange()) {
+                return;
+            }
+            long value = ((Number) defaultValue).longValue();
+            if (value < min || value > max) {
+                throw new IllegalArgumentException("Default value for option " + name + " must be between " + min + " and " + max);
+            }
+        }
+
+        private boolean hasConfiguredRange() {
+            return min != null && max != null;
+        }
+
+        private IllegalArgumentException invalidDefaultValue() {
+            return new IllegalArgumentException("Default value for option " + name + " is not valid for type " + type);
         }
     }
 }

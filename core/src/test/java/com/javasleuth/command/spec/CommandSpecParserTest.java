@@ -158,6 +158,78 @@ public class CommandSpecParserTest {
     }
 
     @Test
+    public void invalidDefaultTypeRejectedByBuilder() {
+        assertInvalidOptionSpec(new Runnable() {
+            @Override
+            public void run() {
+                OptionSpec.integer("count").defaultValue("5").build();
+            }
+        }, "Default value for option count");
+
+        assertInvalidOptionSpec(new Runnable() {
+            @Override
+            public void run() {
+                OptionSpec.integer("count").defaultValue(1.5d).build();
+            }
+        }, "Default value for option count");
+    }
+
+    @Test
+    public void outOfRangeDefaultRejectedByBuilder() {
+        assertInvalidOptionSpec(new Runnable() {
+            @Override
+            public void run() {
+                OptionSpec.integer("count").defaultValue(0).range(1, 10).build();
+            }
+        }, "Default value for option count must be between 1 and 10");
+    }
+
+    @Test
+    public void invalidRangeOrderRejectedByBuilder() {
+        assertInvalidOptionSpec(new Runnable() {
+            @Override
+            public void run() {
+                OptionSpec.longNumber("duration").range(10, 1).build();
+            }
+        }, "Range minimum must not exceed maximum");
+    }
+
+    @Test
+    public void rangeOnNonNumericOptionRejectedByBuilder() {
+        assertInvalidOptionSpec(new Runnable() {
+            @Override
+            public void run() {
+                OptionSpec.string("name").range(1, 10).build();
+            }
+        }, "Range is only supported for numeric options");
+
+        assertInvalidOptionSpec(new Runnable() {
+            @Override
+            public void run() {
+                OptionSpec.flag("verbose").range(0, 1).build();
+            }
+        }, "Range is only supported for numeric options");
+    }
+
+    @Test
+    public void validDefaultsParseToTypedValues() {
+        CommandSpec spec = CommandSpec.builder("defaults")
+            .meta(CommandMeta.operator(false, true))
+            .option(OptionSpec.flag("enabled").defaultValue(Boolean.FALSE).build())
+            .option(OptionSpec.string("name").defaultValue("sleuth").build())
+            .option(OptionSpec.integer("count").defaultValue(100L).range(1, 100000).build())
+            .option(OptionSpec.longNumber("duration").defaultValue(5000).range(1L, 86400000L).build())
+            .build();
+
+        ParsedCommand parsed = CommandSpecParser.parse(spec, new String[] {"defaults"});
+
+        Assert.assertEquals(Boolean.FALSE, parsed.booleanOption("enabled"));
+        Assert.assertEquals("sleuth", parsed.stringOption("name"));
+        Assert.assertEquals(Integer.valueOf(100), parsed.intOption("count"));
+        Assert.assertEquals(Long.valueOf(5000L), parsed.longOption("duration"));
+    }
+
+    @Test
     public void buildsArgumentSpecsWithFluentApi() {
         ArgumentSpec required = ArgumentSpec.builder("class-pattern").required(true).build();
         ArgumentSpec optional = ArgumentSpec.builder("limit").required(false).build();
@@ -186,6 +258,15 @@ public class CommandSpecParserTest {
             Assert.assertEquals(code, e.getCode());
             Assert.assertNotEquals("E_ARGS_MISSING", e.getCode());
             Assert.assertTrue(e.getMessage().startsWith(code + ": "));
+        }
+    }
+
+    private static void assertInvalidOptionSpec(Runnable action, String messagePart) {
+        try {
+            action.run();
+            Assert.fail("Expected invalid option spec");
+        } catch (IllegalArgumentException e) {
+            Assert.assertTrue(e.getMessage().contains(messagePart));
         }
     }
 
