@@ -112,6 +112,21 @@ public class CommandSpecParserTest {
     }
 
     @Test
+    public void duplicateOptionInstanceRejectedByBuilder() {
+        OptionSpec count = OptionSpec.integer("count").alias("-n").alias("--count").build();
+
+        try {
+            CommandSpec.builder("dup")
+                .option(count)
+                .option(count)
+                .build();
+            Assert.fail("Expected duplicate option instance to fail");
+        } catch (IllegalArgumentException e) {
+            Assert.assertTrue(e.getMessage().contains("Duplicate option name: count"));
+        }
+    }
+
+    @Test
     public void repeatableOptionPreservesInputOrder() {
         ParsedCommand parsed = CommandSpecParser.parse(sampleSpec(), new String[] {
             "watch", "A", "m", "--condition", "first", "--condition=second", "--condition", "third"

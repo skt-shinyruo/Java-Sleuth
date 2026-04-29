@@ -19,6 +19,7 @@ public class CommandHelpRendererTest {
             .argument(ArgumentSpec.required("class-pattern"))
             .argument(ArgumentSpec.required("method-pattern"))
             .option(OptionSpec.longNumber("interval").alias("-i").alias("--interval").defaultValue(5000L).range(1L, 86400000L).build())
+            .option(OptionSpec.string("condition").alias("-c").build())
             .subcommand(SubcommandSpec.of("thread", "Inspect thread state", CommandSpec.builder("thread").build()))
             .example("monitor *Service* doWork -i 1000")
             .build();
@@ -31,6 +32,7 @@ public class CommandHelpRendererTest {
         Assert.assertTrue(help.contains("class-pattern"));
         Assert.assertTrue(help.contains("method-pattern"));
         Assert.assertTrue(help.contains("--interval <long>, -i <long>"));
+        Assert.assertTrue(help.contains("--condition <string>, -c <string>"));
         Assert.assertTrue(help.contains("default: 5000"));
         Assert.assertTrue(help.contains("range: 1..86400000"));
         Assert.assertTrue(help.contains("Subcommands:"));

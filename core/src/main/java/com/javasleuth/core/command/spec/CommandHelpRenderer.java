@@ -90,7 +90,7 @@ public final class CommandHelpRenderer {
         if (option.getType() == OptionSpec.Type.LONG) {
             return "<long>";
         }
-        return "<value>";
+        return "<string>";
     }
 
     private static String optionDetails(OptionSpec option) {
