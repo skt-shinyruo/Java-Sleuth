@@ -12,6 +12,7 @@ package com.javasleuth.core.agent.runtime;
  * attaching a real agent.</p>
  */
 public final class BootstrapBridge {
+    public static final String AGENT_LIFECYCLE = "com.javasleuth.bootstrap.agent.AgentLifecycle";
     public static final String SPY_API = "com.javasleuth.bootstrap.spy.SleuthSpyAPI";
     public static final String TRACE_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.TraceInterceptor";
     public static final String WATCH_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.WatchInterceptor";
@@ -19,8 +20,41 @@ public final class BootstrapBridge {
     public static final String TT_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.TtInterceptor";
     public static final String STACK_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.StackInterceptor";
     public static final String VMTOOL_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.VmToolInterceptor";
+    public static final int MIN_CONTRACT_VERSION = 1;
+    public static final int MAX_CONTRACT_VERSION = 1;
 
     private BootstrapBridge() {}
+
+    private enum ContractStatus {
+        OK,
+        MISSING_CLASS,
+        MISSING_METHOD,
+        BAD_RETURN_TYPE,
+        INVOCATION_FAILED,
+        INCOMPATIBLE_VERSION
+    }
+
+    private static final class ContractCheck {
+        private final ContractStatus status;
+        private final int version;
+        private final String visibility;
+        private final String detail;
+
+        private ContractCheck(ContractStatus status, int version, String visibility, String detail) {
+            this.status = status;
+            this.version = version;
+            this.visibility = visibility;
+            this.detail = detail;
+        }
+
+        private static ContractCheck ok(int version, String visibility) {
+            return new ContractCheck(ContractStatus.OK, version, visibility, null);
+        }
+
+        private static ContractCheck failed(ContractStatus status, int version, String detail) {
+            return new ContractCheck(status, version, null, detail);
+        }
+    }
 
     /**
      * Strict mode is enabled when core is running in the isolated classloader (parent == null).
@@ -91,5 +125,61 @@ public final class BootstrapBridge {
             return strict ? "OK (bootstrap-visible)" : "OK (classpath-visible)";
         }
         return strict ? "UNAVAILABLE (fail-fast)" : "UNAVAILABLE";
+    }
+
+    public static int bootstrapContractVersion() {
+        ContractCheck check = checkContract();
+        return check.status == ContractStatus.OK || check.status == ContractStatus.INCOMPATIBLE_VERSION ? check.version : -1;
+    }
+
+    public static String describeContractStatus() {
+        ContractCheck check = checkContract();
+        if (check.status == ContractStatus.OK) {
+            return "OK (contract=" + check.version + ", " + check.visibility + ")";
+        }
+        if (check.status == ContractStatus.MISSING_CLASS) {
+            return "UNAVAILABLE (missing AgentLifecycle)";
+        }
+        if (check.status == ContractStatus.MISSING_METHOD) {
+            return "UNAVAILABLE (missing contractVersion)";
+        }
+        if (check.status == ContractStatus.BAD_RETURN_TYPE) {
+            return "UNAVAILABLE (bad contractVersion return type: " + check.detail + ")";
+        }
+        if (check.status == ContractStatus.INVOCATION_FAILED) {
+            return "UNAVAILABLE (contract check failed: " + check.detail + ")";
+        }
+        return "INCOMPATIBLE (expected " + MIN_CONTRACT_VERSION + ".." + MAX_CONTRACT_VERSION + ", found " + check.version + ")";
+    }
+
+    private static ContractCheck checkContract() {
+        boolean strict = isStrictMode();
+        ClassLoader loader = strict ? null : BootstrapBridge.class.getClassLoader();
+        String visibility = strict ? "bootstrap-visible" : "classpath-visible";
+        try {
+            Class<?> lifecycle = Class.forName(AGENT_LIFECYCLE, false, loader);
+            if (strict && lifecycle.getClassLoader() != null) {
+                return ContractCheck.failed(ContractStatus.MISSING_CLASS, -1, "not bootstrap-visible");
+            }
+            java.lang.reflect.Method method = lifecycle.getMethod("contractVersion");
+            if (method.getReturnType() != Integer.TYPE) {
+                return ContractCheck.failed(ContractStatus.BAD_RETURN_TYPE, -1, method.getReturnType().getName());
+            }
+            Object result = method.invoke(null);
+            if (!(result instanceof Number)) {
+                return ContractCheck.failed(ContractStatus.BAD_RETURN_TYPE, -1, String.valueOf(result));
+            }
+            int version = ((Number) result).intValue();
+            if (version < MIN_CONTRACT_VERSION || version > MAX_CONTRACT_VERSION) {
+                return ContractCheck.failed(ContractStatus.INCOMPATIBLE_VERSION, version, null);
+            }
+            return ContractCheck.ok(version, visibility);
+        } catch (ClassNotFoundException e) {
+            return ContractCheck.failed(ContractStatus.MISSING_CLASS, -1, e.getMessage());
+        } catch (NoSuchMethodException e) {
+            return ContractCheck.failed(ContractStatus.MISSING_METHOD, -1, e.getMessage());
+        } catch (Throwable t) {
+            return ContractCheck.failed(ContractStatus.INVOCATION_FAILED, -1, t.getClass().getSimpleName());
+        }
     }
 }

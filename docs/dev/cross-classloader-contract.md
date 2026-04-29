@@ -21,6 +21,7 @@ Implementation rule:
 Used by the thin agent and/or injected bytecode:
 
 - `com.javasleuth.bootstrap.agent.AgentLifecycle`
+  - `contractVersion() : int`
   - `tryBeginAttach() : long`
   - `applyAgentArgsIfAbsent(long, String) : boolean`
   - `commitIsolatedClassLoader(long, ClassLoader) : boolean`
@@ -45,6 +46,8 @@ Loaded by the isolated classloader and invoked by the thin agent:
 - `com.javasleuth.container.SleuthAgentContainerEntrypoint`
   - `agentmain(String, Instrumentation) : void`
   - `premain(String, Instrumentation) : void`
+
+The bootstrap bridge contract version is an ABI version. It starts at `1` and changes only when the thin-agent reflection contract or bootstrap-visible runtime contract becomes incompatible.
 
 ## Verification
 

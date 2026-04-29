@@ -79,6 +79,7 @@ public class StatusCommand implements Command {
         status.append("Retransform Classes: ").append(instrumentation.isRetransformClassesSupported() ? "Supported" : "Not Supported").append("\n");
         status.append("Native Method Prefix: ").append(instrumentation.isNativeMethodPrefixSupported() ? "Supported" : "Not Supported").append("\n");
         status.append("Bootstrap Bridge: ").append(BootstrapBridge.describeStatus()).append("\n");
+        status.append("Bootstrap Contract: ").append(BootstrapBridge.describeContractStatus()).append("\n");
         if (transformer != null) {
             status.append("Active Enhancers: ").append(transformer.getActiveEnhancersCount()).append("\n");
             status.append("Transformations: ").append(transformer.getTransformationCount()).append("\n");

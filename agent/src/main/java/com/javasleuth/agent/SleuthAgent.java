@@ -82,6 +82,16 @@ public final class SleuthAgent {
                 return;
             }
 
+            CrossClassLoaderFacade.BootstrapContractCheck contract = CrossClassLoaderFacade.verifyBootstrapContract();
+            if (contract == null || !contract.isOk()) {
+                String message = contract != null ? contract.userMessage() : "Bootstrap bridge contract check failed";
+                System.err.println(message);
+                if (failFast) {
+                    throw new IllegalStateException("Java-Sleuth: " + message + "; aborting agent startup");
+                }
+                return;
+            }
+
             // SSOT: acquire lifecycle session before any global side effects (sysprops, classloader, transformers...).
             sessionId = CrossClassLoaderFacade.tryBeginAttachOrZero();
             if (sessionId == 0L) {

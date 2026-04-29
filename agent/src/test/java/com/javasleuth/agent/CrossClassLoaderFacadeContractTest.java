@@ -43,5 +43,37 @@ public class CrossClassLoaderFacadeContractTest {
         Method isBootstrapBridgeAvailable = facade.getDeclaredMethod("isBootstrapBridgeAvailable");
         Assert.assertTrue(Modifier.isStatic(isBootstrapBridgeAvailable.getModifiers()));
         Assert.assertEquals(boolean.class, isBootstrapBridgeAvailable.getReturnType());
+
+        Method verifyBootstrapContract = facade.getDeclaredMethod("verifyBootstrapContract");
+        Assert.assertTrue(Modifier.isStatic(verifyBootstrapContract.getModifiers()));
+        Assert.assertEquals(CrossClassLoaderFacade.BootstrapContractCheck.class, verifyBootstrapContract.getReturnType());
+    }
+
+    @Test
+    public void bootstrapContractCheck_reportsOkVersion() {
+        CrossClassLoaderFacade.BootstrapContractCheck result = CrossClassLoaderFacade.BootstrapContractCheck.ok(1);
+
+        Assert.assertTrue(result.userMessage(), result.isOk());
+        Assert.assertEquals(CrossClassLoaderFacade.BootstrapContractCheck.Status.OK, result.getStatus());
+        Assert.assertEquals(Integer.valueOf(1), result.getFoundVersion());
+        Assert.assertTrue(result.userMessage(), result.userMessage().contains("OK"));
+        Assert.assertTrue(result.userMessage(), result.userMessage().contains("version=1"));
+    }
+
+    @Test
+    public void verifyBootstrapContract_rejectsBoxedReturnType() {
+        CrossClassLoaderFacade.BootstrapContractCheck result =
+            CrossClassLoaderFacade.verifyBootstrapContract(BoxedContractLifecycle.class);
+
+        Assert.assertFalse(result.isOk());
+        Assert.assertEquals(CrossClassLoaderFacade.BootstrapContractCheck.Status.BAD_RETURN_TYPE, result.getStatus());
+        Assert.assertTrue(result.userMessage(), result.userMessage().contains("BAD_RETURN_TYPE"));
+        Assert.assertTrue(result.userMessage(), result.userMessage().contains("java.lang.Integer"));
+    }
+
+    public static final class BoxedContractLifecycle {
+        public static Integer contractVersion() {
+            return Integer.valueOf(1);
+        }
     }
 }
