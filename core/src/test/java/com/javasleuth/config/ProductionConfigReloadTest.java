@@ -36,14 +36,14 @@ public class ProductionConfigReloadTest {
         ProductionConfig config = ProductionConfig.createDefault();
         Assert.assertEquals("v1", config.getString("demo.key", "x"));
 
-        config.setRuntimeConfig("demo.runtime", "r1", ConfigUpdateSource.COMMAND);
-        Assert.assertEquals("r1", config.getString("demo.runtime", "x"));
+        config.setRuntimeConfig("logging.level", "DEBUG", ConfigUpdateSource.COMMAND);
+        Assert.assertEquals("DEBUG", config.getString("logging.level", "x"));
 
         writeProperties(tmp, "demo.key", "v2");
         config.reloadConfiguration();
 
         Assert.assertEquals("v2", config.getString("demo.key", "x"));
-        Assert.assertEquals("r1", config.getString("demo.runtime", "x"));
+        Assert.assertEquals("DEBUG", config.getString("logging.level", "x"));
     }
 
     private static void writeProperties(File file, String key, String value) throws Exception {

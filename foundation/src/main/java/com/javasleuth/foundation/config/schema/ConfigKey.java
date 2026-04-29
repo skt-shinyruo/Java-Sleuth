@@ -167,6 +167,73 @@ public final class ConfigKey<T> {
         }
     }
 
+    public ConfigValidationResult validateRuntimeValue(String rawValue) {
+        String raw = rawValue == null ? "" : rawValue.trim();
+        String displayValue = displayRaw(rawValue);
+        if (raw.isEmpty() && valueType != ValueType.STRING) {
+            return ConfigValidationResult.invalid("Invalid config " + key + "=" + displayValue + " (empty)", sensitive);
+        }
+        try {
+            switch (valueType) {
+                case STRING:
+                    if (requireNonBlank && raw.trim().isEmpty()) {
+                        return ConfigValidationResult.invalid("Invalid config " + key + "=" + displayValue + " (blank)", sensitive);
+                    }
+                    if (allowedStringValuesLower != null && !allowedStringValuesLower.isEmpty()) {
+                        String lower = raw.toLowerCase(Locale.ROOT);
+                        if (!allowedStringValuesLower.contains(lower)) {
+                            return ConfigValidationResult.invalid("Invalid config " + key + "=" + displayValue + " (unsupported)", sensitive);
+                        }
+                    }
+                    return ConfigValidationResult.ok(raw, sensitive);
+                case INT:
+                    int intValue = Integer.parseInt(raw);
+                    if (minLongInclusive != null && intValue < minLongInclusive.longValue()) {
+                        return ConfigValidationResult.invalid("Invalid config " + key + "=" + displayValue + " (out_of_range)", sensitive);
+                    }
+                    if (maxLongInclusive != null && intValue > maxLongInclusive.longValue()) {
+                        return ConfigValidationResult.invalid("Invalid config " + key + "=" + displayValue + " (out_of_range)", sensitive);
+                    }
+                    return ConfigValidationResult.ok(String.valueOf(intValue), sensitive);
+                case LONG:
+                    long longValue = Long.parseLong(raw);
+                    if (minLongInclusive != null && longValue < minLongInclusive.longValue()) {
+                        return ConfigValidationResult.invalid("Invalid config " + key + "=" + displayValue + " (out_of_range)", sensitive);
+                    }
+                    if (maxLongInclusive != null && longValue > maxLongInclusive.longValue()) {
+                        return ConfigValidationResult.invalid("Invalid config " + key + "=" + displayValue + " (out_of_range)", sensitive);
+                    }
+                    return ConfigValidationResult.ok(String.valueOf(longValue), sensitive);
+                case DOUBLE:
+                    double doubleValue = Double.parseDouble(raw);
+                    if (Double.isNaN(doubleValue) || Double.isInfinite(doubleValue)) {
+                        return ConfigValidationResult.invalid("Invalid config " + key + "=" + displayValue + " (not_finite)", sensitive);
+                    }
+                    if (minDoubleInclusive != null && doubleValue < minDoubleInclusive.doubleValue()) {
+                        return ConfigValidationResult.invalid("Invalid config " + key + "=" + displayValue + " (out_of_range)", sensitive);
+                    }
+                    if (maxDoubleInclusive != null && doubleValue > maxDoubleInclusive.doubleValue()) {
+                        return ConfigValidationResult.invalid("Invalid config " + key + "=" + displayValue + " (out_of_range)", sensitive);
+                    }
+                    return ConfigValidationResult.ok(String.valueOf(doubleValue), sensitive);
+                case BOOLEAN:
+                    String lower = raw.toLowerCase(Locale.ROOT);
+                    if (!"true".equals(lower) && !"false".equals(lower)) {
+                        return ConfigValidationResult.invalid("Invalid config " + key + "=" + displayValue + " (not_boolean)", sensitive);
+                    }
+                    return ConfigValidationResult.ok(lower, sensitive);
+                default:
+                    return ConfigValidationResult.invalid("Invalid config " + key + "=" + displayValue + " (unsupported_type)", sensitive);
+            }
+        } catch (NumberFormatException e) {
+            return ConfigValidationResult.invalid("Invalid config " + key + "=" + displayValue + " (not_" + valueType.name().toLowerCase(Locale.ROOT) + ")", sensitive);
+        }
+    }
+
+    private String displayRaw(String raw) {
+        return sensitive ? "<sensitive>" : String.valueOf(raw);
+    }
+
     private String readString(ConfigView config, ConfigOrigin origin, String value) {
         String v = value;
         if (v == null) {

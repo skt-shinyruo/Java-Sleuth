@@ -25,7 +25,7 @@ public class CommandProcessorMaxConnectionsTest {
         try {
             config.clearRuntimeConfig();
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
-            config.setRuntimeConfig("server.port", "0");
+            config.setRuntimeConfig("server.port", String.valueOf(allocatePort()));
             config.setRuntimeConfig("server.max.connections", "1");
 
             Thread serverThread = new Thread(processor::start, "test-cp-start-maxconn");
@@ -83,6 +83,15 @@ public class CommandProcessorMaxConnectionsTest {
             return ss.getLocalPort();
         }
         throw new AssertionError("ServerSocket not open within timeout");
+    }
+
+    private static int allocatePort() throws Exception {
+        ServerSocket socket = new ServerSocket(0);
+        try {
+            return socket.getLocalPort();
+        } finally {
+            socket.close();
+        }
     }
 
     private static ServerSocket readServerSocket(CommandProcessor processor) throws Exception {
