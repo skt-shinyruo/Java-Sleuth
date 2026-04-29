@@ -42,7 +42,7 @@ public final class CommandSpecParser {
                 } else {
                     String rawValue = parsedToken.value;
                     if (rawValue == null) {
-                        if (i + 1 >= actualArgs.length || actualArgs[i + 1] == null || actualArgs[i + 1].startsWith("-")) {
+                        if (i + 1 >= actualArgs.length || isMissingValueToken(option, actualArgs[i + 1])) {
                             throw new CommandSpecParseException("E_ARGS_MISSING", "Missing value for option " + parsedToken.name);
                         }
                         rawValue = actualArgs[++i];
@@ -138,6 +138,29 @@ public final class CommandSpecParser {
 
     private static boolean isHelpToken(String token) {
         return "-h".equals(token) || "--help".equals(token) || "help".equals(token);
+    }
+
+    private static boolean isMissingValueToken(OptionSpec option, String token) {
+        return token == null || (token.startsWith("-") && !isNegativeNumericLiteral(option, token));
+    }
+
+    private static boolean isNegativeNumericLiteral(OptionSpec option, String token) {
+        if (token == null || token.length() <= 1 || !token.startsWith("-")) {
+            return false;
+        }
+        try {
+            if (option.getType() == OptionSpec.Type.INTEGER) {
+                Integer.parseInt(token);
+                return true;
+            }
+            if (option.getType() == OptionSpec.Type.LONG) {
+                Long.parseLong(token);
+                return true;
+            }
+            return false;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 
     private static ParsedOptionToken splitOptionToken(String token) {

@@ -61,6 +61,20 @@ public class CommandSpecParserTest {
     }
 
     @Test
+    public void parsesNegativeIntegerOptionValue() {
+        ParsedCommand parsed = CommandSpecParser.parse(negativeNumberSpec(), new String[] {"adjust", "--count", "-1"});
+
+        Assert.assertEquals(Integer.valueOf(-1), parsed.intOption("count"));
+    }
+
+    @Test
+    public void parsesNegativeLongOptionValue() {
+        ParsedCommand parsed = CommandSpecParser.parse(negativeNumberSpec(), new String[] {"adjust", "--duration", "-9223372036854775808"});
+
+        Assert.assertEquals(Long.valueOf(Long.MIN_VALUE), parsed.longOption("duration"));
+    }
+
+    @Test
     public void duplicateNonRepeatableOptionFails() {
         assertCode("E_ARGS_DUPLICATE", "watch", "A", "m", "--count", "1", "--count=2");
     }
@@ -94,6 +108,14 @@ public class CommandSpecParserTest {
             .option(OptionSpec.integer("count").alias("-n").alias("--count").defaultValue(100).range(1, 100000).build())
             .option(OptionSpec.string("condition").alias("--condition").repeatable(true).build())
             .option(OptionSpec.flag("bg").alias("--bg").build())
+            .build();
+    }
+
+    private static CommandSpec negativeNumberSpec() {
+        return CommandSpec.builder("adjust")
+            .meta(CommandMeta.operator(false, true))
+            .option(OptionSpec.integer("count").range(-10, 10).build())
+            .option(OptionSpec.longNumber("duration").range(Long.MIN_VALUE, Long.MAX_VALUE).build())
             .build();
     }
 }

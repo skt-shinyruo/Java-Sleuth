@@ -4,6 +4,7 @@ import com.javasleuth.core.command.spec.ArgumentSpec;
 import com.javasleuth.core.command.spec.CommandHelpRenderer;
 import com.javasleuth.core.command.spec.CommandSpec;
 import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.SubcommandSpec;
 import com.javasleuth.foundation.security.CommandMeta;
 import org.junit.Assert;
 import org.junit.Test;
@@ -18,6 +19,7 @@ public class CommandHelpRendererTest {
             .argument(ArgumentSpec.required("class-pattern"))
             .argument(ArgumentSpec.required("method-pattern"))
             .option(OptionSpec.longNumber("interval").alias("-i").alias("--interval").defaultValue(5000L).range(1L, 86400000L).build())
+            .subcommand(SubcommandSpec.of("thread", "Inspect thread state", CommandSpec.builder("thread").build()))
             .example("monitor *Service* doWork -i 1000")
             .build();
 
@@ -28,9 +30,11 @@ public class CommandHelpRendererTest {
         Assert.assertTrue(help.contains("Usage: monitor <class-pattern> <method-pattern> [options]"));
         Assert.assertTrue(help.contains("class-pattern"));
         Assert.assertTrue(help.contains("method-pattern"));
-        Assert.assertTrue(help.contains("-i, --interval"));
+        Assert.assertTrue(help.contains("--interval, -i"));
         Assert.assertTrue(help.contains("default: 5000"));
         Assert.assertTrue(help.contains("range: 1..86400000"));
+        Assert.assertTrue(help.contains("Subcommands:"));
+        Assert.assertTrue(help.contains("thread - Inspect thread state"));
         Assert.assertTrue(help.contains("monitor *Service* doWork -i 1000"));
     }
 }

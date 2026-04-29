@@ -1,5 +1,8 @@
 package com.javasleuth.core.command.spec;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public final class CommandHelpRenderer {
     private CommandHelpRenderer() {
     }
@@ -52,15 +55,19 @@ public final class CommandHelpRenderer {
     }
 
     private static String optionNames(OptionSpec option) {
-        if (option.getAliases().isEmpty()) {
-            return "--" + option.getName();
+        List<String> orderedNames = new ArrayList<>();
+        orderedNames.add("--" + option.getName());
+        for (String alias : option.getAliases()) {
+            if (!orderedNames.contains(alias)) {
+                orderedNames.add(alias);
+            }
         }
         StringBuilder names = new StringBuilder();
-        for (String alias : option.getAliases()) {
+        for (String name : orderedNames) {
             if (names.length() > 0) {
                 names.append(", ");
             }
-            names.append(alias);
+            names.append(name);
         }
         return names.toString();
     }
