@@ -10,9 +10,10 @@ public class CommandContext {
     private final String commandName;
     private final boolean streaming;
     private final ClientSession clientSession;
+    private final CancellationToken cancellationToken;
 
     public CommandContext(String clientId, String clientInfo, String sessionId, boolean streaming) {
-        this(clientId, clientInfo, sessionId, null, null, streaming, null);
+        this(clientId, clientInfo, sessionId, null, null, streaming, null, CancellationToken.NONE);
     }
 
     public CommandContext(String clientId,
@@ -22,6 +23,17 @@ public class CommandContext {
                           String commandName,
                           boolean streaming,
                           ClientSession clientSession) {
+        this(clientId, clientInfo, sessionId, connId, commandName, streaming, clientSession, CancellationToken.NONE);
+    }
+
+    public CommandContext(String clientId,
+                          String clientInfo,
+                          String sessionId,
+                          String connId,
+                          String commandName,
+                          boolean streaming,
+                          ClientSession clientSession,
+                          CancellationToken cancellationToken) {
         this.clientId = clientId;
         this.clientInfo = clientInfo;
         this.sessionId = sessionId;
@@ -29,6 +41,7 @@ public class CommandContext {
         this.commandName = commandName;
         this.streaming = streaming;
         this.clientSession = clientSession;
+        this.cancellationToken = cancellationToken != null ? cancellationToken : CancellationToken.NONE;
     }
 
     public CommandContext(String clientId,
@@ -69,5 +82,13 @@ public class CommandContext {
 
     public ClientSession getClientSession() {
         return clientSession;
+    }
+
+    public CancellationToken getCancellationToken() {
+        return cancellationToken != null ? cancellationToken : CancellationToken.NONE;
+    }
+
+    public CommandContext withCancellationToken(CancellationToken token) {
+        return new CommandContext(clientId, clientInfo, sessionId, connId, commandName, streaming, clientSession, token);
     }
 }

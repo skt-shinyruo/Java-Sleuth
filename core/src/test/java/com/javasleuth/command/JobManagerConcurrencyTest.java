@@ -5,6 +5,7 @@ import org.junit.Test;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.*;
 
@@ -42,6 +43,44 @@ public class JobManagerConcurrencyTest {
         } finally {
             block.countDown();
             // Best-effort cleanup (avoid leaking background jobs across test suite).
+            jm.shutdown("test_teardown");
+        }
+    }
+
+    @Test
+    public void stop_cancelsContextTokenVisibleToJob() throws Exception {
+        JobManager jm = new JobManager();
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch observed = new CountDownLatch(1);
+        AtomicBoolean observedCancellation = new AtomicBoolean(false);
+
+        CommandContextHolder.set(new CommandContext("client", "test", "session", false));
+        try {
+            String id = jm.submitStreamJob("watch", "watch", sink -> {
+                started.countDown();
+                while (!CommandContextHolder.get().getCancellationToken().isCancelled()) {
+                    try {
+                        Thread.sleep(20);
+                    } catch (InterruptedException e) {
+                        if (CommandContextHolder.get().getCancellationToken().isCancelled()) {
+                            observedCancellation.set(true);
+                            observed.countDown();
+                        }
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+                observedCancellation.set(true);
+                observed.countDown();
+            });
+
+            assertTrue(started.await(1, TimeUnit.SECONDS));
+            assertTrue(jm.stop(id));
+
+            assertTrue(observed.await(1, TimeUnit.SECONDS));
+            assertTrue(observedCancellation.get());
+        } finally {
+            CommandContextHolder.clear();
             jm.shutdown("test_teardown");
         }
     }

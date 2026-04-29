@@ -7,11 +7,15 @@ import com.javasleuth.foundation.security.AuthorizationManager;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.foundation.security.InputValidator;
+import com.javasleuth.core.command.pipeline.CommandExecutionEngine;
 import com.javasleuth.foundation.util.PerformanceOptimizer;
 import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.*;
 
@@ -148,6 +152,75 @@ public class CommandPipelineStreamExecutionTest {
         } finally {
             setOrClearProperty("sleuth.performance.command.timeout", oldTimeout);
             setOrClearProperty("sleuth.performance.command.timeout.max", oldTimeoutMax);
+        }
+    }
+
+    @Test
+    public void streamTimeout_cancelsContextTokenVisibleToCommand() throws Exception {
+        String oldTimeout = System.getProperty("sleuth.performance.command.timeout");
+        String oldTimeoutMax = System.getProperty("sleuth.performance.command.timeout.max");
+        String oldStreamCore = System.getProperty("sleuth.performance.command.stream.executor.core.size");
+        String oldStreamMax = System.getProperty("sleuth.performance.command.stream.executor.max.size");
+        try {
+            System.setProperty("sleuth.performance.command.timeout", "100");
+            System.setProperty("sleuth.performance.command.timeout.max", "100");
+            System.setProperty("sleuth.performance.command.stream.executor.core.size", "1");
+            System.setProperty("sleuth.performance.command.stream.executor.max.size", "1");
+
+            ProductionConfig config = ProductionConfig.createDefault();
+            CommandExecutionEngine engine = new CommandExecutionEngine(config);
+            try {
+                AtomicBoolean observedCancellation = new AtomicBoolean(false);
+                CountDownLatch observed = new CountDownLatch(1);
+
+                StreamCommand cmd = new StreamCommand() {
+                    @Override
+                    public String execute(String[] args) {
+                        return "";
+                    }
+
+                    @Override
+                    public void executeStream(String[] args, StreamSink sink) {
+                        while (!CommandContextHolder.get().getCancellationToken().isCancelled()) {
+                            try {
+                                Thread.sleep(20);
+                            } catch (InterruptedException e) {
+                                if (CommandContextHolder.get().getCancellationToken().isCancelled()) {
+                                    observedCancellation.set(true);
+                                    observed.countDown();
+                                }
+                                Thread.currentThread().interrupt();
+                                return;
+                            }
+                        }
+                        observedCancellation.set(true);
+                        observed.countDown();
+                    }
+
+                    @Override
+                    public String getDescription() {
+                        return "watch cancellation";
+                    }
+                };
+
+                try {
+                    engine.executeStream(cmd, new String[]{"watch"}, CommandMeta.viewer(false, true), 100,
+                        new CapturingSink(), new CommandContext("c", "i", "s", true));
+                    fail("Expected timeout");
+                } catch (Exception e) {
+                    assertTrue(e.getMessage().toLowerCase().contains("timed out"));
+                }
+
+                assertTrue(observed.await(1, TimeUnit.SECONDS));
+                assertTrue(observedCancellation.get());
+            } finally {
+                engine.shutdown();
+            }
+        } finally {
+            setOrClearProperty("sleuth.performance.command.timeout", oldTimeout);
+            setOrClearProperty("sleuth.performance.command.timeout.max", oldTimeoutMax);
+            setOrClearProperty("sleuth.performance.command.stream.executor.core.size", oldStreamCore);
+            setOrClearProperty("sleuth.performance.command.stream.executor.max.size", oldStreamMax);
         }
     }
 

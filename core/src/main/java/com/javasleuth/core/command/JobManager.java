@@ -18,7 +18,6 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -241,15 +240,16 @@ public final class JobManager {
         final String capturedConnId = capturedContext != null ? capturedContext.getConnId() : null;
         final String capturedCommand = capturedContext != null ? capturedContext.getCommandName() : null;
         final String logCommand = capturedCommand != null ? capturedCommand : (name == null ? null : name.trim());
+        final CommandContext jobContext = capturedContext != null
+            ? capturedContext.withCancellationToken(j.cancelSource.token())
+            : new CommandContext(null, null, null, false).withCancellationToken(j.cancelSource.token());
 
         try {
             Future<?> f = ex.submit(() -> {
                 j.thread = Thread.currentThread();
                 try {
                     try {
-                        if (capturedContext != null) {
-                            CommandContextHolder.set(capturedContext);
-                        }
+                        CommandContextHolder.set(jobContext);
                     } catch (Exception ignore) {
                         // ignore
                     }
@@ -312,7 +312,7 @@ public final class JobManager {
         if (j == null) {
             return false;
         }
-        j.cancelled.set(true);
+        j.cancelSource.cancel();
         Future<?> f = j.future;
         if (f != null) {
             try {
@@ -366,7 +366,7 @@ public final class JobManager {
         StreamSink sink = new JobStreamSink(j);
         try {
             job.run(sink);
-            if (!j.cancelled.get()) {
+            if (!j.cancelSource.isCancelled()) {
                 j.complete(null);
             } else {
                 j.stop();
@@ -389,7 +389,7 @@ public final class JobManager {
         private volatile Long endEpochMs;
         private volatile JobStatus status = JobStatus.RUNNING;
         private volatile String error;
-        private final AtomicBoolean cancelled = new AtomicBoolean(false);
+        private final CancellationTokenSource cancelSource = new CancellationTokenSource();
         private final RingBuffer<String> output = new RingBuffer<>(2000);
         private final int maxOutputBytes;
         private final AtomicLong outputBytes = new AtomicLong(0);

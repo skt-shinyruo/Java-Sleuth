@@ -3,6 +3,7 @@ package com.javasleuth.core.command.pipeline;
 import com.javasleuth.core.command.Command;
 import com.javasleuth.core.command.CommandContext;
 import com.javasleuth.core.command.CommandContextHolder;
+import com.javasleuth.core.command.CancellationTokenSource;
 import com.javasleuth.core.command.StreamCommand;
 import com.javasleuth.core.command.StreamSink;
 import com.javasleuth.core.command.session.ClientDisconnectedException;
@@ -273,8 +274,9 @@ public final class CommandExecutionEngine {
             return;
         }
 
+        CancellationTokenSource source = new CancellationTokenSource();
         PermitFutureTaskVoid task = new PermitFutureTaskVoid(permit, () -> {
-            applyContext(context);
+            applyContext(context != null ? context.withCancellationToken(source.token()) : null);
             try {
                 command.executeStream(args, sink);
             } finally {
@@ -294,6 +296,7 @@ public final class CommandExecutionEngine {
         try {
             task.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
+            source.cancel();
             task.cancel(true);
             boolean removed = false;
             try {
@@ -312,6 +315,7 @@ public final class CommandExecutionEngine {
                 cause = cause.getCause();
             }
             if (cause instanceof ClientDisconnectedException) {
+                source.cancel();
                 throw (ClientDisconnectedException) cause;
             }
             if (cause instanceof Exception) {
@@ -320,6 +324,7 @@ public final class CommandExecutionEngine {
             throw new Exception(cause != null ? cause.getMessage() : "Command execution failed");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            source.cancel();
             task.cancel(true);
             boolean removed = false;
             try {
