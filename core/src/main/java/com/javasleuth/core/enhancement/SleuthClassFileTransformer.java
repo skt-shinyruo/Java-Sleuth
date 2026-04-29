@@ -2,6 +2,7 @@ package com.javasleuth.core.enhancement;
 
 import com.javasleuth.core.agent.runtime.BootstrapBridge;
 import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import com.javasleuth.foundation.util.SleuthLogger;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
@@ -257,8 +258,8 @@ public class SleuthClassFileTransformer implements ClassFileTransformer {
         } catch (Exception e) {
             enhancementFailureCount.incrementAndGet();
             FailureState st = failures.computeIfAbsent(key, k -> new FailureState());
-            long cooldownMs = config.getLong("enhancement.failure.cooldown.ms", 30_000L);
-            long logIntervalMs = config.getLong("enhancement.failure.log.interval.ms", 60_000L);
+            long cooldownMs = SleuthConfigSchema.ENHANCEMENT_FAILURE_COOLDOWN_MS.read(config);
+            long logIntervalMs = SleuthConfigSchema.ENHANCEMENT_FAILURE_LOG_INTERVAL_MS.read(config);
             boolean shouldLog = st.recordFailure(now, e, cooldownMs, logIntervalMs);
 
             // 不再移除 enhancer，避免 watch/trace 等“静默失效”。失败会进入冷却并可重试。

@@ -14,6 +14,9 @@ import com.javasleuth.core.monitoring.MetricsCollector;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.foundation.util.PerformanceOptimizer;
 import com.javasleuth.foundation.config.ConfigView;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.config.model.SleuthConfig;
+import com.javasleuth.foundation.config.model.SleuthConfigParser;
 
 import java.lang.instrument.Instrumentation;
 import java.lang.management.*;
@@ -63,6 +66,7 @@ public class StatusCommand implements Command {
 
     @Override
     public String execute(String[] args) throws Exception {
+        SleuthConfig typedConfig = SleuthConfigParser.parse(configSnapshot());
         StringBuilder status = new StringBuilder();
 
         status.append("=== JAVA-SLEUTH AGENT STATUS ===\n");
@@ -179,18 +183,18 @@ public class StatusCommand implements Command {
 
         // Configuration status
         status.append("\n-- Configuration Status --\n");
-        status.append("Bind Address: ").append(config.getString("server.bind.address", "127.0.0.1")).append("\n");
-        status.append("Server Port: ").append(config.getInt("server.port", 3658)).append("\n");
-        status.append("Max Connections: ").append(config.getInt("server.max.connections", 10)).append("\n");
-        status.append("Cache TTL: ").append(config.getLong("performance.cache.ttl", 5000)).append("ms\n");
+        status.append("Bind Address: ").append(typedConfig.server().getBindAddress()).append("\n");
+        status.append("Server Port: ").append(typedConfig.server().getPort()).append("\n");
+        status.append("Max Connections: ").append(typedConfig.server().getMaxConnections()).append("\n");
+        status.append("Cache TTL: ").append(typedConfig.performance().getCacheTtlMs()).append("ms\n");
         status.append("Protocol: ").append("binary").append("\n");
         status.append("Handshake Enabled: ").append(true).append("\n");
         status.append("Network Boundary: ").append("loopback-only").append("\n");
-        status.append("Input Validation: ").append(config.getBoolean("security.input.validation", true) ? "ENABLED" : "DISABLED").append("\n");
-        status.append("Audit Logging: ").append(config.getBoolean("security.audit.logging", true) ? "ENABLED" : "DISABLED").append("\n");
-        status.append("Authorization: ").append(config.getBoolean("security.authorization.enabled", false) ? "ENABLED" : "DISABLED").append("\n");
-        status.append("Metrics Collection: ").append(config.getBoolean("monitoring.metrics.enabled", true) ? "ENABLED" : "DISABLED").append("\n");
-        status.append("JMX Monitoring: ").append(config.getBoolean("monitoring.jmx.enabled", true) ? "ENABLED" : "DISABLED").append("\n");
+        status.append("Input Validation: ").append(typedConfig.security().isInputValidationEnabled() ? "ENABLED" : "DISABLED").append("\n");
+        status.append("Audit Logging: ").append(typedConfig.security().isAuditLoggingEnabled() ? "ENABLED" : "DISABLED").append("\n");
+        status.append("Authorization: ").append(typedConfig.security().isAuthorizationEnabled() ? "ENABLED" : "DISABLED").append("\n");
+        status.append("Metrics Collection: ").append(typedConfig.monitoring().isMetricsEnabled() ? "ENABLED" : "DISABLED").append("\n");
+        status.append("JMX Monitoring: ").append(typedConfig.monitoring().isJmxEnabled() ? "ENABLED" : "DISABLED").append("\n");
 
         // Garbage Collection status
         List<GarbageCollectorMXBean> gcBeans = ManagementFactory.getGarbageCollectorMXBeans();
@@ -239,6 +243,10 @@ public class StatusCommand implements Command {
         }
 
         return status.toString();
+    }
+
+    private ConfigView configSnapshot() {
+        return config instanceof ProductionConfig ? ((ProductionConfig) config).snapshot() : config;
     }
 
     private void appendEnhancementSessionStatus(StringBuilder status) {

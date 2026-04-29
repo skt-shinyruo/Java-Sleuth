@@ -13,6 +13,7 @@ public final class SleuthConfig {
     private final PerformanceConfig performance;
     private final JobsConfig jobs;
     private final MonitoringConfig monitoring;
+    private final VmToolConfig vmTool;
     private final LoggingConfig logging;
     private final PluginsConfig plugins;
 
@@ -23,6 +24,7 @@ public final class SleuthConfig {
         PerformanceConfig performance,
         JobsConfig jobs,
         MonitoringConfig monitoring,
+        VmToolConfig vmTool,
         LoggingConfig logging,
         PluginsConfig plugins
     ) {
@@ -44,6 +46,9 @@ public final class SleuthConfig {
         if (monitoring == null) {
             throw new IllegalArgumentException("monitoring is required");
         }
+        if (vmTool == null) {
+            throw new IllegalArgumentException("vmTool is required");
+        }
         if (logging == null) {
             throw new IllegalArgumentException("logging is required");
         }
@@ -56,6 +61,7 @@ public final class SleuthConfig {
         this.performance = performance;
         this.jobs = jobs;
         this.monitoring = monitoring;
+        this.vmTool = vmTool;
         this.logging = logging;
         this.plugins = plugins;
     }
@@ -82,6 +88,10 @@ public final class SleuthConfig {
 
     public MonitoringConfig monitoring() {
         return monitoring;
+    }
+
+    public VmToolConfig vmTool() {
+        return vmTool;
     }
 
     public LoggingConfig logging() {

@@ -441,6 +441,25 @@ public final class SleuthConfigSchema {
     );
 
     // =============================================================================
+    // VmTool
+    // =============================================================================
+    public static final ConfigKey<Integer> VMTOOL_TRACK_MAX_ENTRIES = register(
+        ConfigKey.intKey("vmtool.track.max.entries")
+            .defaultValue(500)
+            .longRange(1, 100000)
+            .failurePolicy(ConfigKey.FailurePolicy.CLAMP_AND_WARN)
+            .build()
+    );
+
+    public static final ConfigKey<Integer> VMTOOL_TRACK_CLASS_LIMIT = register(
+        ConfigKey.intKey("vmtool.track.class.limit")
+            .defaultValue(50)
+            .longRange(1, 10000)
+            .failurePolicy(ConfigKey.FailurePolicy.CLAMP_AND_WARN)
+            .build()
+    );
+
+    // =============================================================================
     // Logging
     // =============================================================================
     public static final ConfigKey<String> LOGGING_LEVEL = register(

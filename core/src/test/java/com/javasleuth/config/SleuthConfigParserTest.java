@@ -67,6 +67,18 @@ public class SleuthConfigParserTest {
         Assert.assertEquals(10000, typed.protocol().getTextMaxLineBytes());
     }
 
+    @Test
+    public void parsesVmToolConfig() {
+        ProductionConfig config = new ProductionConfig();
+        config.setRuntimeConfig("vmtool.track.max.entries", "123");
+        config.setRuntimeConfig("vmtool.track.class.limit", "45");
+
+        SleuthConfig typed = SleuthConfigParser.parse(config.snapshot());
+
+        Assert.assertEquals(123, typed.vmTool().getTrackMaxEntries());
+        Assert.assertEquals(45, typed.vmTool().getTrackClassLimit());
+    }
+
     // Note: `security.mode` was removed together with HMAC mode. Forbidden-key validation
     // is covered by ConfigSemanticsTest.
 }

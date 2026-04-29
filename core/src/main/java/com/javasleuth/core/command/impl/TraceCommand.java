@@ -8,6 +8,9 @@ import com.javasleuth.core.command.JobManager;
 import com.javasleuth.core.command.StreamCommand;
 import com.javasleuth.core.command.StreamSink;
 import com.javasleuth.foundation.config.ConfigView;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.config.model.MonitoringConfig;
+import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.core.enhancement.ClassEnhancer;
 import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
 import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
@@ -240,7 +243,8 @@ public class TraceCommand implements StreamCommand {
         Class<?> targetClass = resolved.getClazz();
 
         String traceId = UUID.randomUUID().toString();
-        BlockingQueue<TraceResult> resultQueue = new LinkedBlockingQueue<>(config.getInt("monitoring.trace.queue.capacity", 2000));
+        MonitoringConfig monitoring = SleuthConfigParser.parse(configSnapshot()).monitoring();
+        BlockingQueue<TraceResult> resultQueue = new LinkedBlockingQueue<>(monitoring.getTraceQueueCapacity());
         if (targetClass == null) {
             String msg = "Target class not found in loaded classes: " + targetClassName;
             if (sink != null) {
@@ -253,7 +257,7 @@ public class TraceCommand implements StreamCommand {
         TraceEnhancer enhancer = new TraceEnhancer(targetClassName, methodPattern, null, traceId);
         boolean enhancerAdded = false;
         try {
-            boolean dropOnFull = config.getBoolean("monitoring.trace.drop.on.full", true);
+            boolean dropOnFull = monitoring.isTraceDropOnFull();
             spyDispatcher.register(
                 traceId,
                 SleuthSpyDispatcher.ListenerKind.TRACE,
@@ -401,6 +405,10 @@ public class TraceCommand implements StreamCommand {
         }
         result.append(summary);
         return result.toString();
+    }
+
+    private ConfigView configSnapshot() {
+        return config instanceof ProductionConfig ? ((ProductionConfig) config).snapshot() : config;
     }
 
     private void closeTraceSession(String traceId, String reason) {
