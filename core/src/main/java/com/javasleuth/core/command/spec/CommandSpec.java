@@ -151,7 +151,7 @@ public final class CommandSpec {
             for (OptionSpec option : options) {
                 String canonical = "--" + option.getName();
                 OptionSpec previous = tokens.put(canonical, option);
-                if (previous != null && previous != option) {
+                if (previous != null) {
                     throw new IllegalArgumentException("Duplicate option name: " + option.getName());
                 }
                 Set<String> aliases = new LinkedHashSet<>();
@@ -163,7 +163,7 @@ public final class CommandSpec {
                         throw new IllegalArgumentException("Duplicate option alias: " + alias);
                     }
                     previous = tokens.put(alias, option);
-                    if (previous != null && previous != option) {
+                    if (previous != null) {
                         throw new IllegalArgumentException("Duplicate option alias: " + alias);
                     }
                 }
