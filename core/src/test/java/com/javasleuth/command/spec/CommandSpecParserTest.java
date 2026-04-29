@@ -11,6 +11,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.List;
 
 public class CommandSpecParserTest {
     @Test
@@ -117,6 +118,28 @@ public class CommandSpecParserTest {
         });
 
         Assert.assertEquals(Arrays.asList("first", "second", "third"), parsed.optionValues("condition"));
+    }
+
+    @Test
+    public void exposesStringOptionsWithTypedAccessors() {
+        ParsedCommand parsed = CommandSpecParser.parse(sampleSpec(), new String[] {
+            "watch", "A", "m", "--condition", "first", "--condition=second"
+        });
+
+        String genericCondition = parsed.option("condition");
+        List<String> genericConditions = parsed.optionValues("condition");
+        List<String> stringConditions = parsed.stringOptionValues("condition");
+
+        Assert.assertEquals("second", genericCondition);
+        Assert.assertEquals("second", parsed.stringOption("condition"));
+        Assert.assertEquals(Arrays.asList("first", "second"), genericConditions);
+        Assert.assertEquals(Arrays.asList("first", "second"), stringConditions);
+        try {
+            stringConditions.add("third");
+            Assert.fail("Expected string option values to be unmodifiable");
+        } catch (UnsupportedOperationException expected) {
+            // Expected.
+        }
     }
 
     @Test

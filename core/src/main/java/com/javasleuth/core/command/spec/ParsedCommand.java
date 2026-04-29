@@ -21,12 +21,13 @@ public final class ParsedCommand {
         return arguments.get(name);
     }
 
-    public Object option(String name) {
+    @SuppressWarnings("unchecked")
+    public <T> T option(String name) {
         List<Object> values = options.get(name);
         if (values == null || values.isEmpty()) {
             return null;
         }
-        return values.get(values.size() - 1);
+        return (T) values.get(values.size() - 1);
     }
 
     public Integer intOption(String name) {
@@ -44,9 +45,19 @@ public final class ParsedCommand {
         return value == null ? null : (Boolean) value;
     }
 
-    public List<Object> optionValues(String name) {
+    public String stringOption(String name) {
+        Object value = option(name);
+        return value == null ? null : (String) value;
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T> List<T> optionValues(String name) {
         List<Object> values = options.get(name);
-        return values == null ? Collections.emptyList() : values;
+        return values == null ? Collections.emptyList() : (List<T>) values;
+    }
+
+    public List<String> stringOptionValues(String name) {
+        return optionValues(name);
     }
 
     public boolean isHelpRequested() {
