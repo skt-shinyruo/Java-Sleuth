@@ -48,6 +48,7 @@ public class CommandProcessor {
         this(CommandProcessorFactory.createComponents(instrumentation, transformer, shutdownHook));
     }
 
+    @Deprecated
     public CommandProcessor(
         Instrumentation instrumentation,
         SleuthClassFileTransformer transformer,

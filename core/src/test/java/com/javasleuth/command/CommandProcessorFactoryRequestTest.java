@@ -33,6 +33,41 @@ public class CommandProcessorFactoryRequestTest {
         }
     }
 
+    @Test
+    public void createComponents_usesRequestAsSingleCompositionInput() {
+        ProductionConfig config = ProductionConfig.createDefault();
+        SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(config);
+        Instrumentation instrumentation = fakeInstrumentation();
+
+        CommandProcessorFactoryRequest request = CommandProcessorFactoryRequest.builder(instrumentation, transformer)
+            .withConfig(config)
+            .withMetricsCollector(new com.javasleuth.core.monitoring.MetricsCollector(config))
+            .build();
+
+        CommandProcessorComponents components = CommandProcessorFactory.createComponents(request);
+        try {
+            Assert.assertSame(request.getMetricsCollector(), components.getMetricsCollector());
+            Assert.assertNotNull(components.getRegistry());
+            Assert.assertNotNull(components.getPipeline());
+            Assert.assertNotNull(components.getClientHandler());
+            Assert.assertNotNull(components.getShutdownCoordinator());
+        } finally {
+            try {
+                components.getShutdownCoordinator().shutdownGracefully(null, 1);
+            } catch (Exception ignore) {
+                // best-effort for test cleanup
+            }
+            try {
+                AutoCloseable ownedResources = components.getOwnedResources();
+                if (ownedResources != null) {
+                    ownedResources.close();
+                }
+            } catch (Exception ignore) {
+                // best-effort for test cleanup
+            }
+        }
+    }
+
     private static Instrumentation fakeInstrumentation() {
         return (Instrumentation) Proxy.newProxyInstance(
             Instrumentation.class.getClassLoader(),
