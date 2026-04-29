@@ -1,6 +1,7 @@
 package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.command.Command;
+import com.javasleuth.core.command.CancellationToken;
 import com.javasleuth.core.command.CommandContext;
 import com.javasleuth.core.command.CommandContextHolder;
 import com.javasleuth.core.command.StreamCommand;
@@ -336,16 +337,29 @@ public class WatchCommand implements StreamCommand {
         int eventCount = 0;
         long startTime = System.currentTimeMillis();
         long timeoutMs = timeoutSeconds * 1000;
+        CancellationToken token = currentCancellationToken();
 
         try {
-            while (eventCount < maxCount) {
+            while (eventCount < maxCount && !token.isCancelled()) {
                 long remainingTime = timeoutMs - (System.currentTimeMillis() - startTime);
                 if (remainingTime <= 0) {
                     appendOrSend(result, sink, "\nWatch timeout reached");
                     break;
                 }
 
-                WatchResult watchResult = resultQueue.poll(Math.min(remainingTime, 1000), TimeUnit.MILLISECONDS);
+                WatchResult watchResult;
+                try {
+                    watchResult = resultQueue.poll(Math.min(remainingTime, 1000), TimeUnit.MILLISECONDS);
+                } catch (InterruptedException e) {
+                    if (token.isCancelled()) {
+                        break;
+                    }
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+                if (token.isCancelled()) {
+                    break;
+                }
                 if (watchResult != null) {
                     if (!SleuthConditionEvaluator.matchesWatch(watchResult, conditions)) {
                         continue;
@@ -511,6 +525,11 @@ public class WatchCommand implements StreamCommand {
         } else {
             result.append(text).append("\n");
         }
+    }
+
+    private static CancellationToken currentCancellationToken() {
+        CommandContext ctx = CommandContextHolder.get();
+        return ctx != null ? ctx.getCancellationToken() : CancellationToken.NONE;
     }
 
     private boolean matchesPattern(String className, String pattern) {

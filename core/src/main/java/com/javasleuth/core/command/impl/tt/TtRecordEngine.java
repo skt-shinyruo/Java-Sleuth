@@ -1,5 +1,6 @@
 package com.javasleuth.core.command.impl.tt;
 
+import com.javasleuth.core.command.CancellationToken;
 import com.javasleuth.core.command.CommandContext;
 import com.javasleuth.core.command.CommandContextHolder;
 import com.javasleuth.core.command.StreamSink;
@@ -155,15 +156,28 @@ public final class TtRecordEngine {
         int recorded = 0;
         long startMs = System.currentTimeMillis();
         long timeoutMs = timeoutSeconds * 1000;
+        CancellationToken token = currentCancellationToken();
 
         try {
-            while (recorded < maxCount) {
+            while (recorded < maxCount && !token.isCancelled()) {
                 long remaining = timeoutMs - (System.currentTimeMillis() - startMs);
                 if (remaining <= 0) {
                     appendOrSend(out, sink, "\nTT timeout reached");
                     break;
                 }
-                TtRecord r = q.poll(Math.min(remaining, 1000), TimeUnit.MILLISECONDS);
+                TtRecord r;
+                try {
+                    r = q.poll(Math.min(remaining, 1000), TimeUnit.MILLISECONDS);
+                } catch (InterruptedException e) {
+                    if (token.isCancelled()) {
+                        break;
+                    }
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+                if (token.isCancelled()) {
+                    break;
+                }
                 if (r != null) {
                     recorded++;
                     appendOrSend(out, sink, TtFormatter.formatRecordLine(r, recorded));
@@ -256,6 +270,11 @@ public final class TtRecordEngine {
         } else {
             buf.append(text).append("\n");
         }
+    }
+
+    private static CancellationToken currentCancellationToken() {
+        CommandContext ctx = CommandContextHolder.get();
+        return ctx != null ? ctx.getCancellationToken() : CancellationToken.NONE;
     }
 
     private static final class TtSession {
