@@ -11,6 +11,10 @@ import com.javasleuth.core.command.pipeline.PrecheckPipeline;
 import com.javasleuth.core.command.pipeline.OutputSanitizeInterceptor;
 import com.javasleuth.core.command.pipeline.StreamInvocation;
 import com.javasleuth.core.command.pipeline.SyncInvocation;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.CommandSpecParser;
+import com.javasleuth.core.command.spec.ParsedCommand;
 import com.javasleuth.foundation.security.AuthorizationManager;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.foundation.security.InputValidator;
@@ -186,8 +190,19 @@ public class CommandPipeline {
         }
 
         try {
+            CommandContext effectiveContext = context;
+            CommandSpec spec = entry.getSpec();
+            if (spec != null) {
+                ParsedCommand parsed = CommandSpecParser.parse(spec, args);
+                if (parsed.isHelpRequested()) {
+                    return new Result(true, CommandHelpRenderer.render(spec), null);
+                }
+                if (effectiveContext != null) {
+                    effectiveContext = effectiveContext.withParsedCommand(parsed);
+                }
+            }
             long timeoutMs = currentCommandTimeoutMs();
-            SyncInvocation inv = new SyncInvocation(entry, entry.getCommand(), entry.getMeta(), commandName, args, context, timeoutMs);
+            SyncInvocation inv = new SyncInvocation(entry, entry.getCommand(), entry.getMeta(), commandName, args, effectiveContext, timeoutMs);
             String output = syncChain.handle(inv);
             return new Result(true, output, null);
         } catch (Exception e) {
@@ -223,8 +238,21 @@ public class CommandPipeline {
         }
 
         String commandName = args[0].toLowerCase(Locale.ROOT);
+        CommandContext effectiveContext = context;
+        CommandSpec spec = entry != null ? entry.getSpec() : null;
+        if (spec != null) {
+            ParsedCommand parsed = CommandSpecParser.parse(spec, args);
+            if (parsed.isHelpRequested()) {
+                sink.send(CommandHelpRenderer.render(spec));
+                sink.close("help");
+                return StreamResult.ok();
+            }
+            if (effectiveContext != null) {
+                effectiveContext = effectiveContext.withParsedCommand(parsed);
+            }
+        }
         long timeoutMs = currentCommandTimeoutMs();
-        StreamInvocation inv = new StreamInvocation(entry, (StreamCommand) command, entry != null ? entry.getMeta() : null, commandName, args, context, timeoutMs, sink);
+        StreamInvocation inv = new StreamInvocation(entry, (StreamCommand) command, entry != null ? entry.getMeta() : null, commandName, args, effectiveContext, timeoutMs, sink);
         try {
             return streamChain.handle(inv);
         } catch (ClientDisconnectedException e) {

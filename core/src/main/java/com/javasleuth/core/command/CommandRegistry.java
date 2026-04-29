@@ -3,6 +3,7 @@ package com.javasleuth.core.command;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import com.javasleuth.core.monitoring.MetricsCollector;
+import com.javasleuth.core.command.spec.CommandSpec;
 import com.javasleuth.foundation.security.AuditLogger;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.util.SleuthLogger;
@@ -23,17 +24,23 @@ public class CommandRegistry {
         private final String source;
         private final String canonicalName;
         private final String namespace;
+        private final CommandSpec spec;
 
         public Entry(Command command, CommandMeta meta, String source) {
             this(command, meta, source, null, null);
         }
 
         public Entry(Command command, CommandMeta meta, String source, String canonicalName, String namespace) {
+            this(command, meta, source, canonicalName, namespace, null);
+        }
+
+        public Entry(Command command, CommandMeta meta, String source, String canonicalName, String namespace, CommandSpec spec) {
             this.command = command;
             this.meta = meta;
             this.source = source;
             this.canonicalName = canonicalName;
             this.namespace = namespace;
+            this.spec = spec;
         }
 
         public Command getCommand() {
@@ -54,6 +61,10 @@ public class CommandRegistry {
 
         public String getNamespace() {
             return namespace;
+        }
+
+        public CommandSpec getSpec() {
+            return spec;
         }
     }
 
@@ -266,7 +277,7 @@ public class CommandRegistry {
         }
 
         String canonicalName = providerInfo.isBuiltin() ? name : providerInfo.getNamespace() + ":" + name;
-        Entry entry = new Entry(command, meta, providerInfo.getProviderName(), canonicalName, providerInfo.getNamespace());
+        Entry entry = new Entry(command, meta, providerInfo.getProviderName(), canonicalName, providerInfo.getNamespace(), descriptor.getSpec());
         registerLookup(canonicalName, entry, true, !providerInfo.isBuiltin());
         if (!providerInfo.isBuiltin() && providerInfo.isExposeUnqualifiedCommands() && !name.equals(canonicalName)) {
             registerLookup(name, entry, false, false);
