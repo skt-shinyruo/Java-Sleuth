@@ -17,6 +17,7 @@ public final class CommandSpec {
     private final CommandMeta meta;
     private final List<ArgumentSpec> arguments;
     private final List<OptionSpec> options;
+    private final List<OptionSpec> hiddenOptions;
     private final List<SubcommandSpec> subcommands;
     private final List<String> examples;
 
@@ -27,6 +28,7 @@ public final class CommandSpec {
         this.meta = builder.meta;
         this.arguments = immutableCopy(builder.arguments);
         this.options = immutableCopy(builder.options);
+        this.hiddenOptions = immutableCopy(builder.hiddenOptions);
         this.subcommands = immutableCopy(builder.subcommands);
         this.examples = immutableCopy(builder.examples);
     }
@@ -59,6 +61,15 @@ public final class CommandSpec {
         return options;
     }
 
+    List<OptionSpec> getParserOptions() {
+        if (hiddenOptions.isEmpty()) {
+            return options;
+        }
+        List<OptionSpec> parserOptions = new ArrayList<>(options);
+        parserOptions.addAll(hiddenOptions);
+        return Collections.unmodifiableList(parserOptions);
+    }
+
     public List<SubcommandSpec> getSubcommands() {
         return subcommands;
     }
@@ -78,6 +89,7 @@ public final class CommandSpec {
         private CommandMeta meta;
         private final List<ArgumentSpec> arguments = new ArrayList<>();
         private final List<OptionSpec> options = new ArrayList<>();
+        private final List<OptionSpec> hiddenOptions = new ArrayList<>();
         private final List<SubcommandSpec> subcommands = new ArrayList<>();
         private final List<String> examples = new ArrayList<>();
 
@@ -117,6 +129,13 @@ public final class CommandSpec {
             return this;
         }
 
+        public Builder hiddenOption(OptionSpec option) {
+            if (option != null) {
+                hiddenOptions.add(option);
+            }
+            return this;
+        }
+
         public Builder subcommand(SubcommandSpec subcommand) {
             if (subcommand != null) {
                 subcommands.add(subcommand);
@@ -148,7 +167,7 @@ public final class CommandSpec {
 
         private void validateUniqueOptions() {
             Map<String, OptionSpec> tokens = new LinkedHashMap<>();
-            for (OptionSpec option : options) {
+            for (OptionSpec option : allOptions()) {
                 String canonical = "--" + option.getName();
                 OptionSpec previous = tokens.put(canonical, option);
                 if (previous != null) {
@@ -168,6 +187,12 @@ public final class CommandSpec {
                     }
                 }
             }
+        }
+
+        private List<OptionSpec> allOptions() {
+            List<OptionSpec> allOptions = new ArrayList<>(options);
+            allOptions.addAll(hiddenOptions);
+            return allOptions;
         }
     }
 }

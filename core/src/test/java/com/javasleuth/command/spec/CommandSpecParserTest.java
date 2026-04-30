@@ -112,6 +112,33 @@ public class CommandSpecParserTest {
     }
 
     @Test
+    public void duplicateHiddenOptionAliasOrNameRejectedByBuilder() {
+        try {
+            CommandSpec.builder("dup")
+                .option(OptionSpec.flag("visible").alias("--x").build())
+                .hiddenOption(OptionSpec.string("hidden").alias("--x").build())
+                .build();
+            Assert.fail("Expected duplicate hidden option token to fail");
+        } catch (IllegalArgumentException e) {
+            Assert.assertTrue(e.getMessage().contains("Duplicate option alias: --x"));
+        }
+    }
+
+    @Test
+    public void parserAcceptsHiddenOptionsWithoutPublicExposure() {
+        CommandSpec spec = CommandSpec.builder("compat")
+            .option(OptionSpec.flag("visible").alias("--visible").build())
+            .hiddenOption(OptionSpec.string("removed").alias("--removed").build())
+            .build();
+
+        ParsedCommand parsed = CommandSpecParser.parse(spec, new String[] {"compat", "--removed", "old"});
+
+        Assert.assertEquals("old", parsed.stringOption("removed"));
+        Assert.assertEquals(1, spec.getOptions().size());
+        Assert.assertEquals("visible", spec.getOptions().get(0).getName());
+    }
+
+    @Test
     public void duplicateOptionInstanceRejectedByBuilder() {
         OptionSpec count = OptionSpec.integer("count").alias("-n").alias("--count").build();
 

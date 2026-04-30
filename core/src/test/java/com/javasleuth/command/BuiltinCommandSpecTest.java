@@ -3,6 +3,7 @@ package com.javasleuth.core.command;
 import com.javasleuth.core.command.spec.CommandHelpRenderer;
 import com.javasleuth.core.command.spec.CommandSpec;
 import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.impl.TraceCommand;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.monitoring.MetricsCollector;
@@ -23,7 +24,9 @@ import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class BuiltinCommandSpecTest {
@@ -62,6 +65,25 @@ public class BuiltinCommandSpecTest {
             assertHasSpec(descriptors, "trace");
             assertHasSpec(descriptors, "monitor");
         });
+    }
+
+    @Test
+    public void traceSpecDoesNotExposeRemovedSampleOptions() {
+        Set<String> publicOptionNames = new HashSet<>();
+        for (OptionSpec option : TraceCommand.spec().getOptions()) {
+            publicOptionNames.add(option.getName());
+        }
+
+        Assert.assertFalse(publicOptionNames.contains("sample"));
+        Assert.assertFalse(publicOptionNames.contains("sample-rate"));
+    }
+
+    @Test
+    public void traceHelpDoesNotExposeRemovedSampleOptions() {
+        String help = CommandHelpRenderer.render(TraceCommand.spec());
+
+        Assert.assertFalse(help.contains("--sample"));
+        Assert.assertFalse(help.contains("--sample-rate"));
     }
 
     @Test

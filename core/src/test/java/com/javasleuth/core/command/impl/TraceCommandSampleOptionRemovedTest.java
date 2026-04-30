@@ -17,14 +17,19 @@ public class TraceCommandSampleOptionRemovedTest {
     @Test
     public void shouldRejectRemovedSampleOptions() throws Exception {
         TraceCommand cmd = new TraceCommand(null, null, ProductionConfig.createDefault(), new JobManager());
+        assertRemovedSampleMessage(cmd, new String[] {"trace", "C", "m", "--sample", "0.1"});
+        assertRemovedSampleMessage(cmd, new String[] {"trace", "C", "m", "--sample-rate=0.1"});
+    }
+
+    private static void assertRemovedSampleMessage(TraceCommand cmd, String[] args) throws Exception {
         try {
-            String out = cmd.execute(new String[] {"trace", "C", "m", "--sample", "0.1"});
+            String out = cmd.execute(args);
             Assert.assertNotNull(out);
             String lower = out.toLowerCase();
             Assert.assertTrue("expected error mentioning removed sample option, got: " + out,
                 lower.contains("sample") && (lower.contains("remove") || out.contains("已移除")));
         } catch (Exception e) {
-            Assert.fail("expected trace to reject --sample with a message, not throw: " + e);
+            Assert.fail("expected trace to reject removed sample options with a message, not throw: " + e);
         }
     }
 }
