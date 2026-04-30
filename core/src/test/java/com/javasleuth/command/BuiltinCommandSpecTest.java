@@ -3,6 +3,11 @@ package com.javasleuth.core.command;
 import com.javasleuth.core.command.spec.CommandHelpRenderer;
 import com.javasleuth.core.command.spec.CommandSpec;
 import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
+import com.javasleuth.core.monitoring.MetricsCollector;
+import com.javasleuth.core.spy.SleuthSpyDispatcher;
+import com.javasleuth.core.vmtool.VmToolSessionRegistry;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.security.AuditLogger;
 import com.javasleuth.foundation.security.AuthenticationManager;
@@ -14,7 +19,10 @@ import com.javasleuth.foundation.util.PerformanceOptimizer;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -43,6 +51,17 @@ public class BuiltinCommandSpecTest {
         Assert.assertEquals("sample", descriptor.getName());
         Assert.assertSame(spec, descriptor.getSpec());
         Assert.assertSame(spec.getMeta(), descriptor.getMeta());
+    }
+
+    @Test
+    public void instrumentationCommandsExposeSpecs() {
+        withProviderContext(context -> {
+            BuiltinCommandProvider provider = new BuiltinCommandProvider();
+            Collection<CommandDescriptor> descriptors = provider.getCommandDescriptors(context);
+            assertHasSpec(descriptors, "watch");
+            assertHasSpec(descriptors, "trace");
+            assertHasSpec(descriptors, "monitor");
+        });
     }
 
     @Test
@@ -365,6 +384,91 @@ public class BuiltinCommandSpecTest {
             .build();
     }
 
+    private static void assertHasSpec(Collection<CommandDescriptor> descriptors, String commandName) {
+        for (CommandDescriptor descriptor : descriptors) {
+            if (commandName.equals(descriptor.getName())) {
+                Assert.assertNotNull(commandName + " should expose a command spec", descriptor.getSpec());
+                return;
+            }
+        }
+        Assert.fail("Missing built-in command descriptor for " + commandName);
+    }
+
+    private static void withProviderContext(ProviderContextConsumer consumer) {
+        ProductionConfig config = ProductionConfig.createDefault();
+        Instrumentation instrumentation = fakeInstrumentation();
+        SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(config);
+        MetricsCollector metricsCollector = new MetricsCollector(config);
+        JobManager jobManager = new JobManager();
+        SleuthSpyDispatcher spyDispatcher = new SleuthSpyDispatcher();
+        VmToolSessionRegistry vmToolSessionRegistry = new VmToolSessionRegistry(spyDispatcher);
+        PerformanceOptimizer performanceOptimizer = new PerformanceOptimizer(config);
+        try (
+            AuditLogger auditLogger = new AuditLogger(config);
+            AuthenticationManager authenticationManager = new AuthenticationManager(config, auditLogger);
+            DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger)
+        ) {
+            consumer.accept(new CommandProviderContext(
+                instrumentation,
+                transformer,
+                metricsCollector,
+                config,
+                auditLogger,
+                null,
+                authenticationManager,
+                dangerousConfirm,
+                jobManager,
+                vmToolSessionRegistry,
+                performanceOptimizer,
+                spyDispatcher,
+                new EnhancementSessionRegistry()
+            ));
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        } finally {
+            vmToolSessionRegistry.shutdown(instrumentation, transformer, "test cleanup");
+            jobManager.shutdown("test cleanup");
+            metricsCollector.shutdown();
+            performanceOptimizer.close();
+        }
+    }
+
+    private static Instrumentation fakeInstrumentation() {
+        return (Instrumentation) Proxy.newProxyInstance(
+            Instrumentation.class.getClassLoader(),
+            new Class<?>[] {Instrumentation.class},
+            (proxy, method, args) -> {
+                String name = method.getName();
+                if ("getAllLoadedClasses".equals(name)) {
+                    return new Class<?>[0];
+                }
+                if ("isModifiableClass".equals(name)) {
+                    return true;
+                }
+                if ("removeTransformer".equals(name)) {
+                    return true;
+                }
+                Class<?> returnType = method.getReturnType();
+                if (returnType == Void.TYPE) {
+                    return null;
+                }
+                if (returnType == Boolean.TYPE) {
+                    return false;
+                }
+                if (returnType == Integer.TYPE) {
+                    return 0;
+                }
+                if (returnType == Long.TYPE) {
+                    return 0L;
+                }
+                if (returnType.isArray()) {
+                    return java.lang.reflect.Array.newInstance(returnType.getComponentType(), 0);
+                }
+                return null;
+            }
+        );
+    }
+
     private static void withPipeline(PipelineConsumer consumer) {
         try {
             withPipelineThrows(pipeline -> consumer.accept(pipeline));
@@ -420,6 +524,10 @@ public class BuiltinCommandSpecTest {
 
     private interface PipelineConsumer {
         void accept(CommandPipeline pipeline);
+    }
+
+    private interface ProviderContextConsumer {
+        void accept(CommandProviderContext context) throws Exception;
     }
 
     private interface ThrowingPipelineConsumer {

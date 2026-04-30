@@ -4,8 +4,16 @@ import com.javasleuth.core.command.Command;
 import com.javasleuth.core.command.CancellationToken;
 import com.javasleuth.core.command.CommandContext;
 import com.javasleuth.core.command.CommandContextHolder;
+import com.javasleuth.core.command.SpecBackedCommand;
 import com.javasleuth.core.command.StreamCommand;
 import com.javasleuth.core.command.StreamSink;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.CommandSpecParser;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.agent.runtime.BootstrapBridge;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.model.MonitoringConfig;
@@ -21,6 +29,8 @@ import com.javasleuth.core.command.JobManager;
 import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.WatchAdviceListener;
+import com.javasleuth.foundation.security.CommandCapability;
+import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.util.LoadedClassResolver;
 import com.javasleuth.core.command.util.SleuthConditionEvaluator;
 import com.javasleuth.foundation.util.SleuthLogger;
@@ -40,7 +50,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
 
-public class WatchCommand implements StreamCommand {
+public class WatchCommand implements StreamCommand, SpecBackedCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
     private final ConfigView config;
@@ -97,98 +107,76 @@ public class WatchCommand implements StreamCommand {
         runWatch(args, sink);
     }
 
+    public static CommandSpec spec() {
+        return CommandSpec.builder("watch")
+            .description("Watch method execution with parameters, return values, and timing")
+            .usage("watch <class-pattern> <method-pattern> [options]")
+            .meta(instrumentationStreamMeta())
+            .argument(ArgumentSpec.required("class-pattern"))
+            .argument(ArgumentSpec.required("method-pattern"))
+            .option(OptionSpec.integer("count").alias("-n").alias("--count").defaultValue(100).range(1, 100000).build())
+            .option(OptionSpec.longNumber("timeout").alias("-t").alias("--timeout").defaultValue(30L).range(1, 86400).build())
+            .option(OptionSpec.string("loader").alias("--loader").alias("--loader-id").alias("--loader-hash").build())
+            .option(OptionSpec.flag("first").alias("--first").alias("--unsafe-first").build())
+            .option(OptionSpec.string("expr").alias("--expr").build())
+            .option(OptionSpec.string("condition").alias("--condition").repeatable(true).build())
+            .option(OptionSpec.flag("bg").alias("--bg").build())
+            .option(OptionSpec.flag("no-params").alias("--no-params").build())
+            .option(OptionSpec.flag("no-return").alias("--no-return").build())
+            .option(OptionSpec.flag("no-exception").alias("--no-exception").build())
+            .example("watch com.example.* execute*")
+            .example("watch *Service* *method* -n 50 -t 60 --condition cost:gt:1000000")
+            .example("watch MyClass doWork --no-params")
+            .build();
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return spec();
+    }
+
     private String runWatch(String[] args, StreamSink sink) throws Exception {
-        if (args.length < 3) {
-            String help = getHelp();
+        if (args == null || args.length < 3) {
+            String help = CommandHelpRenderer.render(spec());
             if (sink != null) {
                 sink.error(help);
                 return "";
             }
             return help;
         }
-
-        // Background mode
-        boolean background = false;
-        Integer loaderId = null;
-        boolean allowFirstWhenAmbiguous = false;
-
-        String classPattern = args[1];
-        String methodPattern = args[2];
-
-        // Parse options
-        boolean captureParams = true;
-        boolean captureReturn = true;
-        boolean captureException = true;
-        int maxCount = 100;
-        long timeoutSeconds = 30;
-        String exprRaw = null;
-        List<String> rawConditions = new ArrayList<>();
-
-        for (int i = 3; i < args.length; i++) {
-            switch (args[i]) {
-                case "-n":
-                case "--count":
-                    if (i + 1 < args.length) {
-                        maxCount = Integer.parseInt(args[++i]);
-                    }
-                    break;
-                case "-t":
-                case "--timeout":
-                    if (i + 1 < args.length) {
-                        timeoutSeconds = Long.parseLong(args[++i]);
-                    }
-                    break;
-                case "--expr":
-                    if (i + 1 < args.length) {
-                        exprRaw = args[++i];
-                    }
-                    break;
-                case "--condition":
-                    if (i + 1 < args.length) {
-                        rawConditions.add(args[++i]);
-                    }
-                    break;
-                case "--bg":
-                    background = true;
-                    break;
-                case "--loader":
-                case "--loader-id":
-                case "--loader-hash":
-                    if (i + 1 < args.length) {
-                        String raw = args[++i];
-                        Integer parsed = LoadedClassResolver.parseLoaderId(raw);
-                        if (parsed == null) {
-                            String msg = "Invalid --loader value: " + raw +
-                                " (expected: bootstrap/null/0x1234/1234)";
-                            if (sink != null) {
-                                sink.error(msg);
-                                return "";
-                            }
-                            return msg;
-                        }
-                        loaderId = parsed;
-                    }
-                    break;
-                case "--first":
-                case "--unsafe-first":
-                    allowFirstWhenAmbiguous = true;
-                    break;
-                case "--no-params":
-                    captureParams = false;
-                    break;
-                case "--no-return":
-                    captureReturn = false;
-                    break;
-                case "--no-exception":
-                    captureException = false;
-                    break;
-                case "-h":
-                case "--help":
-                    return getHelp();
+        ParsedCommand parsed = parsedOrFallback(args);
+        if (parsed.isHelpRequested()) {
+            String help = CommandHelpRenderer.render(spec());
+            if (sink != null) {
+                sink.send(help);
+                return "";
             }
+            return help;
         }
 
-        if (background) {
+        String classPattern = parsed.argument("class-pattern");
+        String methodPattern = parsed.argument("method-pattern");
+        int maxCount = parsed.intOption("count");
+        long timeoutSeconds = parsed.longOption("timeout");
+        Integer loaderId = null;
+        String loaderRaw = parsed.stringOption("loader");
+        if (loaderRaw != null) {
+            loaderId = LoadedClassResolver.parseLoaderId(loaderRaw);
+            if (loaderId == null) {
+                String msg = "Invalid --loader value: " + loaderRaw + " (expected: bootstrap/null/0x1234/1234)";
+                if (sink != null) {
+                    sink.error(msg);
+                    return "";
+                }
+                return msg;
+            }
+        }
+        boolean allowFirstWhenAmbiguous = Boolean.TRUE.equals(parsed.booleanOption("first"));
+        boolean captureParams = !Boolean.TRUE.equals(parsed.booleanOption("no-params"));
+        boolean captureReturn = !Boolean.TRUE.equals(parsed.booleanOption("no-return"));
+        boolean captureException = !Boolean.TRUE.equals(parsed.booleanOption("no-exception"));
+
+        if (Boolean.TRUE.equals(parsed.booleanOption("bg"))) {
             String[] jobArgs = removeFlag(args, "--bg");
             String commandLine = String.join(" ", jobArgs);
             String jobId = jobManager.submitStreamJob(
@@ -205,11 +193,23 @@ public class WatchCommand implements StreamCommand {
             return msg;
         }
 
-        List<String> expr = parseExpr(exprRaw);
-        List<SleuthConditionEvaluator.Condition> conditions = SleuthConditionEvaluator.parseConditions(rawConditions);
+        List<String> expr = parseExpr(parsed.stringOption("expr"));
+        List<SleuthConditionEvaluator.Condition> conditions = SleuthConditionEvaluator.parseConditions(parsed.stringOptionValues("condition"));
 
         return startWatching(classPattern, methodPattern, captureParams, captureReturn,
             captureException, maxCount, timeoutSeconds, loaderId, allowFirstWhenAmbiguous, expr, conditions, sink);
+    }
+
+    private ParsedCommand parsedOrFallback(String[] args) {
+        CommandContext ctx = CommandContextHolder.get();
+        ParsedCommand parsed = ctx != null ? ctx.getParsedCommand() : null;
+        return parsed != null ? parsed : CommandSpecParser.parse(spec(), args);
+    }
+
+    private static CommandMeta instrumentationStreamMeta() {
+        return CommandMeta.operator(false, true)
+            .requiresBootstrap(BootstrapBridge.SPY_API)
+            .withCapability(CommandCapability.LONG_RUNNING);
     }
 
     private String startWatching(String classPattern, String methodPattern,
@@ -558,27 +558,6 @@ public class WatchCommand implements StreamCommand {
             // best-effort
         }
         return null;
-    }
-
-    private String getHelp() {
-        return "Watch command usage:\n" +
-               "  watch <class-pattern> <method-pattern> [options]\n\n" +
-               "Options:\n" +
-               "  -n, --count <num>     Maximum number of events to capture (default: 100)\n" +
-               "  -t, --timeout <sec>   Timeout in seconds (default: 30)\n" +
-               "  --loader <id>         Select target ClassLoader when multiple loaded classes match\n" +
-               "  --first               Use first matched class when ambiguous (unsafe)\n" +
-               "  --expr <fields>       Output fields (comma-separated), e.g. params,return,throw,cost,thread\n" +
-               "  --condition <c>       Filter condition (lhs:op:rhs), can repeat; e.g. cost:gt:1000000\n" +
-               "  --bg                 Run in background (use jobs tail/stop)\n" +
-               "  --no-params          Don't capture method parameters\n" +
-               "  --no-return          Don't capture return values\n" +
-               "  --no-exception       Don't capture exceptions\n" +
-               "  -h, --help           Show this help\n\n" +
-               "Examples:\n" +
-               "  watch com.example.* execute*\n" +
-               "  watch *Service* *method* -n 50 -t 60 --condition cost:gt:1000000\n" +
-               "  watch MyClass doWork --no-params\n";
     }
 
     private static List<String> parseExpr(String raw) {

@@ -34,32 +34,24 @@ public class BuiltinCommandProvider implements CommandProvider {
         add(descriptors, "thread", new ThreadCommand(instrumentation), CommandMeta.viewer(false, false));
         add(descriptors, "sc", new SearchClassCommand(instrumentation), CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM));
         add(descriptors, "sm", new SearchMethodCommand(instrumentation), CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM));
-        add(
-            descriptors,
-            "watch",
-            new WatchCommand(
+        WatchCommand watchCommand = new WatchCommand(
                 instrumentation,
                 context.requireTransformer(),
                 context.requireConfig(),
                 context.requireJobManager(),
                 context.requireSpyDispatcher(),
                 context.requireEnhancementSessionRegistry()
-            ),
-            instrumentationStreamMeta()
-        );
-        add(
-            descriptors,
-            "trace",
-            new TraceCommand(
+            );
+        descriptors.add(CommandDescriptor.ofSpec(watchCommand.getSpec(), watchCommand));
+        TraceCommand traceCommand = new TraceCommand(
                 instrumentation,
                 context.requireTransformer(),
                 context.requireConfig(),
                 context.requireJobManager(),
                 context.requireSpyDispatcher(),
                 context.requireEnhancementSessionRegistry()
-            ),
-            instrumentationStreamMeta()
-        );
+            );
+        descriptors.add(CommandDescriptor.ofSpec(traceCommand.getSpec(), traceCommand));
         add(
             descriptors,
             "tt",
@@ -96,18 +88,14 @@ public class BuiltinCommandProvider implements CommandProvider {
         );
 
         add(descriptors, "profiler", new ProfilerCommand(instrumentation), CommandMeta.operator(false, false));
-        add(
-            descriptors,
-            "monitor",
-            new MonitorCommand(
+        MonitorCommand monitorCommand = new MonitorCommand(
                 instrumentation,
                 context.requireTransformer(),
                 context.requireJobManager(),
                 context.requireSpyDispatcher(),
                 context.requireEnhancementSessionRegistry()
-            ),
-            instrumentationStreamMeta()
-        );
+            );
+        descriptors.add(CommandDescriptor.ofSpec(monitorCommand.getSpec(), monitorCommand));
         add(
             descriptors,
             "stack",
