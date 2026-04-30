@@ -1,6 +1,13 @@
 package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.command.Command;
+import com.javasleuth.core.command.SpecBackedCommand;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.command.spec.SubcommandSpec;
+import com.javasleuth.foundation.security.CommandMeta;
 import java.io.File;
 import java.lang.instrument.Instrumentation;
 import java.net.URL;
@@ -10,20 +17,93 @@ import java.security.ProtectionDomain;
 import java.util.*;
 import java.util.regex.Pattern;
 
-public class ClassLoaderCommand implements Command {
+public class ClassLoaderCommand implements Command, SpecBackedCommand {
+    private static final CommandSpec LIST_SPEC = CommandSpec.builder("list")
+        .description("List all ClassLoaders")
+        .usage("classloader list")
+        .build();
+
+    private static final CommandSpec SPEC = CommandSpec.builder("classloader")
+        .description("Analyze ClassLoader hierarchy and loaded classes")
+        .usage("classloader [list|tree|stats|classes|urls|find] [options]")
+        .meta(CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM))
+        .argument(ArgumentSpec.optional("class-pattern"))
+        .unknownSubcommandAsArgument(true)
+        .subcommand(SubcommandSpec.of("list", "List all ClassLoaders", LIST_SPEC))
+        .subcommand(SubcommandSpec.of("ls", "List all ClassLoaders", LIST_SPEC))
+        .subcommand(SubcommandSpec.of(
+            "tree",
+            "Show ClassLoader hierarchy tree",
+            CommandSpec.builder("tree")
+                .description("Show ClassLoader hierarchy tree")
+                .usage("classloader tree")
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "stats",
+            "Show ClassLoader statistics",
+            CommandSpec.builder("stats")
+                .description("Show ClassLoader statistics")
+                .usage("classloader stats")
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "classes",
+            "Show classes loaded by matching ClassLoaders",
+            CommandSpec.builder("classes")
+                .description("Show classes loaded by matching ClassLoaders")
+                .usage("classloader classes <loader-pattern>")
+                .argument(ArgumentSpec.required("loader-pattern"))
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "urls",
+            "Show URLs for URLClassLoaders",
+            CommandSpec.builder("urls")
+                .description("Show URLs for URLClassLoaders")
+                .usage("classloader urls")
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "find",
+            "Find classes across ClassLoaders",
+            CommandSpec.builder("find")
+                .description("Find classes across ClassLoaders")
+                .usage("classloader find <class-pattern>")
+                .argument(ArgumentSpec.required("class-pattern"))
+                .build()
+        ))
+        .example("classloader list")
+        .example("classloader find java.lang.*")
+        .build();
+
     private final Instrumentation instrumentation;
 
     public ClassLoaderCommand(Instrumentation instrumentation) {
         this.instrumentation = instrumentation;
     }
 
+    public static CommandSpec spec() {
+        return SPEC;
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return SPEC;
+    }
+
     @Override
     public String execute(String[] args) throws Exception {
-        if (args.length > 1 && "--help".equals(args[1])) {
-            return getHelpText();
+        ParsedCommand parsed = CommandSpecSupport.parsed(SPEC, args);
+        if (parsed.isHelpRequested()) {
+            return CommandHelpRenderer.render(SPEC);
         }
 
-        String subCommand = args.length > 1 ? args[1].toLowerCase() : "list";
+        String subCommand = parsed.subcommandName();
+        if (subCommand == null) {
+            String shortcutPattern = parsed.argument("class-pattern");
+            return shortcutPattern == null ? listClassLoaders() : findClassInLoaders(shortcutPattern);
+        }
 
         switch (subCommand) {
             case "list":
@@ -34,14 +114,13 @@ public class ClassLoaderCommand implements Command {
             case "stats":
                 return showClassLoaderStats();
             case "classes":
-                return showClassesByLoader(args);
+                return showClassesByLoader(parsed.argument("loader-pattern"));
             case "urls":
-                return showClassLoaderUrls(args);
+                return showClassLoaderUrls();
             case "find":
-                return findClassInLoaders(args);
+                return findClassInLoaders(parsed.argument("class-pattern"));
             default:
-                // If not a known subcommand, treat as class name for finding
-                return findClassInLoaders(new String[]{"find", subCommand});
+                return CommandHelpRenderer.render(SPEC);
         }
     }
 
@@ -188,13 +267,7 @@ public class ClassLoaderCommand implements Command {
         return sb.toString();
     }
 
-    private String showClassesByLoader(String[] args) {
-        if (args.length < 3) {
-            return "Usage: classloader classes <loader-pattern>\n" +
-                   "Example: classloader classes URLClassLoader";
-        }
-
-        String pattern = args[2];
+    private String showClassesByLoader(String pattern) {
         StringBuilder sb = new StringBuilder();
         sb.append("=== Classes by ClassLoader ===\n");
         sb.append("Pattern: ").append(pattern).append("\n\n");
@@ -233,7 +306,7 @@ public class ClassLoaderCommand implements Command {
         return sb.toString();
     }
 
-    private String showClassLoaderUrls(String[] args) {
+    private String showClassLoaderUrls() {
         StringBuilder sb = new StringBuilder();
         sb.append("=== ClassLoader URLs ===\n");
 
@@ -276,13 +349,7 @@ public class ClassLoaderCommand implements Command {
         return sb.toString();
     }
 
-    private String findClassInLoaders(String[] args) {
-        if (args.length < 2) {
-            return "Usage: classloader find <class-pattern>\n" +
-                   "Example: classloader find String";
-        }
-
-        String className = args[1];
+    private String findClassInLoaders(String className) {
         StringBuilder sb = new StringBuilder();
         sb.append("=== Find Class in ClassLoaders ===\n");
         sb.append("Searching for: ").append(className).append("\n\n");
@@ -364,47 +431,6 @@ public class ClassLoaderCommand implements Command {
         if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
         if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024.0));
         return String.format("%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0));
-    }
-
-    private String getHelpText() {
-        return "=== ClassLoader Command Help ===\n" +
-               "Analyze and inspect ClassLoader hierarchy and loaded classes\n\n" +
-               "Usage:\n" +
-               "  classloader [subcommand] [options]\n" +
-               "  classloader --help                Show this help message\n\n" +
-               "Subcommands:\n" +
-               "  list, ls                          List all ClassLoaders with basic info\n" +
-               "  tree                              Show ClassLoader hierarchy tree\n" +
-               "  stats                             Show ClassLoader statistics\n" +
-               "  classes <loader-pattern>          Show classes loaded by matching ClassLoaders\n" +
-               "  urls                              Show URLs for all URLClassLoaders\n" +
-               "  find <class-pattern>              Find classes across all ClassLoaders\n" +
-               "  <class-pattern>                   Shortcut for 'find <class-pattern>'\n\n" +
-               "Examples:\n" +
-               "  classloader list                  List all ClassLoaders\n" +
-               "  classloader tree                  Show loader hierarchy\n" +
-               "  classloader stats                 Show loader statistics\n" +
-               "  classloader classes *URL*         Show classes from URLClassLoaders\n" +
-               "  classloader urls                  Show all ClassLoader URLs\n" +
-               "  classloader find String           Find String class\n" +
-               "  classloader java.lang.*           Find all java.lang classes\n\n" +
-               "Information Displayed:\n" +
-               "- ClassLoader types and instances\n" +
-               "- Parent-child relationships\n" +
-               "- Number of classes per loader\n" +
-               "- Package distribution\n" +
-               "- URLs and classpaths (for URLClassLoaders)\n" +
-               "- Code sources and locations\n\n" +
-               "Pattern Matching:\n" +
-               "- Use * for wildcard matching\n" +
-               "- Case-insensitive search\n" +
-               "- Supports regex patterns\n\n" +
-               "Use Cases:\n" +
-               "- Debug classloading issues\n" +
-               "- Understand application structure\n" +
-               "- Find duplicate classes\n" +
-               "- Analyze memory usage by ClassLoader\n" +
-               "- Inspect classpath and dependencies\n";
     }
 
     @Override

@@ -23,29 +23,18 @@ final class JvmDiagnosticsCommandProvider {
         List<CommandDescriptor> descriptors = new ArrayList<>();
         BuiltinCommandMetas.add(descriptors, "dashboard", new DashboardCommand(instrumentation), CommandMeta.viewer(true, false));
         BuiltinCommandMetas.add(descriptors, "thread", new ThreadCommand(instrumentation), CommandMeta.viewer(false, false));
-        BuiltinCommandMetas.add(
-            descriptors,
-            "sc",
-            new SearchClassCommand(instrumentation),
-            CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM)
-        );
-        BuiltinCommandMetas.add(
-            descriptors,
-            "sm",
-            new SearchMethodCommand(instrumentation),
-            CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM)
-        );
+        SearchClassCommand searchClassCommand = new SearchClassCommand(instrumentation);
+        descriptors.add(CommandDescriptor.ofSpec(searchClassCommand.getSpec(), searchClassCommand));
+        SearchMethodCommand searchMethodCommand = new SearchMethodCommand(instrumentation);
+        descriptors.add(CommandDescriptor.ofSpec(searchMethodCommand.getSpec(), searchMethodCommand));
         BuiltinCommandMetas.add(descriptors, "profiler", new ProfilerCommand(instrumentation), CommandMeta.operator(false, false));
         BuiltinCommandMetas.add(descriptors, "jvm", new JvmCommand(instrumentation), CommandMeta.viewer(true, false));
         BuiltinCommandMetas.add(descriptors, "memory", new MemoryCommand(instrumentation), CommandMeta.viewer(true, false));
         BuiltinCommandMetas.add(descriptors, "getstatic", new GetStaticCommand(instrumentation), CommandMeta.operator(false, false));
-        BuiltinCommandMetas.add(
-            descriptors,
-            "classloader",
-            new ClassLoaderCommand(instrumentation),
-            CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM)
-        );
-        BuiltinCommandMetas.add(descriptors, "mbean", new MBeanCommand(instrumentation), CommandMeta.operator(false, false));
+        ClassLoaderCommand classLoaderCommand = new ClassLoaderCommand(instrumentation);
+        descriptors.add(CommandDescriptor.ofSpec(classLoaderCommand.getSpec(), classLoaderCommand));
+        MBeanCommand mBeanCommand = new MBeanCommand(instrumentation);
+        descriptors.add(CommandDescriptor.ofSpec(mBeanCommand.getSpec(), mBeanCommand));
         LoggerCommand loggerCommand = new LoggerCommand();
         descriptors.add(CommandDescriptor.ofSpec(loggerCommand.getSpec(), loggerCommand));
         return descriptors;

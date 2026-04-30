@@ -50,28 +50,12 @@ final class RuntimeMutationCommandProvider {
         BuiltinCommandMetas.add(descriptors, "sysenv", new SysEnvCommand(instrumentation), CommandMeta.viewer(true, false));
         VmOptionCommand vmOptionCommand = new VmOptionCommand(instrumentation);
         descriptors.add(CommandDescriptor.ofSpec(vmOptionCommand.getSpec(), vmOptionCommand));
-        BuiltinCommandMetas.add(
-            descriptors,
-            "heapdump",
-            new HeapDumpCommand(instrumentation, context.requirePerformanceOptimizer()),
-            BuiltinCommandMetas.writesDisk(
-                CommandMeta.admin(false, false).withDangerous(true).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(2)
-            )
-        );
-        BuiltinCommandMetas.add(
-            descriptors,
-            "dump",
-            new DumpCommand(instrumentation),
-            BuiltinCommandMetas.writesDisk(
-                CommandMeta.operator(false, false).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(5)
-            )
-        );
-        BuiltinCommandMetas.add(
-            descriptors,
-            "jad",
-            new JadCommand(instrumentation),
-            CommandMeta.operator(false, false).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(5)
-        );
+        HeapDumpCommand heapDumpCommand = new HeapDumpCommand(instrumentation, context.requirePerformanceOptimizer());
+        descriptors.add(CommandDescriptor.ofSpec(heapDumpCommand.getSpec(), heapDumpCommand));
+        DumpCommand dumpCommand = new DumpCommand(instrumentation);
+        descriptors.add(CommandDescriptor.ofSpec(dumpCommand.getSpec(), dumpCommand));
+        JadCommand jadCommand = new JadCommand(instrumentation);
+        descriptors.add(CommandDescriptor.ofSpec(jadCommand.getSpec(), jadCommand));
         return descriptors;
     }
 }

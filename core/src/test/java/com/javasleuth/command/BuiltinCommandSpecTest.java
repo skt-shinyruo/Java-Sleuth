@@ -128,6 +128,75 @@ public class BuiltinCommandSpecTest {
     }
 
     @Test
+    public void diagnosticBatchCommandsExposeSpecs() {
+        withProviderContext(context -> {
+            BuiltinCommandProvider provider = new BuiltinCommandProvider();
+            Collection<CommandDescriptor> descriptors = provider.getCommandDescriptors(context);
+            assertSpecBackedDescriptor(descriptors, "sc");
+            assertSpecBackedDescriptor(descriptors, "sm");
+            assertSpecBackedDescriptor(descriptors, "classloader");
+            assertSpecBackedDescriptor(descriptors, "mbean");
+            assertSpecBackedDescriptor(descriptors, "heapdump");
+            assertSpecBackedDescriptor(descriptors, "dump");
+            assertSpecBackedDescriptor(descriptors, "jad");
+        });
+    }
+
+    @Test
+    public void diagnosticBatchSpecsCoverRepresentativeSyntax() {
+        withProviderContext(context -> {
+            BuiltinCommandProvider provider = new BuiltinCommandProvider();
+            Collection<CommandDescriptor> descriptors = provider.getCommandDescriptors(context);
+
+            CommandSpec sc = requiredSpec(descriptors, "sc");
+            Assert.assertEquals("com.example.*", CommandSpecParser.parse(sc, new String[]{"sc", "com.example.*", "-d", "-f"})
+                .argument("class-pattern"));
+            expectParseFailure(sc, new String[]{"sc", "com.example.*", "--unknown"}, "E_ARGS_UNKNOWN");
+
+            CommandSpec sm = requiredSpec(descriptors, "sm");
+            ParsedCommand smParsed = CommandSpecParser.parse(sm, new String[]{"sm", "com.example.*", "do*", "-E", "-d"});
+            Assert.assertEquals("do*", smParsed.argument("method-pattern"));
+            Assert.assertTrue(smParsed.booleanOption("regex"));
+
+            CommandSpec classloader = requiredSpec(descriptors, "classloader");
+            Assert.assertNotNull(classloader.subcommand("classes"));
+            Assert.assertNotNull(classloader.subcommand("find"));
+            ParsedCommand classloaderShortcut = CommandSpecParser.parse(classloader, new String[]{"classloader", "java.lang.*"});
+            Assert.assertNull(classloaderShortcut.subcommandName());
+            Assert.assertEquals("java.lang.*", classloaderShortcut.argument("class-pattern"));
+
+            CommandSpec mbean = requiredSpec(descriptors, "mbean");
+            Assert.assertNotNull(mbean.subcommand("list"));
+            Assert.assertNotNull(mbean.subcommand("invoke"));
+            ParsedCommand mbeanShortcut = CommandSpecParser.parse(mbean, new String[]{"mbean", "java.lang:*"});
+            Assert.assertNull(mbeanShortcut.subcommandName());
+            Assert.assertEquals("java.lang:*", mbeanShortcut.argument("pattern"));
+            ParsedCommand mbeanSet = CommandSpecParser.parse(
+                mbean,
+                new String[]{"mbean", "set", "java.lang:type=Threading", "ThreadContentionMonitoringEnabled", "-1"}
+            );
+            Assert.assertEquals("set", mbeanSet.subcommandName());
+            Assert.assertEquals("-1", mbeanSet.argument("value"));
+
+            CommandSpec heapdump = requiredSpec(descriptors, "heapdump");
+            ParsedCommand heapdumpParsed = CommandSpecParser.parse(heapdump, new String[]{"heapdump", "--all", "--file=/tmp/app.hprof"});
+            Assert.assertTrue(heapdumpParsed.booleanOption("all"));
+            Assert.assertEquals("/tmp/app.hprof", heapdumpParsed.stringOption("file"));
+
+            CommandSpec dump = requiredSpec(descriptors, "dump");
+            Assert.assertEquals("./out", CommandSpecParser.parse(dump, new String[]{"dump", "com.example.*", "--output", "./out"})
+                .stringOption("output"));
+            expectParseFailure(dump, new String[]{"dump", "com.example.*", "--limit", "NaN"}, "E_ARGS_INVALID");
+
+            CommandSpec jad = requiredSpec(descriptors, "jad");
+            ParsedCommand jadParsed = CommandSpecParser.parse(jad, new String[]{"jad", "com.example.App", "--method=run", "--lines"});
+            Assert.assertEquals("run", jadParsed.stringOption("method"));
+            Assert.assertTrue(jadParsed.booleanOption("lines"));
+            expectParseFailure(jad, new String[]{"jad", "com.example.App", "--max-lines", "bad"}, "E_ARGS_INVALID");
+        });
+    }
+
+    @Test
     public void traceSpecDoesNotExposeRemovedSampleOptions() {
         Set<String> publicOptionNames = new HashSet<>();
         for (OptionSpec option : TraceCommand.spec().getOptions()) {

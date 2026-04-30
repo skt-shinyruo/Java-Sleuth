@@ -1,6 +1,14 @@
 package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.command.Command;
+import com.javasleuth.core.command.SpecBackedCommand;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.foundation.security.CommandCapability;
+import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.security.SecurityValidator;
 import com.javasleuth.foundation.util.PerformanceOptimizer;
 import java.io.File;
@@ -12,7 +20,22 @@ import java.util.Date;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
-public class HeapDumpCommand implements Command {
+public class HeapDumpCommand implements Command, SpecBackedCommand {
+    private static final CommandSpec SPEC = CommandSpec.builder("heapdump")
+        .description("Create heap dumps for memory analysis")
+        .usage("heapdump [--live|--all] [--file <filename>] [filename]")
+        .meta(CommandMeta.admin(false, false)
+            .withDangerous(true)
+            .withImpact(CommandMeta.ImpactLevel.HIGH)
+            .withRateLimit(2)
+            .withCapability(CommandCapability.WRITES_DISK))
+        .argument(ArgumentSpec.optional("filename"))
+        .option(OptionSpec.flag("live").alias("-l").build())
+        .option(OptionSpec.flag("all").alias("-a").build())
+        .option(OptionSpec.string("file").build())
+        .example("heapdump --all app-full.hprof")
+        .build();
+
     private final Instrumentation instrumentation;
     private final PerformanceOptimizer performanceOptimizer;
 
@@ -24,29 +47,26 @@ public class HeapDumpCommand implements Command {
         this.performanceOptimizer = performanceOptimizer;
     }
 
+    public static CommandSpec spec() {
+        return SPEC;
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return SPEC;
+    }
+
     @Override
     public String execute(String[] args) throws Exception {
-        if (args.length > 1 && "--help".equals(args[1])) {
-            return getHelpText();
+        ParsedCommand parsed = CommandSpecSupport.parsed(SPEC, args);
+        if (parsed.isHelpRequested()) {
+            return CommandHelpRenderer.render(SPEC);
         }
 
-        String fileName = null;
-        boolean liveOnly = true;
-
-        // Parse arguments
-        for (int i = 1; i < args.length; i++) {
-            String arg = args[i];
-            if ("--all".equals(arg) || "-a".equals(arg)) {
-                liveOnly = false;
-            } else if ("--live".equals(arg) || "-l".equals(arg)) {
-                liveOnly = true;
-            } else if (arg.startsWith("--file=")) {
-                fileName = arg.substring(7);
-            } else if (!arg.startsWith("-")) {
-                fileName = arg;
-            } else {
-                return "Unknown option: " + arg + ". Use --help for usage information.";
-            }
+        String fileName = parsed.isOptionExplicit("file") ? parsed.stringOption("file") : parsed.argument("filename");
+        boolean liveOnly = !Boolean.TRUE.equals(parsed.booleanOption("all"));
+        if (Boolean.TRUE.equals(parsed.booleanOption("live"))) {
+            liveOnly = true;
         }
 
         // Security validation for filename (heapdump writes a new file)
@@ -173,44 +193,6 @@ public class HeapDumpCommand implements Command {
         if (bytes < 1024 * 1024) return String.format("%.2f KB", bytes / 1024.0);
         if (bytes < 1024 * 1024 * 1024) return String.format("%.2f MB", bytes / (1024.0 * 1024.0));
         return String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
-    }
-
-    private String getHelpText() {
-        return "=== Heap Dump Command Help ===\n" +
-               "Create a heap dump for memory analysis\n\n" +
-               "Usage:\n" +
-               "  heapdump [options] [filename]\n" +
-               "  heapdump --help                Show this help message\n\n" +
-               "Options:\n" +
-               "  --live, -l                     Dump only live objects (default)\n" +
-               "  --all, -a                      Dump all objects including unreachable ones\n" +
-               "  --file=<filename>              Specify output filename\n\n" +
-               "Examples:\n" +
-               "  heapdump                       Create dump with auto-generated filename\n" +
-               "  heapdump myapp.hprof           Create dump with specific filename\n" +
-               "  heapdump --all app-full.hprof  Create dump including unreachable objects\n" +
-               "  heapdump --live /tmp/heap.hprof Create live-only dump at specific path\n\n" +
-               "File Naming:\n" +
-               "- If no filename specified, auto-generates: heapdump-YYYYMMDD-HHMMSS.hprof\n" +
-               "- .hprof extension is automatically added if missing\n" +
-               "- Relative paths are relative to current working directory\n" +
-               "- Use absolute paths for specific locations\n\n" +
-               "Analysis Tools:\n" +
-               "- Eclipse MAT (Memory Analyzer Tool) - Recommended\n" +
-               "- jhat <filename> - Built-in Java heap analyzer\n" +
-               "- VisualVM - GUI tool for heap analysis\n" +
-               "- JProfiler - Commercial profiling tool\n" +
-               "- FastThread.io - Online heap analyzer\n\n" +
-               "Performance Notes:\n" +
-               "- Heap dumps can be large (similar to heap size)\n" +
-               "- Creating dumps may pause the application briefly\n" +
-               "- --live option triggers GC and is typically faster\n" +
-               "- Ensure sufficient disk space before creating dumps\n\n" +
-               "Troubleshooting:\n" +
-               "- Check file permissions and disk space\n" +
-               "- Ensure target directory exists\n" +
-               "- Some JVMs may not support heap dumping\n" +
-               "- Use jcmd as alternative: jcmd <pid> GC.heap_dump <file>\n";
     }
 
     @Override

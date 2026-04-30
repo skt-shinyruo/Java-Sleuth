@@ -1,6 +1,14 @@
 package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.command.Command;
+import com.javasleuth.core.command.SpecBackedCommand;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.foundation.security.CommandCapability;
+import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.security.SecurityValidator;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import java.io.File;
@@ -10,37 +18,45 @@ import java.lang.instrument.Instrumentation;
 import java.util.ArrayList;
 import java.util.List;
 
-public class DumpCommand implements Command {
+public class DumpCommand implements Command, SpecBackedCommand {
+    private static final CommandSpec SPEC = CommandSpec.builder("dump")
+        .description("Dump class bytecode from classpath resources to disk")
+        .usage("dump <class-pattern> [--output <dir>] [--limit <n>]")
+        .meta(CommandMeta.operator(false, false)
+            .withImpact(CommandMeta.ImpactLevel.HIGH)
+            .withRateLimit(5)
+            .withCapability(CommandCapability.WRITES_DISK))
+        .argument(ArgumentSpec.required("class-pattern"))
+        .option(OptionSpec.string("output").defaultValue("./dump").build())
+        .option(OptionSpec.integer("limit").defaultValue(50).range(1, 100000).build())
+        .example("dump com.example.* --output ./dump --limit 50")
+        .build();
+
     private final Instrumentation instrumentation;
 
     public DumpCommand(Instrumentation instrumentation) {
         this.instrumentation = instrumentation;
     }
 
+    public static CommandSpec spec() {
+        return SPEC;
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return SPEC;
+    }
+
     @Override
     public String execute(String[] args) throws Exception {
-        if (args.length < 2) {
-            return getHelp();
+        ParsedCommand parsed = CommandSpecSupport.parsed(SPEC, args);
+        if (parsed.isHelpRequested()) {
+            return CommandHelpRenderer.render(SPEC);
         }
 
-        String classPattern = args[1];
-        String outputDir = "./dump";
-        int limit = 50;
-
-        for (int i = 2; i < args.length; i++) {
-            String a = args[i];
-            if ("--output".equals(a) && i + 1 < args.length) {
-                outputDir = args[++i];
-            } else if ("--limit".equals(a) && i + 1 < args.length) {
-                try {
-                    limit = Integer.parseInt(args[++i]);
-                } catch (NumberFormatException ignored) {
-                    limit = 50;
-                }
-            } else if ("-h".equals(a) || "--help".equals(a)) {
-                return getHelp();
-            }
-        }
+        String classPattern = parsed.argument("class-pattern");
+        String outputDir = parsed.stringOption("output");
+        int limit = parsed.intOption("limit");
 
         if (outputDir.contains("..")) {
             return "Invalid output path (.. not allowed): " + outputDir;
@@ -102,13 +118,6 @@ public class DumpCommand implements Command {
 
         return "Dump completed. matched=" + matches.size() + ", dumped=" + dumped + ", skipped=" + skipped +
             ", outputDir=" + outputDir;
-    }
-
-    private String getHelp() {
-        return "Dump command usage:\n" +
-            "  dump <class-pattern> [--output <dir>] [--limit <n>]\n" +
-            "Examples:\n" +
-            "  dump com.example.* --output ./dump --limit 50\n";
     }
 
     @Override

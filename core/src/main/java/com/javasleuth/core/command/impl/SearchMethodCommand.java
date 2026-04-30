@@ -1,6 +1,13 @@
 package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.command.Command;
+import com.javasleuth.core.command.SpecBackedCommand;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
@@ -9,39 +16,47 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
-public class SearchMethodCommand implements Command {
+public class SearchMethodCommand implements Command, SpecBackedCommand {
+    private static final CommandSpec SPEC = CommandSpec.builder("sm")
+        .description("Search for methods in loaded classes")
+        .usage("sm <class-pattern> [method-pattern] [options]")
+        .meta(CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM))
+        .argument(ArgumentSpec.required("class-pattern"))
+        .argument(ArgumentSpec.optional("method-pattern"))
+        .option(OptionSpec.flag("details").alias("-d").build())
+        .option(OptionSpec.flag("regex").alias("-E").build())
+        .example("sm com.example.* do* -d")
+        .build();
+
     private final Instrumentation instrumentation;
 
     public SearchMethodCommand(Instrumentation instrumentation) {
         this.instrumentation = instrumentation;
     }
 
+    public static CommandSpec spec() {
+        return SPEC;
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return SPEC;
+    }
+
     @Override
     public String execute(String[] args) throws Exception {
-        if (args.length < 2) {
-            return "Usage: sm <class-pattern> [method-pattern] [options]\n" +
-                   "Options:\n" +
-                   "  -d    Show method details\n" +
-                   "  -E    Enable regular expression\n";
+        ParsedCommand parsed = CommandSpecSupport.parsed(SPEC, args);
+        if (parsed.isHelpRequested()) {
+            return CommandHelpRenderer.render(SPEC);
         }
 
-        String classPattern = args[1];
-        String methodPattern = args.length > 2 && !args[2].startsWith("-") ? args[2] : "*";
-        boolean showDetails = false;
-        boolean useRegex = false;
-
-        for (int i = 2; i < args.length; i++) {
-            switch (args[i]) {
-                case "-d":
-                    showDetails = true;
-                    break;
-                case "-E":
-                    useRegex = true;
-                    break;
-            }
-        }
-
-        return searchMethods(classPattern, methodPattern, showDetails, useRegex);
+        String methodPattern = parsed.argument("method-pattern");
+        return searchMethods(
+            parsed.argument("class-pattern"),
+            methodPattern != null ? methodPattern : "*",
+            Boolean.TRUE.equals(parsed.booleanOption("details")),
+            Boolean.TRUE.equals(parsed.booleanOption("regex"))
+        );
     }
 
     private String searchMethods(String classPattern, String methodPattern, boolean showDetails, boolean useRegex) {
