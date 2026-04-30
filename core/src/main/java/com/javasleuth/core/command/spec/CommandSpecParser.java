@@ -64,7 +64,7 @@ public final class CommandSpecParser {
 
     private static Map<String, OptionSpec> buildOptionIndex(CommandSpec spec) {
         Map<String, OptionSpec> index = new LinkedHashMap<>();
-        for (OptionSpec option : spec.getOptions()) {
+        for (OptionSpec option : spec.getParserOptions()) {
             putOptionToken(index, "--" + option.getName(), option);
             for (String alias : option.getAliases()) {
                 putOptionToken(index, alias, option);
@@ -82,7 +82,7 @@ public final class CommandSpecParser {
 
     private static Map<String, List<Object>> defaultOptions(CommandSpec spec) {
         Map<String, List<Object>> values = new LinkedHashMap<>();
-        for (OptionSpec option : spec.getOptions()) {
+        for (OptionSpec option : spec.getParserOptions()) {
             values.put(option.getName(), new ArrayList<Object>());
             if (option.getDefaultValue() != null) {
                 addOptionValue(values, option.getName(), option.getDefaultValue());
