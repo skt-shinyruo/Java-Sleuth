@@ -1,6 +1,13 @@
 package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.command.Command;
+import com.javasleuth.core.command.SpecBackedCommand;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.command.spec.SubcommandSpec;
+import com.javasleuth.foundation.security.CommandMeta;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.ManagementFactory;
 import java.util.*;
@@ -9,7 +16,83 @@ import javax.management.*;
 import javax.management.openmbean.CompositeData;
 import javax.management.openmbean.TabularData;
 
-public class MBeanCommand implements Command {
+public class MBeanCommand implements Command, SpecBackedCommand {
+    private static final CommandSpec LIST_SPEC = CommandSpec.builder("list")
+        .description("List MBeans")
+        .usage("mbean list [pattern]")
+        .argument(ArgumentSpec.optional("pattern"))
+        .build();
+
+    private static final CommandSpec SPEC = CommandSpec.builder("mbean")
+        .description("Inspect and interact with JMX MBeans")
+        .usage("mbean [list|info|get|set|invoke|domains|search] [options]")
+        .meta(CommandMeta.operator(false, false))
+        .argument(ArgumentSpec.optional("pattern"))
+        .unknownSubcommandAsArgument(true)
+        .subcommand(SubcommandSpec.of("list", "List MBeans", LIST_SPEC))
+        .subcommand(SubcommandSpec.of("ls", "List MBeans", LIST_SPEC))
+        .subcommand(SubcommandSpec.of(
+            "info",
+            "Show detailed MBean information",
+            CommandSpec.builder("info")
+                .description("Show detailed MBean information")
+                .usage("mbean info <ObjectName>")
+                .argument(ArgumentSpec.required("object-name"))
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "get",
+            "Get MBean attribute value",
+            CommandSpec.builder("get")
+                .description("Get MBean attribute value")
+                .usage("mbean get <ObjectName> <AttributeName>")
+                .argument(ArgumentSpec.required("object-name"))
+                .argument(ArgumentSpec.required("attribute"))
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "set",
+            "Set MBean attribute value",
+            CommandSpec.builder("set")
+                .description("Set MBean attribute value")
+                .usage("mbean set <ObjectName> <AttributeName> <Value>")
+                .argument(ArgumentSpec.required("object-name"))
+                .argument(ArgumentSpec.required("attribute"))
+                .argument(ArgumentSpec.builder("value").required(true).trailing(true).build())
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "invoke",
+            "Invoke MBean operation",
+            CommandSpec.builder("invoke")
+                .description("Invoke MBean operation")
+                .usage("mbean invoke <ObjectName> <OperationName> [params...]")
+                .argument(ArgumentSpec.required("object-name"))
+                .argument(ArgumentSpec.required("operation"))
+                .argument(ArgumentSpec.trailing("params"))
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "domains",
+            "List all MBean domains",
+            CommandSpec.builder("domains")
+                .description("List all MBean domains")
+                .usage("mbean domains")
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "search",
+            "Search MBeans by name or class",
+            CommandSpec.builder("search")
+                .description("Search MBeans by name or class")
+                .usage("mbean search <pattern>")
+                .argument(ArgumentSpec.required("pattern"))
+                .build()
+        ))
+        .example("mbean list java.lang:*")
+        .example("mbean get java.lang:type=Memory HeapMemoryUsage")
+        .build();
+
     private final Instrumentation instrumentation;
     private final MBeanServer mbeanServer;
 
@@ -18,42 +101,62 @@ public class MBeanCommand implements Command {
         this.mbeanServer = ManagementFactory.getPlatformMBeanServer();
     }
 
+    public static CommandSpec spec() {
+        return SPEC;
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return SPEC;
+    }
+
     @Override
     public String execute(String[] args) throws Exception {
-        if (args.length > 1 && "--help".equals(args[1])) {
-            return getHelpText();
+        ParsedCommand parsed = CommandSpecSupport.parsed(SPEC, args);
+        if (parsed.isHelpRequested()) {
+            return CommandHelpRenderer.render(SPEC);
         }
 
-        String subCommand = args.length > 1 ? args[1].toLowerCase() : "list";
+        String subCommand = parsed.subcommandName();
+        if (subCommand == null) {
+            return listMBeans(parsed.argument("pattern"));
+        }
 
         switch (subCommand) {
             case "list":
             case "ls":
-                return listMBeans(args);
+                return listMBeans(parsed.argument("pattern"));
             case "info":
-                return getMBeanInfo(args);
+                return getMBeanInfo(parsed.argument("object-name"));
             case "get":
-                return getMBeanAttribute(args);
+                return getMBeanAttribute(parsed.argument("object-name"), parsed.argument("attribute"));
             case "set":
-                return setMBeanAttribute(args);
+                return setMBeanAttribute(
+                    parsed.argument("object-name"),
+                    parsed.argument("attribute"),
+                    String.join(" ", parsed.argumentValues("value"))
+                );
             case "invoke":
-                return invokeMBeanOperation(args);
+                return invokeMBeanOperation(
+                    parsed.argument("object-name"),
+                    parsed.argument("operation"),
+                    parsed.argumentValues("params")
+                );
             case "domains":
                 return listDomains();
             case "search":
-                return searchMBeans(args);
+                return searchMBeans(parsed.argument("pattern"));
             default:
-                // If not a known subcommand, treat as ObjectName pattern for listing
-                return listMBeans(new String[]{"list", subCommand});
+                return CommandHelpRenderer.render(SPEC);
         }
     }
 
-    private String listMBeans(String[] args) {
+    private String listMBeans(String rawPattern) {
         StringBuilder sb = new StringBuilder();
         sb.append("=== MBean List ===\n");
 
         try {
-            String pattern = args.length > 2 ? args[2] : "*:*";
+            String pattern = rawPattern != null ? rawPattern : "*:*";
             ObjectName objectName = new ObjectName(pattern);
             Set<ObjectInstance> mbeans = mbeanServer.queryMBeans(objectName, null);
 
@@ -94,19 +197,14 @@ public class MBeanCommand implements Command {
         return sb.toString();
     }
 
-    private String getMBeanInfo(String[] args) {
-        if (args.length < 3) {
-            return "Usage: mbean info <ObjectName>\n" +
-                   "Example: mbean info java.lang:type=Memory";
-        }
-
+    private String getMBeanInfo(String objectNameRaw) {
         StringBuilder sb = new StringBuilder();
         sb.append("=== MBean Information ===\n");
 
         try {
-            ObjectName objectName = new ObjectName(args[2]);
+            ObjectName objectName = new ObjectName(objectNameRaw);
             if (!mbeanServer.isRegistered(objectName)) {
-                return "MBean not found: " + args[2];
+                return "MBean not found: " + objectNameRaw;
             }
 
             MBeanInfo info = mbeanServer.getMBeanInfo(objectName);
@@ -171,21 +269,15 @@ public class MBeanCommand implements Command {
         return sb.toString();
     }
 
-    private String getMBeanAttribute(String[] args) {
-        if (args.length < 4) {
-            return "Usage: mbean get <ObjectName> <AttributeName>\n" +
-                   "Example: mbean get java.lang:type=Memory HeapMemoryUsage";
-        }
-
+    private String getMBeanAttribute(String objectNameRaw, String attributeName) {
         StringBuilder sb = new StringBuilder();
         sb.append("=== MBean Attribute ===\n");
 
         try {
-            ObjectName objectName = new ObjectName(args[2]);
-            String attributeName = args[3];
+            ObjectName objectName = new ObjectName(objectNameRaw);
 
             if (!mbeanServer.isRegistered(objectName)) {
-                return "MBean not found: " + args[2];
+                return "MBean not found: " + objectNameRaw;
             }
 
             Object value = mbeanServer.getAttribute(objectName, attributeName);
@@ -197,7 +289,7 @@ public class MBeanCommand implements Command {
             sb.append(formatAttributeValue(value, "  "));
 
         } catch (AttributeNotFoundException e) {
-            sb.append("Attribute not found: ").append(args[3]);
+            sb.append("Attribute not found: ").append(attributeName);
         } catch (Exception e) {
             sb.append("Error getting attribute: ").append(e.getMessage());
         }
@@ -205,22 +297,15 @@ public class MBeanCommand implements Command {
         return sb.toString();
     }
 
-    private String setMBeanAttribute(String[] args) {
-        if (args.length < 5) {
-            return "Usage: mbean set <ObjectName> <AttributeName> <Value>\n" +
-                   "Example: mbean set java.util.logging:type=Logging .level INFO";
-        }
-
+    private String setMBeanAttribute(String objectNameRaw, String attributeName, String valueStr) {
         StringBuilder sb = new StringBuilder();
         sb.append("=== Set MBean Attribute ===\n");
 
         try {
-            ObjectName objectName = new ObjectName(args[2]);
-            String attributeName = args[3];
-            String valueStr = args[4];
+            ObjectName objectName = new ObjectName(objectNameRaw);
 
             if (!mbeanServer.isRegistered(objectName)) {
-                return "MBean not found: " + args[2];
+                return "MBean not found: " + objectNameRaw;
             }
 
             // Get attribute info to determine type
@@ -259,26 +344,19 @@ public class MBeanCommand implements Command {
         return sb.toString();
     }
 
-    private String invokeMBeanOperation(String[] args) {
-        if (args.length < 4) {
-            return "Usage: mbean invoke <ObjectName> <OperationName> [param1] [param2] ...\n" +
-                   "Example: mbean invoke java.lang:type=Memory gc";
-        }
-
+    private String invokeMBeanOperation(String objectNameRaw, String operationName, List<String> rawParams) {
         StringBuilder sb = new StringBuilder();
         sb.append("=== Invoke MBean Operation ===\n");
 
         try {
-            ObjectName objectName = new ObjectName(args[2]);
-            String operationName = args[3];
+            ObjectName objectName = new ObjectName(objectNameRaw);
 
             if (!mbeanServer.isRegistered(objectName)) {
-                return "MBean not found: " + args[2];
+                return "MBean not found: " + objectNameRaw;
             }
 
             // Collect parameters
-            String[] params = new String[args.length - 4];
-            System.arraycopy(args, 4, params, 0, params.length);
+            String[] params = rawParams != null ? rawParams.toArray(new String[0]) : new String[0];
 
             // Find matching operation
             MBeanInfo info = mbeanServer.getMBeanInfo(objectName);
@@ -344,13 +422,7 @@ public class MBeanCommand implements Command {
         return sb.toString();
     }
 
-    private String searchMBeans(String[] args) {
-        if (args.length < 3) {
-            return "Usage: mbean search <pattern>\n" +
-                   "Example: mbean search Memory";
-        }
-
-        String searchPattern = args[2];
+    private String searchMBeans(String searchPattern) {
         StringBuilder sb = new StringBuilder();
         sb.append("=== MBean Search ===\n");
         sb.append("Search pattern: ").append(searchPattern).append("\n\n");
@@ -451,51 +523,6 @@ public class MBeanCommand implements Command {
             default:
                 return value; // Default to string
         }
-    }
-
-    private String getHelpText() {
-        return "=== MBean Command Help ===\n" +
-               "Inspect and interact with JMX MBeans (Managed Beans)\n\n" +
-               "Usage:\n" +
-               "  mbean <subcommand> [options]\n" +
-               "  mbean --help                     Show this help message\n\n" +
-               "Subcommands:\n" +
-               "  list [pattern]                   List MBeans (default: all)\n" +
-               "  info <ObjectName>                Show detailed MBean information\n" +
-               "  get <ObjectName> <Attribute>     Get MBean attribute value\n" +
-               "  set <ObjectName> <Attribute> <Value> Set MBean attribute value\n" +
-               "  invoke <ObjectName> <Operation> [params...] Invoke MBean operation\n" +
-               "  domains                          List all MBean domains\n" +
-               "  search <pattern>                 Search MBeans by name or class\n\n" +
-               "Examples:\n" +
-               "  mbean list                       List all MBeans\n" +
-               "  mbean list java.lang:*           List MBeans in java.lang domain\n" +
-               "  mbean info java.lang:type=Memory Show Memory MBean details\n" +
-               "  mbean get java.lang:type=Memory HeapMemoryUsage Get heap memory info\n" +
-               "  mbean invoke java.lang:type=Memory gc Trigger garbage collection\n" +
-               "  mbean domains                    Show all domains\n" +
-               "  mbean search Memory              Find MBeans containing 'Memory'\n\n" +
-               "ObjectName Format:\n" +
-               "- domain:key1=value1,key2=value2\n" +
-               "- Examples: java.lang:type=Memory, java.util.logging:type=Logging\n" +
-               "- Use wildcards: java.lang:*, *:type=Memory\n\n" +
-               "Common MBeans:\n" +
-               "- java.lang:type=Memory - Memory management\n" +
-               "- java.lang:type=Runtime - Runtime information\n" +
-               "- java.lang:type=Threading - Thread management\n" +
-               "- java.lang:type=ClassLoading - Class loading statistics\n" +
-               "- java.lang:type=GarbageCollector,name=* - GC information\n" +
-               "- java.lang:type=MemoryPool,name=* - Memory pool details\n\n" +
-               "Data Types:\n" +
-               "- Simple: String, int, boolean, long, double\n" +
-               "- Complex: CompositeData, TabularData, Arrays\n" +
-               "- Values are automatically formatted for readability\n\n" +
-               "Use Cases:\n" +
-               "- Monitor JVM health and performance\n" +
-               "- Trigger operations like GC\n" +
-               "- Inspect memory and thread usage\n" +
-               "- Configure logging levels\n" +
-               "- Debug application state\n";
     }
 
     @Override

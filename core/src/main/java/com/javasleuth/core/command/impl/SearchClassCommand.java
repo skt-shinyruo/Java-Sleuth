@@ -1,49 +1,58 @@
 package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.command.Command;
+import com.javasleuth.core.command.SpecBackedCommand;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
-public class SearchClassCommand implements Command {
+public class SearchClassCommand implements Command, SpecBackedCommand {
+    private static final CommandSpec SPEC = CommandSpec.builder("sc")
+        .description("Search for loaded classes by pattern")
+        .usage("sc <class-pattern> [options]")
+        .meta(CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM))
+        .argument(ArgumentSpec.required("class-pattern"))
+        .option(OptionSpec.flag("details").alias("-d").build())
+        .option(OptionSpec.flag("fields").alias("-f").build())
+        .option(OptionSpec.flag("expand").alias("-x").build())
+        .example("sc com.example.* -d")
+        .build();
+
     private final Instrumentation instrumentation;
 
     public SearchClassCommand(Instrumentation instrumentation) {
         this.instrumentation = instrumentation;
     }
 
+    public static CommandSpec spec() {
+        return SPEC;
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return SPEC;
+    }
+
     @Override
     public String execute(String[] args) throws Exception {
-        if (args.length < 2) {
-            return "Usage: sc <class-pattern> [options]\n" +
-                   "Options:\n" +
-                   "  -d    Show class details\n" +
-                   "  -f    Show class fields\n" +
-                   "  -x    Expand details\n";
+        ParsedCommand parsed = CommandSpecSupport.parsed(SPEC, args);
+        if (parsed.isHelpRequested()) {
+            return CommandHelpRenderer.render(SPEC);
         }
-
-        String pattern = args[1];
-        boolean showDetails = false;
-        boolean showFields = false;
-        boolean expand = false;
-
-        for (int i = 2; i < args.length; i++) {
-            switch (args[i]) {
-                case "-d":
-                    showDetails = true;
-                    break;
-                case "-f":
-                    showFields = true;
-                    break;
-                case "-x":
-                    expand = true;
-                    break;
-            }
-        }
-
-        return searchClasses(pattern, showDetails, showFields, expand);
+        return searchClasses(
+            parsed.argument("class-pattern"),
+            Boolean.TRUE.equals(parsed.booleanOption("details")),
+            Boolean.TRUE.equals(parsed.booleanOption("fields")),
+            Boolean.TRUE.equals(parsed.booleanOption("expand"))
+        );
     }
 
     private String searchClasses(String pattern, boolean showDetails, boolean showFields, boolean expand) {

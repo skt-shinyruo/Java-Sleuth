@@ -1,7 +1,14 @@
 package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.command.Command;
+import com.javasleuth.core.command.SpecBackedCommand;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
 import com.javasleuth.core.util.CfrDecompiler;
+import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.util.StringUtils;
 import com.javasleuth.foundation.util.WildcardMatcher;
 
@@ -11,50 +18,51 @@ import java.io.InputStream;
 import java.lang.instrument.Instrumentation;
 import java.util.*;
 
-public class JadCommand implements Command {
+public class JadCommand implements Command, SpecBackedCommand {
+    private static final CommandSpec SPEC = CommandSpec.builder("jad")
+        .description("Decompile Java classes to readable source code")
+        .usage("jad <classname> [options]")
+        .meta(CommandMeta.operator(false, false).withImpact(CommandMeta.ImpactLevel.HIGH).withRateLimit(5))
+        .argument(ArgumentSpec.required("classname"))
+        .option(OptionSpec.flag("lines").alias("-l").build())
+        .option(OptionSpec.flag("verbose").alias("-v").build())
+        .option(OptionSpec.string("method").alias("-m").build())
+        .option(OptionSpec.string("contains").build())
+        .option(OptionSpec.integer("max-lines").defaultValue(0).range(0, 1000000).build())
+        .example("jad java.lang.String --lines")
+        .example("jad MyClass --method=toString")
+        .build();
+
     private final Instrumentation instrumentation;
 
     public JadCommand(Instrumentation instrumentation) {
         this.instrumentation = instrumentation;
     }
 
+    public static CommandSpec spec() {
+        return SPEC;
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return SPEC;
+    }
+
     @Override
     public String execute(String[] args) throws Exception {
-        if (args.length < 2 || "--help".equals(args[1])) {
-            return getHelpText();
+        ParsedCommand parsed = CommandSpecSupport.parsed(SPEC, args);
+        if (parsed.isHelpRequested()) {
+            return CommandHelpRenderer.render(SPEC);
         }
 
-        String className = args[1];
-
-        // Parse additional options
-        boolean showLineNumbers = false;
-        boolean verbose = false;
-        String methodFilter = null;
-        String containsFilter = null;
-        int maxLines = 0;
-
-        for (int i = 2; i < args.length; i++) {
-            String arg = args[i];
-            if ("--lines".equals(arg) || "-l".equals(arg)) {
-                showLineNumbers = true;
-            } else if ("--verbose".equals(arg) || "-v".equals(arg)) {
-                verbose = true;
-            } else if (arg.startsWith("--method=")) {
-                methodFilter = arg.substring(9);
-            } else if (arg.startsWith("-m=")) {
-                methodFilter = arg.substring(3);
-            } else if ("--contains".equals(arg) && i + 1 < args.length) {
-                containsFilter = args[++i];
-            } else if ("--max-lines".equals(arg) && i + 1 < args.length) {
-                try {
-                    maxLines = Integer.parseInt(args[++i]);
-                } catch (NumberFormatException ignored) {
-                    maxLines = 0;
-                }
-            }
-        }
-
-        return decompileClass(className, showLineNumbers, verbose, methodFilter, containsFilter, maxLines);
+        return decompileClass(
+            parsed.argument("classname"),
+            Boolean.TRUE.equals(parsed.booleanOption("lines")),
+            Boolean.TRUE.equals(parsed.booleanOption("verbose")),
+            parsed.stringOption("method"),
+            parsed.stringOption("contains"),
+            parsed.intOption("max-lines")
+        );
     }
 
     private String decompileClass(String className, boolean showLineNumbers, boolean verbose, String methodFilter,
@@ -325,48 +333,6 @@ public class JadCommand implements Command {
                (line.contains("public ") || line.contains("private ") ||
                 line.contains("protected ") || line.contains("static ") ||
                 line.matches(".*\\w+\\s*\\(.*\\).*"));
-    }
-
-    private String getHelpText() {
-        return "=== Java Decompiler (JAD) Command Help ===\n" +
-               "Decompile Java classes to readable source code using CFR decompiler\n\n" +
-               "Usage:\n" +
-               "  jad <classname> [options]       Decompile specified class\n" +
-               "  jad --help                      Show this help message\n\n" +
-               "Options:\n" +
-               "  --lines, -l                     Show line numbers in decompiled code\n" +
-               "  --verbose, -v                   Include comments and verbose output\n" +
-               "  --method=<pattern>, -m=<pattern> Filter to show only matching methods\n\n" +
-               "Examples:\n" +
-               "  jad java.lang.String            Decompile String class\n" +
-               "  jad com.example.MyClass --lines Decompile with line numbers\n" +
-               "  jad MyClass --method=toString   Show only toString method\n" +
-               "  jad *.Service --method=*init*   Find and decompile Service classes, show init methods\n\n" +
-               "Class Name Formats:\n" +
-               "- Fully qualified: com.example.MyClass\n" +
-               "- Simple name: MyClass (searches loaded classes)\n" +
-               "- Inner classes: com.example.Outer$Inner\n" +
-               "- Wildcards: com.example.* (finds first match)\n\n" +
-               "Method Filtering:\n" +
-               "- Exact name: --method=toString\n" +
-               "- Pattern: --method=*init* (matches constructor, initialize, etc.)\n" +
-               "- Case insensitive matching\n\n" +
-               "Decompiler Features:\n" +
-               "- Uses CFR (Class File Reader) decompiler\n" +
-               "- Handles modern Java features (lambdas, streams, etc.)\n" +
-               "- Shows original structure and logic flow\n" +
-               "- Preserves generic type information\n" +
-               "- Includes debugging information when available\n\n" +
-               "Limitations:\n" +
-               "- Requires class to be loaded in current JVM\n" +
-               "- Some obfuscated code may not decompile cleanly\n" +
-               "- Original variable names may not be preserved\n" +
-               "- Comments from source code are not included\n\n" +
-               "Tips:\n" +
-               "- Use 'sc <pattern>' first to find the exact class name\n" +
-               "- Use --verbose for more detailed output\n" +
-               "- Method filtering helps focus on specific functionality\n" +
-               "- Line numbers help correlate with stack traces\n";
     }
 
     @Override
