@@ -10,6 +10,7 @@ import com.javasleuth.core.command.StreamSink;
 import com.javasleuth.core.command.spec.ArgumentSpec;
 import com.javasleuth.core.command.spec.CommandHelpRenderer;
 import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.CommandSpecOptionTokens;
 import com.javasleuth.core.command.spec.CommandSpecParser;
 import com.javasleuth.core.command.spec.OptionSpec;
 import com.javasleuth.core.command.spec.ParsedCommand;
@@ -143,7 +144,7 @@ public class MonitorCommand implements StreamCommand, SpecBackedCommand {
         int classLimit = parsed.intOption("limit");
 
         if (Boolean.TRUE.equals(parsed.booleanOption("bg"))) {
-            String[] jobArgs = removeFlag(args, "--bg");
+            String[] jobArgs = CommandSpecOptionTokens.removeOptionTokens(args, spec(), "bg");
             String commandLine = String.join(" ", jobArgs);
             String jobId = jobManager.submitStreamJob(
                 "monitor",
@@ -165,7 +166,7 @@ public class MonitorCommand implements StreamCommand, SpecBackedCommand {
     private ParsedCommand parsedOrFallback(String[] args) {
         CommandContext ctx = CommandContextHolder.get();
         ParsedCommand parsed = ctx != null ? ctx.getParsedCommand() : null;
-        if (parsed != null && Boolean.TRUE.equals(parsed.booleanOption("bg")) && !hasFlag(args, "--bg")) {
+        if (parsed != null && Boolean.TRUE.equals(parsed.booleanOption("bg")) && !CommandSpecOptionTokens.hasOptionToken(args, spec(), "bg")) {
             return CommandSpecParser.parse(spec(), args);
         }
         return parsed != null ? parsed : CommandSpecParser.parse(spec(), args);
@@ -461,35 +462,6 @@ public class MonitorCommand implements StreamCommand, SpecBackedCommand {
     @Override
     public String getDescription() {
         return "Monitor method statistics periodically (simplified)";
-    }
-
-    private static String[] removeFlag(String[] args, String flag) {
-        if (args == null || args.length == 0 || flag == null || flag.isEmpty()) {
-            return args;
-        }
-        List<String> out = new ArrayList<>();
-        for (String a : args) {
-            if (a == null) {
-                continue;
-            }
-            if (flag.equals(a)) {
-                continue;
-            }
-            out.add(a);
-        }
-        return out.toArray(new String[0]);
-    }
-
-    private static boolean hasFlag(String[] args, String flag) {
-        if (args == null || flag == null || flag.isEmpty()) {
-            return false;
-        }
-        for (String arg : args) {
-            if (flag.equals(arg)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static final class MonitorSession {

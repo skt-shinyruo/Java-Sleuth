@@ -159,6 +159,40 @@ public class BuiltinCommandSpecTest {
     }
 
     @Test
+    public void syncPipelineReturnsSpecParseErrorsWithoutCorrelationId() {
+        withPipeline(pipeline -> {
+            CommandSpec spec = sampleSpec();
+            AtomicBoolean executed = new AtomicBoolean(false);
+            Command command = new Command() {
+                @Override
+                public String execute(String[] args) {
+                    executed.set(true);
+                    return "executed";
+                }
+
+                @Override
+                public String getDescription() {
+                    return "Sample command";
+                }
+            };
+            CommandRegistry.Entry entry = new CommandRegistry.Entry(command, spec.getMeta(), "test", null, null, spec);
+
+            CommandPipeline.Result result = pipeline.executePrechecked(
+                entry,
+                new String[]{"sample", "--flag=true"},
+                new CommandContext("c", "i", "s", false)
+            );
+
+            Assert.assertFalse(result.isSuccess());
+            Assert.assertNull(result.getOutput());
+            Assert.assertNotNull(result.getError());
+            Assert.assertTrue(result.getError().contains("E_ARGS_INVALID"));
+            Assert.assertFalse(result.getError().contains("errorId="));
+            Assert.assertFalse(executed.get());
+        });
+    }
+
+    @Test
     public void syncPipelineSanitizesSpecHelpOutput() {
         withValidationEnabled(() -> withPipeline(pipeline -> {
             CommandSpec spec = CommandSpec.builder("sample")
@@ -229,6 +263,47 @@ public class BuiltinCommandSpecTest {
             Assert.assertEquals(CommandHelpRenderer.render(spec), sink.sent.get(0));
             Assert.assertEquals(1, sink.closeCount);
             Assert.assertNull(sink.lastCloseSummary);
+            Assert.assertFalse(executed.get());
+        });
+    }
+
+    @Test
+    public void streamPipelineReturnsSpecParseErrorsWithoutCorrelationId() throws Exception {
+        withPipelineThrows(pipeline -> {
+            CommandSpec spec = sampleSpec();
+            AtomicBoolean executed = new AtomicBoolean(false);
+            StreamCommand command = new StreamCommand() {
+                @Override
+                public String execute(String[] args) {
+                    return "";
+                }
+
+                @Override
+                public void executeStream(String[] args, StreamSink sink) {
+                    executed.set(true);
+                    sink.send("executed");
+                }
+
+                @Override
+                public String getDescription() {
+                    return "Sample command";
+                }
+            };
+            CommandRegistry.Entry entry = new CommandRegistry.Entry(command, spec.getMeta(), "test", null, null, spec);
+            CapturingSink sink = new CapturingSink();
+
+            CommandPipeline.StreamResult result = pipeline.executeStreamPrechecked(
+                entry,
+                new String[]{"sample", "--flag=true"},
+                new CommandContext("c", "i", "s", true),
+                sink
+            );
+
+            Assert.assertFalse(result.isSuccess());
+            Assert.assertNotNull(result.getError());
+            Assert.assertTrue(result.getError().contains("E_ARGS_INVALID"));
+            Assert.assertFalse(result.getError().contains("errorId="));
+            Assert.assertEquals(result.getError(), sink.lastError);
             Assert.assertFalse(executed.get());
         });
     }
@@ -576,6 +651,7 @@ public class BuiltinCommandSpecTest {
         private final List<String> sent = new ArrayList<>();
         private int closeCount;
         private String lastCloseSummary;
+        private String lastError;
 
         @Override
         public void send(String data) {
@@ -590,6 +666,7 @@ public class BuiltinCommandSpecTest {
 
         @Override
         public void error(String message) {
+            lastError = message;
         }
     }
 
