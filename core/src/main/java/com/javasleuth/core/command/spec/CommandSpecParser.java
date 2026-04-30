@@ -12,12 +12,23 @@ public final class CommandSpecParser {
     public static ParsedCommand parse(CommandSpec spec, String[] args) {
         Map<String, OptionSpec> optionsByToken = buildOptionIndex(spec);
         Map<String, String> arguments = new LinkedHashMap<>();
+        Map<String, List<String>> argumentValues = new LinkedHashMap<>();
         Map<String, List<Object>> options = defaultOptions(spec);
         Map<String, Boolean> explicitOptions = new LinkedHashMap<>();
         List<String> positional = new ArrayList<>();
         boolean helpRequested = false;
 
         String[] actualArgs = args == null ? new String[0] : args;
+        if (!spec.getSubcommands().isEmpty() && actualArgs.length > 1 && !isHelpToken(actualArgs[1])) {
+            SubcommandSpec subcommand = spec.subcommand(actualArgs[1]);
+            if (subcommand == null) {
+                throw new CommandSpecParseException("E_ARGS_UNKNOWN", "Unknown subcommand " + actualArgs[1]);
+            }
+            String[] nestedArgs = new String[actualArgs.length - 1];
+            nestedArgs[0] = subcommand.getName();
+            System.arraycopy(actualArgs, 2, nestedArgs, 1, actualArgs.length - 2);
+            return parse(subcommand.getSpec(), nestedArgs).withSubcommandName(subcommand.getName());
+        }
         for (int i = 1; i < actualArgs.length; i++) {
             String token = actualArgs[i];
             if (isHelpToken(token)) {
@@ -62,9 +73,9 @@ public final class CommandSpecParser {
         }
 
         if (!helpRequested) {
-            bindArguments(spec, positional, arguments);
+            bindArguments(spec, positional, arguments, argumentValues);
         }
-        return new ParsedCommand(arguments, options, helpRequested);
+        return new ParsedCommand(arguments, argumentValues, options, helpRequested, null);
     }
 
     private static Map<String, OptionSpec> buildOptionIndex(CommandSpec spec) {
@@ -96,12 +107,28 @@ public final class CommandSpecParser {
         return values;
     }
 
-    private static void bindArguments(CommandSpec spec, List<String> positional, Map<String, String> arguments) {
+    private static void bindArguments(CommandSpec spec, List<String> positional, Map<String, String> arguments, Map<String, List<String>> argumentValues) {
         List<ArgumentSpec> specs = spec.getArguments();
         for (int i = 0; i < specs.size(); i++) {
             ArgumentSpec argument = specs.get(i);
+            if (argument.isTrailing()) {
+                List<String> trailing = new ArrayList<>();
+                for (int j = i; j < positional.size(); j++) {
+                    trailing.add(positional.get(j));
+                }
+                argumentValues.put(argument.getName(), trailing);
+                if (!trailing.isEmpty()) {
+                    arguments.put(argument.getName(), trailing.get(0));
+                } else if (argument.isRequired()) {
+                    throw new CommandSpecParseException("E_ARGS_MISSING", "Missing argument " + argument.getName());
+                }
+                return;
+            }
             if (i < positional.size()) {
                 arguments.put(argument.getName(), positional.get(i));
+                List<String> value = new ArrayList<>();
+                value.add(positional.get(i));
+                argumentValues.put(argument.getName(), value);
             } else if (argument.isRequired()) {
                 throw new CommandSpecParseException("E_ARGS_MISSING", "Missing argument " + argument.getName());
             }

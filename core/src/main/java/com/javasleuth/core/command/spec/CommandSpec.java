@@ -74,6 +74,18 @@ public final class CommandSpec {
         return subcommands;
     }
 
+    public SubcommandSpec subcommand(String name) {
+        if (name == null) {
+            return null;
+        }
+        for (SubcommandSpec subcommand : subcommands) {
+            if (name.equals(subcommand.getName())) {
+                return subcommand;
+            }
+        }
+        return null;
+    }
+
     public List<String> getExamples() {
         return examples;
     }
@@ -158,9 +170,13 @@ public final class CommandSpec {
 
         private void validateUniqueArguments() {
             Set<String> names = new LinkedHashSet<>();
-            for (ArgumentSpec argument : arguments) {
+            for (int i = 0; i < arguments.size(); i++) {
+                ArgumentSpec argument = arguments.get(i);
                 if (!names.add(argument.getName())) {
                     throw new IllegalArgumentException("Duplicate argument name: " + argument.getName());
+                }
+                if (argument.isTrailing() && i != arguments.size() - 1) {
+                    throw new IllegalArgumentException("Trailing argument must be last: " + argument.getName());
                 }
             }
         }

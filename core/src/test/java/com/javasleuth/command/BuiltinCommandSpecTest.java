@@ -4,6 +4,7 @@ import com.javasleuth.core.command.spec.CommandHelpRenderer;
 import com.javasleuth.core.command.spec.CommandSpec;
 import com.javasleuth.core.command.spec.OptionSpec;
 import com.javasleuth.core.command.impl.TraceCommand;
+import com.javasleuth.core.command.impl.VmToolCommand;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.monitoring.MetricsCollector;
@@ -64,6 +65,7 @@ public class BuiltinCommandSpecTest {
             assertHasSpec(descriptors, "watch");
             assertHasSpec(descriptors, "trace");
             assertHasSpec(descriptors, "monitor");
+            assertHasSpec(descriptors, "vmtool");
         });
     }
 
@@ -84,6 +86,16 @@ public class BuiltinCommandSpecTest {
 
         Assert.assertFalse(help.contains("--sample"));
         Assert.assertFalse(help.contains("--sample-rate"));
+    }
+
+    @Test
+    public void vmtoolExposesSubcommandSpec() {
+        CommandSpec spec = VmToolCommand.spec();
+        Assert.assertNotNull(spec.subcommand("track"));
+        Assert.assertNotNull(spec.subcommand("invoke"));
+        Assert.assertNotNull(spec.subcommand("invoke-static"));
+        Assert.assertNotNull(spec.subcommand("invokestatic"));
+        Assert.assertEquals(CommandMeta.ImpactLevel.MEDIUM, spec.getMeta().getImpactLevel());
     }
 
     @Test

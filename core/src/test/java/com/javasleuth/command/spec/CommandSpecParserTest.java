@@ -6,6 +6,7 @@ import com.javasleuth.core.command.spec.CommandSpecParseException;
 import com.javasleuth.core.command.spec.CommandSpecParser;
 import com.javasleuth.core.command.spec.OptionSpec;
 import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.command.spec.SubcommandSpec;
 import com.javasleuth.foundation.security.CommandMeta;
 import org.junit.Assert;
 import org.junit.Test;
@@ -304,6 +305,33 @@ public class CommandSpecParserTest {
         Assert.assertFalse(optional.isRequired());
     }
 
+    @Test
+    public void parsesDeclaredSubcommandSpec() {
+        ParsedCommand parsed = CommandSpecParser.parse(subcommandSpec(), new String[] {"vmtool", "instances", "track-1", "--limit", "25"});
+
+        Assert.assertEquals("instances", parsed.subcommandName());
+        Assert.assertEquals("track-1", parsed.argument("track-id"));
+        Assert.assertEquals(Integer.valueOf(25), parsed.intOption("limit"));
+    }
+
+    @Test
+    public void parsesTrailingArguments() {
+        CommandSpec spec = CommandSpec.builder("invoke")
+            .argument(ArgumentSpec.required("track-id"))
+            .argument(ArgumentSpec.required("ref-id"))
+            .argument(ArgumentSpec.required("method"))
+            .argument(ArgumentSpec.trailing("args"))
+            .option(OptionSpec.flag("declared").build())
+            .build();
+
+        ParsedCommand parsed = CommandSpecParser.parse(spec, new String[] {"invoke", "track-1", "42", "call", "a", "b", "--declared"});
+
+        Assert.assertEquals("track-1", parsed.argument("track-id"));
+        Assert.assertEquals("call", parsed.argument("method"));
+        Assert.assertEquals(Arrays.asList("a", "b"), parsed.argumentValues("args"));
+        Assert.assertEquals(Boolean.TRUE, parsed.booleanOption("declared"));
+    }
+
     private static void assertCode(String code, String... args) {
         try {
             CommandSpecParser.parse(sampleSpec(), args);
@@ -352,6 +380,16 @@ public class CommandSpecParserTest {
             .meta(CommandMeta.operator(false, true))
             .option(OptionSpec.integer("count").range(-10, 10).build())
             .option(OptionSpec.longNumber("duration").range(Long.MIN_VALUE, Long.MAX_VALUE).build())
+            .build();
+    }
+
+    private static CommandSpec subcommandSpec() {
+        return CommandSpec.builder("vmtool")
+            .subcommand(SubcommandSpec.builder("instances")
+                .description("List tracked instances")
+                .argument(ArgumentSpec.required("track-id"))
+                .option(OptionSpec.integer("limit").defaultValue(50).range(1, 10000).build())
+                .build())
             .build();
     }
 }
