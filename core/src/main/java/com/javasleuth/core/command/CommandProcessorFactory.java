@@ -43,6 +43,9 @@ public final class CommandProcessorFactory {
         return CommandProcessorComponents.from(services, commandSubsystem, serverSubsystem, ownedResources);
     }
 
+    /**
+     * @deprecated Use {@link #create(CommandProcessorFactoryRequest)} with {@link CommandProcessorFactoryRequest}.
+     */
     @Deprecated
     public static CommandProcessor create(
         java.lang.instrument.Instrumentation instrumentation,
@@ -68,6 +71,9 @@ public final class CommandProcessorFactory {
             .build());
     }
 
+    /**
+     * @deprecated Use {@link #create(CommandProcessorFactoryRequest)} with {@link CommandProcessorFactoryRequest}.
+     */
     @Deprecated
     public static CommandProcessor create(
         java.lang.instrument.Instrumentation instrumentation,
@@ -97,6 +103,9 @@ public final class CommandProcessorFactory {
             .build());
     }
 
+    /**
+     * @deprecated Use {@link #create(CommandProcessorFactoryRequest)} with {@link CommandProcessorFactoryRequest}.
+     */
     @Deprecated
     public static CommandProcessor create(
         java.lang.instrument.Instrumentation instrumentation,
@@ -140,6 +149,9 @@ public final class CommandProcessorFactory {
             .build());
     }
 
+    /**
+     * @deprecated Use {@link #createComponents(CommandProcessorFactoryRequest)} with {@link CommandProcessorFactoryRequest}.
+     */
     @Deprecated
     public static CommandProcessorComponents createComponents(
         java.lang.instrument.Instrumentation instrumentation,
@@ -165,6 +177,9 @@ public final class CommandProcessorFactory {
             .build());
     }
 
+    /**
+     * @deprecated Use {@link #createComponents(CommandProcessorFactoryRequest)} with {@link CommandProcessorFactoryRequest}.
+     */
     @Deprecated
     public static CommandProcessorComponents createComponents(
         java.lang.instrument.Instrumentation instrumentation,
@@ -194,6 +209,9 @@ public final class CommandProcessorFactory {
             .build());
     }
 
+    /**
+     * @deprecated Use {@link #createComponents(CommandProcessorFactoryRequest)} with {@link CommandProcessorFactoryRequest}.
+     */
     @Deprecated
     public static CommandProcessorComponents createComponents(
         java.lang.instrument.Instrumentation instrumentation,
@@ -230,6 +248,9 @@ public final class CommandProcessorFactory {
         );
     }
 
+    /**
+     * @deprecated Use {@link #createComponents(CommandProcessorFactoryRequest)} with {@link CommandProcessorFactoryRequest}.
+     */
     @Deprecated
     public static CommandProcessorComponents createComponents(
         java.lang.instrument.Instrumentation instrumentation,
