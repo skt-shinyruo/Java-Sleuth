@@ -28,27 +28,67 @@ public final class EnhancementSessionRegistry implements AutoCloseable {
     }
 
     public boolean close(String sessionId, String reason) {
-        CloseResult result = closeOne(sessionId, reason);
-        return result.selected && !result.failed;
+        EnhancementSessionCloseSummary summary = closeOneSummary(sessionId, reason);
+        return summary.getClosed() > 0 && summary.getFailed() == 0;
     }
 
     public int closeByClient(String clientId, String reason) {
-        if (clientId == null || clientId.trim().isEmpty()) {
-            return 0;
+        return closeByClientSummary(clientId, reason).getClosed();
+    }
+
+    public EnhancementSessionCloseSummary closeOneSummary(String sessionId, String reason) {
+        if (sessionId == null || sessionId.trim().isEmpty()) {
+            return new EnhancementSessionCloseSummary(0, 0, 0, 0, null);
         }
+        String id = sessionId.trim();
+        CloseResult result = closeOne(id, reason);
+        return summaryFromResult(1, id, result);
+    }
+
+    public EnhancementSessionCloseSummary closeByClientSummary(final String clientId, String reason) {
+        if (clientId == null || clientId.trim().isEmpty()) {
+            return new EnhancementSessionCloseSummary(0, 0, 0, 0, null);
+        }
+        final String normalized = clientId.trim();
+        return closeMatching(snapshot -> normalized.equals(snapshot.getClientId()), reason);
+    }
+
+    public EnhancementSessionCloseSummary closeByKind(final EnhancementSessionKind kind, String reason) {
+        final EnhancementSessionKind normalized = kind != null ? kind : EnhancementSessionKind.OTHER;
+        return closeMatching(snapshot -> normalized == snapshot.getKind(), reason);
+    }
+
+    public EnhancementSessionCloseSummary closeMatching(EnhancementSessionSelector selector, String reason) {
+        if (selector == null) {
+            return new EnhancementSessionCloseSummary(0, 0, 0, 0, null);
+        }
+        List<Entry> entries = new ArrayList<Entry>(sessions.values());
+        int total = 0;
         int closed = 0;
-        for (Entry entry : new ArrayList<Entry>(sessions.values())) {
+        int missing = 0;
+        int failed = 0;
+        Map<String, String> failures = new LinkedHashMap<String, String>();
+        for (Entry entry : entries) {
             if (entry == null || entry.descriptor == null) {
                 continue;
             }
-            if (clientId.equals(entry.descriptor.getClientId())) {
-                CloseResult result = closeEntry(entry, reason);
-                if (result.selected && !result.failed) {
-                    closed++;
-                }
+            EnhancementSessionSnapshot snapshot = new EnhancementSessionSnapshot(entry.descriptor);
+            if (!selector.matches(snapshot)) {
+                continue;
+            }
+            total++;
+            String id = entry.getSessionId();
+            CloseResult result = closeEntry(entry, reason);
+            if (!result.selected) {
+                missing++;
+            } else if (result.failed) {
+                failed++;
+                failures.put(id, result.failureMessage);
+            } else {
+                closed++;
             }
         }
-        return closed;
+        return new EnhancementSessionCloseSummary(total, closed, missing, failed, failures);
     }
 
     public EnhancementSessionCloseSummary closeAll(String reason) {
@@ -124,6 +164,22 @@ public final class EnhancementSessionRegistry implements AutoCloseable {
             return CloseResult.missing();
         }
         return entry.closeInternal(reason);
+    }
+
+    private EnhancementSessionCloseSummary summaryFromResult(int total, String id, CloseResult result) {
+        int closed = 0;
+        int missing = 0;
+        int failed = 0;
+        Map<String, String> failures = new LinkedHashMap<String, String>();
+        if (result == null || !result.selected) {
+            missing = total > 0 ? 1 : 0;
+        } else if (result.failed) {
+            failed = 1;
+            failures.put(id, result.failureMessage);
+        } else {
+            closed = 1;
+        }
+        return new EnhancementSessionCloseSummary(total, closed, missing, failed, failures);
     }
 
     private static final class CloseResult {

@@ -1,6 +1,7 @@
 package com.javasleuth.core.command;
 
 import com.javasleuth.core.command.impl.JobsCommand;
+import com.javasleuth.core.command.impl.EnhanceCommand;
 import com.javasleuth.core.command.impl.MonitorCommand;
 import com.javasleuth.core.command.impl.ResetCommand;
 import com.javasleuth.core.command.impl.StackCommand;
@@ -54,6 +55,7 @@ final class EnhancementCommandProvider {
             BuiltinCommandMetas.instrumentationStream()
         );
         BuiltinCommandMetas.add(descriptors, "jobs", new JobsCommand(context.requireJobManager()), CommandMeta.operator(true, false));
+        descriptors.add(CommandDescriptor.ofSpec(EnhanceCommand.spec(), new EnhanceCommand(context.requireEnhancementSessionRegistry())));
 
         MonitorCommand monitorCommand = new MonitorCommand(
             instrumentation,
