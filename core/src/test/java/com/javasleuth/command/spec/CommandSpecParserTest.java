@@ -36,6 +36,22 @@ public class CommandSpecParserTest {
     }
 
     @Test
+    public void defaultedOptionsAreNotExplicit() {
+        ParsedCommand parsed = CommandSpecParser.parse(sampleSpec(), new String[] {"watch", "A", "m"});
+
+        Assert.assertEquals(Integer.valueOf(100), parsed.intOption("count"));
+        Assert.assertFalse(parsed.isOptionExplicit("count"));
+    }
+
+    @Test
+    public void suppliedOptionsAreExplicit() {
+        ParsedCommand parsed = CommandSpecParser.parse(sampleSpec(), new String[] {"watch", "A", "m", "--count", "5"});
+
+        Assert.assertEquals(Integer.valueOf(5), parsed.intOption("count"));
+        Assert.assertTrue(parsed.isOptionExplicit("count"));
+    }
+
+    @Test
     public void helpTokensRequestHelp() {
         Assert.assertTrue(CommandSpecParser.parse(sampleSpec(), new String[] {"watch", "--help"}).isHelpRequested());
         Assert.assertTrue(CommandSpecParser.parse(sampleSpec(), new String[] {"watch", "-h"}).isHelpRequested());
@@ -330,6 +346,40 @@ public class CommandSpecParserTest {
         Assert.assertEquals("call", parsed.argument("method"));
         Assert.assertEquals(Arrays.asList("a", "b"), parsed.argumentValues("args"));
         Assert.assertEquals(Boolean.TRUE, parsed.booleanOption("declared"));
+    }
+
+    @Test
+    public void vmtoolInvokeCapturesUnknownDashPrefixedTrailingArguments() {
+        ParsedCommand parsed = CommandSpecParser.parse(com.javasleuth.core.command.impl.VmToolCommand.spec(), new String[] {
+            "vmtool", "invoke", "track-1", "42", "call", "-1", "--some-value", "--deep", "3"
+        });
+
+        Assert.assertEquals("invoke", parsed.subcommandName());
+        Assert.assertEquals("call", parsed.argument("method"));
+        Assert.assertEquals(Arrays.asList("-1", "--some-value"), parsed.argumentValues("args"));
+        Assert.assertEquals(Integer.valueOf(3), parsed.intOption("deep"));
+    }
+
+    @Test
+    public void vmtoolInvokeStaticCapturesUnknownDashPrefixedTrailingArguments() {
+        ParsedCommand parsed = CommandSpecParser.parse(com.javasleuth.core.command.impl.VmToolCommand.spec(), new String[] {
+            "vmtool", "invoke-static", "com.example.Target", "call", "--some-value", "--unsafe"
+        });
+
+        Assert.assertEquals("invoke-static", parsed.subcommandName());
+        Assert.assertEquals("call", parsed.argument("method"));
+        Assert.assertEquals(Arrays.asList("--some-value"), parsed.argumentValues("args"));
+        Assert.assertEquals(Boolean.TRUE, parsed.booleanOption("unsafe"));
+    }
+
+    @Test
+    public void nonTrailingUnknownOptionsStillFail() {
+        try {
+            CommandSpecParser.parse(sampleSpec(), new String[] {"watch", "A", "m", "--some-value"});
+            Assert.fail("Expected unknown option");
+        } catch (CommandSpecParseException e) {
+            Assert.assertEquals("E_ARGS_UNKNOWN", e.getCode());
+        }
     }
 
     private static void assertCode(String code, String... args) {

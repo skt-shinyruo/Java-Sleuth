@@ -10,17 +10,19 @@ public final class ParsedCommand {
     private final Map<String, String> arguments;
     private final Map<String, List<String>> argumentValues;
     private final Map<String, List<Object>> options;
+    private final Map<String, Boolean> explicitOptions;
     private final boolean helpRequested;
     private final String subcommandName;
 
     ParsedCommand(Map<String, String> arguments, Map<String, List<Object>> options, boolean helpRequested) {
-        this(arguments, new LinkedHashMap<String, List<String>>(), options, helpRequested, null);
+        this(arguments, new LinkedHashMap<String, List<String>>(), options, new LinkedHashMap<String, Boolean>(), helpRequested, null);
     }
 
-    ParsedCommand(Map<String, String> arguments, Map<String, List<String>> argumentValues, Map<String, List<Object>> options, boolean helpRequested, String subcommandName) {
+    ParsedCommand(Map<String, String> arguments, Map<String, List<String>> argumentValues, Map<String, List<Object>> options, Map<String, Boolean> explicitOptions, boolean helpRequested, String subcommandName) {
         this.arguments = Collections.unmodifiableMap(new LinkedHashMap<>(arguments));
         this.argumentValues = immutableStringListMap(argumentValues);
         this.options = immutableOptionMap(options);
+        this.explicitOptions = Collections.unmodifiableMap(new LinkedHashMap<>(explicitOptions));
         this.helpRequested = helpRequested;
         this.subcommandName = subcommandName;
     }
@@ -73,6 +75,10 @@ public final class ParsedCommand {
         return optionValues(name);
     }
 
+    public boolean isOptionExplicit(String name) {
+        return Boolean.TRUE.equals(explicitOptions.get(name));
+    }
+
     public boolean isHelpRequested() {
         return helpRequested;
     }
@@ -90,7 +96,7 @@ public final class ParsedCommand {
     }
 
     ParsedCommand withSubcommandName(String name) {
-        return new ParsedCommand(arguments, argumentValues, options, helpRequested, name);
+        return new ParsedCommand(arguments, argumentValues, options, explicitOptions, helpRequested, name);
     }
 
     private static Map<String, List<String>> immutableStringListMap(Map<String, List<String>> input) {
