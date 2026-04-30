@@ -41,19 +41,15 @@ final class EnhancementCommandProvider {
         );
         descriptors.add(CommandDescriptor.ofSpec(traceCommand.getSpec(), traceCommand));
 
-        BuiltinCommandMetas.add(
-            descriptors,
-            "tt",
-            new TtCommand(
-                instrumentation,
-                context.requireTransformer(),
-                context.requireConfig(),
-                context.requireJobManager(),
-                context.requireSpyDispatcher(),
-                context.requireEnhancementSessionRegistry()
-            ),
-            BuiltinCommandMetas.instrumentationStream()
+        TtCommand ttCommand = new TtCommand(
+            instrumentation,
+            context.requireTransformer(),
+            context.requireConfig(),
+            context.requireJobManager(),
+            context.requireSpyDispatcher(),
+            context.requireEnhancementSessionRegistry()
         );
+        descriptors.add(CommandDescriptor.ofSpec(ttCommand.getSpec(), ttCommand));
         JobsCommand jobsCommand = new JobsCommand(context.requireJobManager());
         descriptors.add(CommandDescriptor.ofSpec(jobsCommand.getSpec(), jobsCommand));
         descriptors.add(CommandDescriptor.ofSpec(EnhanceCommand.spec(), new EnhanceCommand(context.requireEnhancementSessionRegistry())));
@@ -67,19 +63,15 @@ final class EnhancementCommandProvider {
         );
         descriptors.add(CommandDescriptor.ofSpec(monitorCommand.getSpec(), monitorCommand));
 
-        BuiltinCommandMetas.add(
-            descriptors,
-            "stack",
-            new StackCommand(
-                instrumentation,
-                context.requireTransformer(),
-                context.requireConfig(),
-                context.requireJobManager(),
-                context.requireSpyDispatcher(),
-                context.requireEnhancementSessionRegistry()
-            ),
-            BuiltinCommandMetas.instrumentationStream()
+        StackCommand stackCommand = new StackCommand(
+            instrumentation,
+            context.requireTransformer(),
+            context.requireConfig(),
+            context.requireJobManager(),
+            context.requireSpyDispatcher(),
+            context.requireEnhancementSessionRegistry()
         );
+        descriptors.add(CommandDescriptor.ofSpec(stackCommand.getSpec(), stackCommand));
 
         BuiltinCommandMetas.add(
             descriptors,

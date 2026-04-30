@@ -68,6 +68,8 @@ public class BuiltinCommandSpecTest {
             assertHasSpec(descriptors, "watch");
             assertHasSpec(descriptors, "trace");
             assertHasSpec(descriptors, "monitor");
+            assertHasSpec(descriptors, "tt");
+            assertHasSpec(descriptors, "stack");
             assertHasSpec(descriptors, "vmtool");
         });
     }
@@ -193,6 +195,51 @@ public class BuiltinCommandSpecTest {
             Assert.assertEquals("run", jadParsed.stringOption("method"));
             Assert.assertTrue(jadParsed.booleanOption("lines"));
             expectParseFailure(jad, new String[]{"jad", "com.example.App", "--max-lines", "bad"}, "E_ARGS_INVALID");
+        });
+    }
+
+    @Test
+    public void remainingInstrumentationSpecsCoverRepresentativeSyntax() {
+        withProviderContext(context -> {
+            BuiltinCommandProvider provider = new BuiltinCommandProvider();
+            Collection<CommandDescriptor> descriptors = provider.getCommandDescriptors(context);
+
+            CommandSpec stack = requiredSpec(descriptors, "stack");
+            ParsedCommand stackParsed = CommandSpecParser.parse(
+                stack,
+                new String[]{"stack", "com.example.*", "doWork", "-n", "5", "-t", "30", "--depth", "25", "--bg"}
+            );
+            Assert.assertEquals("com.example.*", stackParsed.argument("class-pattern"));
+            Assert.assertEquals(Integer.valueOf(5), stackParsed.intOption("count"));
+            Assert.assertEquals(Long.valueOf(30L), stackParsed.longOption("timeout"));
+            Assert.assertEquals(Integer.valueOf(25), stackParsed.intOption("depth"));
+            Assert.assertTrue(stackParsed.booleanOption("bg"));
+            expectParseFailure(stack, new String[]{"stack", "com.example.*", "doWork", "--depth", "0"}, "E_ARGS_RANGE");
+
+            CommandSpec tt = requiredSpec(descriptors, "tt");
+            ParsedCommand ttDefault = CommandSpecParser.parse(
+                tt,
+                new String[]{"tt", "com.example.*", "doWork", "-n", "3", "--bg"}
+            );
+            Assert.assertNull(ttDefault.subcommandName());
+            Assert.assertEquals("com.example.*", ttDefault.argument("class-pattern"));
+            Assert.assertEquals(Integer.valueOf(3), ttDefault.intOption("count"));
+            Assert.assertTrue(ttDefault.booleanOption("bg"));
+
+            ParsedCommand ttRecord = CommandSpecParser.parse(
+                tt,
+                new String[]{"tt", "record", "com.example.*", "doWork", "--timeout", "10"}
+            );
+            Assert.assertEquals("record", ttRecord.subcommandName());
+            Assert.assertEquals(Long.valueOf(10L), ttRecord.longOption("timeout"));
+            Assert.assertEquals("doWork", ttRecord.argument("method-pattern"));
+
+            Assert.assertEquals("20", CommandSpecParser.parse(tt, new String[]{"tt", "list", "20"}).argument("limit"));
+            Assert.assertEquals("42", CommandSpecParser.parse(tt, new String[]{"tt", "detail", "42"}).argument("record-id"));
+            Assert.assertEquals("42", CommandSpecParser.parse(tt, new String[]{"tt", "replay", "42"}).argument("record-id"));
+            Assert.assertEquals("tt-1", CommandSpecParser.parse(tt, new String[]{"tt", "stop", "tt-1"}).argument("tt-id"));
+            Assert.assertEquals("clear", CommandSpecParser.parse(tt, new String[]{"tt", "clear"}).subcommandName());
+            expectParseFailure(tt, new String[]{"tt", "record", "com.example.*", "doWork", "-n", "bad"}, "E_ARGS_INVALID");
         });
     }
 
