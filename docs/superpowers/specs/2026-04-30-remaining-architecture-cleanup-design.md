@@ -17,7 +17,8 @@ convergence of partially completed architecture work:
 
 - Split monolithic built-in command registration into domain providers.
 - Expose a unified command surface for enhancement session listing and stopping.
-- Change foreground stream execution from "wait for stream completion" to "wait for startup".
+- Change foreground stream execution from engine-level `task.get(timeout)` to explicit stream
+  lifecycle handles while preserving protocol-owned stream completion.
 - Finish the `CommandSpec` migration for high-drift built-in commands.
 - Close the last command-layer raw config access paths.
 - Retire deprecated `CommandProcessorFactory` overload usage internally.
@@ -38,8 +39,8 @@ has its own `tracks/stop` surface.
 
 `CommandExecutionEngine` has separate short and stream executors, but foreground streams still
 call `task.get(timeout)`. A long `watch`, `trace`, `monitor`, `stack`, or `tt` no longer consumes
-short-command worker threads, but the caller still waits for the stream lifecycle rather than just
-stream startup.
+short-command worker threads, but stream startup, completion, cancellation, and timeout are still
+collapsed into one blocking `Future.get(...)` path.
 
 `CommandSpec` exists, and the command pipeline parses spec-backed commands and renders generated
 help. Some commands have migrated, but many still hand-parse positional arguments and options.
@@ -63,7 +64,8 @@ those overloads.
   `watch`, `trace`, `monitor`, `stack`, `tt`, and `vmtool`.
 - Treat command-specific `activeSessions` maps as private resource tables, not public session
   registries.
-- Let foreground stream commands return from the execution engine after startup succeeds.
+- Let foreground stream execution expose startup and completion through a lifecycle handle, while
+  the protocol layer preserves single-active-stream serialization on the client connection.
 - Keep cancellation unified through `CancellationTokenSource`, client disconnect cleanup, reset,
   detach, and job stop.
 - Migrate high-drift commands to `CommandSpec` in small batches.
@@ -190,15 +192,17 @@ final class BuiltinCommandMetas {
 
 Behavior rules:
 
-- Command registration order should remain stable unless a test documents and approves a new
-  order.
+- Command names, metadata, and provider ownership should remain stable unless a test documents and
+  approves a deliberate behavior change.
+- Do not rely on `CommandRegistry` map iteration order for user-visible help output. The registry
+  currently uses concurrent maps, so display ordering should be explicit if ordering matters.
 - `CommandProviderInfo` for `BuiltinCommandProvider` remains unchanged.
 - No plugin API changes are introduced.
 
 Tests:
 
-- Add or update a built-in provider test that asserts the full command set before and after the
-  split is unchanged.
+- Add or update a built-in provider test that asserts the full command set and representative
+  metadata before and after the split are unchanged.
 - Add focused tests that each domain provider registers expected representative commands.
 - Keep capability metadata tests for instrumentation and disk-writing commands.
 
@@ -227,9 +231,10 @@ Behavior:
 
 - `enhance sessions` renders active sessions from `EnhancementSessionRegistry.list()`.
 - `--kind` filters by `EnhancementSessionKind`.
-- `enhance stop <session-id>` calls `registry.close(sessionId, "enhance_stop")`.
-- `enhance stop --client <client-id>` calls `registry.closeByClient(clientId, "enhance_stop")`.
-- `enhance stop --kind <kind>` closes all currently listed sessions matching that kind.
+- `enhance stop <session-id>` calls `registry.closeOneSummary(sessionId, "enhance_stop")`.
+- `enhance stop --client <client-id>` calls
+  `registry.closeByClientSummary(clientId, "enhance_stop")`.
+- `enhance stop --kind <kind>` calls `registry.closeByKind(kind, "enhance_stop")`.
 - If no sessions match, return a clear "No matching enhancement sessions" message.
 - If a close operation fails, include failed session ids and failure messages from registry
   summaries when available.
@@ -244,12 +249,22 @@ Compatibility:
 Recommended `EnhancementSessionRegistry` additions:
 
 ```java
+EnhancementSessionCloseSummary closeOneSummary(String sessionId, String reason);
+EnhancementSessionCloseSummary closeByClientSummary(String clientId, String reason);
 EnhancementSessionCloseSummary closeByKind(EnhancementSessionKind kind, String reason);
-EnhancementSessionCloseSummary closeMatching(Predicate<EnhancementSessionSnapshot> predicate, String reason);
+EnhancementSessionCloseSummary closeMatching(EnhancementSessionSelector selector, String reason);
 ```
 
-If Java 8 predicate dependencies are considered too broad for this class, implement only
-`closeByKind(...)` and keep client/session-id paths explicit.
+`EnhancementSessionSelector` is a small registry-local functional interface. If even that is too
+general for the first pass, implement only `closeOneSummary(...)`, `closeByClientSummary(...)`,
+and `closeByKind(...)`, then keep ad hoc matching in `EnhanceCommand`.
+
+Compatibility rules:
+
+- Keep existing boolean/int methods (`close`, `closeByClient`) as compatibility wrappers.
+- `EnhanceCommand` should use summary-returning methods so it can report total, closed, missing,
+  failed, and per-session failure messages.
+- `reset`, detach, and shutdown can continue to use `closeAll(...)`.
 
 Tests:
 
@@ -259,10 +274,26 @@ Tests:
 - Command test for stopping by client id.
 - Reset/detach tests should continue to pass without command-specific knowledge.
 
-### Phase 3: Foreground Stream Startup Handles
+### Phase 3: Foreground Stream Lifecycle Handles
 
-Change `CommandExecutionEngine.executeStreamWithTimeout(...)` so it waits for stream startup, not
-stream completion.
+Change `CommandExecutionEngine.executeStreamWithTimeout(...)` so the engine waits for stream
+startup and returns a lifecycle handle, instead of waiting for stream completion through
+`Future.get(timeout)`.
+
+This phase is deliberately not a "return to the client immediately" change. The current text and
+binary protocols are non-multiplexed: a foreground stream owns its reply channel until it sends the
+terminal stream frame. The runtime should make the stream lifecycle explicit, but the request path
+must still keep the connection occupied until the stream completes.
+
+Important protocol constraint:
+
+- The current binary protocol has no stream id and no multiplexing.
+- A foreground stream owns the connection until it sends END or ERR.
+- `BinaryClientProtocolHandler` must not read the next command frame while a foreground stream is
+  still active.
+- This phase does not change the wire protocol. It changes ownership boundaries: the execution
+  engine starts and tracks the stream, while the protocol/request layer waits for that stream's
+  terminal signal to preserve serialized connection behavior.
 
 Add an internal startup latch around stream execution:
 
@@ -277,23 +308,44 @@ final class StreamStartup {
 }
 ```
 
+Add a stream lifecycle handle:
+
+```java
+final class StreamExecutionHandle {
+    Future<?> future();
+    CancellationTokenSource cancellation();
+    boolean isStarted();
+    boolean isDone();
+    void awaitCompletion() throws Exception;
+    void cancel(String reason);
+    StreamCompletion completion();
+}
+```
+
 Execution flow:
 
 1. Create `CancellationTokenSource`.
 2. Submit stream task to `streamCommandExecutor`.
 3. Stream task applies `context.withCancellationToken(source.token())`.
 4. Stream task calls `startup.started()` immediately before invoking `command.executeStream(...)`.
-5. Caller waits for startup using a short startup timeout.
-6. After startup succeeds, `executeStream(...)` returns to the caller while the stream task
-   continues writing to `StreamSink`.
+5. Stream task records terminal completion state in `StreamCompletion`.
+6. Stream task closes or errors the provided `StreamSink` in `finally`.
+7. `CommandExecutionEngine.startStream(...)` waits for startup using a short startup timeout.
+8. After startup succeeds, the engine returns `StreamExecutionHandle`.
+9. `CommandPipeline.executeStreamPrechecked(...)` returns a `StreamResult` that carries the
+   `StreamExecutionHandle`.
+10. `CommandRequestExecutor` waits for `StreamExecutionHandle.awaitCompletion()` for foreground
+    stream requests, so `BinaryClientProtocolHandler` does not read the next command frame until
+    the stream reaches END or ERR.
 
 Timeouts:
 
 - Keep `performance.command.timeout` as a command lifecycle timeout for sync commands.
 - Add stream startup config:
   - `performance.command.stream.startup.timeout.ms`, default `3000`, range `100..60000`
-- Long-running stream duration should remain controlled by command options such as `--timeout`
-  and by cancellation.
+- Do not use the global sync command timeout as the full foreground stream lifecycle timeout.
+- Long-running stream duration remains controlled by command options such as `--timeout`, client
+  disconnect, explicit stop/reset/detach, and cancellation.
 
 Cancellation:
 
@@ -301,6 +353,18 @@ Cancellation:
 - On queue rejection, release impact permit and fail immediately.
 - On client disconnect surfaced through `StreamSink`, stream task cancels token and exits.
 - On `CommandExecutionEngine.shutdown()`, executor shutdown interrupts running streams.
+- If `CommandRequestExecutor` is interrupted while waiting for foreground stream completion, cancel
+  the `StreamExecutionHandle` before propagating the interruption.
+
+Pipeline and sink ownership:
+
+- `GuardedStreamInterceptor` must not call `ensureClosed()` immediately when `next.handle(...)`
+  returns a running `StreamExecutionHandle`; otherwise it would send END immediately after startup.
+- `GuardedStreamSink` remains the wrapper used by the stream task for output sanitization.
+- The stream task, not the interceptor, owns terminal `close`/`error` after startup.
+- Move the "always close the stream sink" guarantee into the stream task `finally` path.
+- For parse/precheck/startup failures before a `StreamExecutionHandle` exists, the interceptor may
+  still close or error the sink synchronously.
 
 Impact permits:
 
@@ -315,10 +379,21 @@ Error reporting:
 - Startup failures should be propagated synchronously to the command caller.
 - Runtime stream failures after startup should be sent to `sink.error(...)` when possible and then
   close the sink.
+- `CommandRequestExecutor` must not record command success immediately after startup. Existing
+  command completion/error metrics and audit success should be emitted after `awaitCompletion()`
+  using the final `StreamCompletion`.
+- Optional additional metrics may record startup accepted/rejected, but they must not replace the
+  existing command lifecycle metrics.
 
 Tests:
 
-- A long stream command starts and returns from pipeline execution without waiting for completion.
+- A long stream command starts and returns a `StreamExecutionHandle` from the execution engine
+  without the engine waiting for completion.
+- `CommandRequestExecutor` preserves single-active-stream behavior by waiting for foreground stream
+  completion before `BinaryClientProtocolHandler` reads the next frame.
+- `GuardedStreamInterceptor` does not close a running stream immediately after startup.
+- The stream sink is closed exactly once when the stream task completes.
+- Audit and command duration metrics are recorded after stream completion, not after startup.
 - A long stream command does not block a sync command on the short executor.
 - Startup timeout cancels the stream token and future.
 - Queue rejection message still distinguishes the stream pool.
@@ -452,7 +527,7 @@ Enhancement session stop:
 enhance stop
   -> CommandPipeline precheck/authz
   -> EnhanceCommand
-  -> EnhancementSessionRegistry.close/closeByKind/closeByClient
+  -> EnhancementSessionRegistry close summary APIs
   -> command-specific closer
   -> transformer/dispatcher/vmtool cleanup
 ```
@@ -464,7 +539,8 @@ CommandPipeline.executeStreamPrechecked
   -> CommandExecutionEngine.executeStream
   -> stream executor task starts
   -> startup latch opens
-  -> caller returns
+  -> StreamExecutionHandle returned
+  -> protocol/request layer waits for StreamExecutionHandle completion
   -> stream task writes to StreamSink until timeout/cancel/completion
 ```
 
@@ -496,7 +572,7 @@ This spec should be implemented as separate commits or PR-sized phases:
 
 1. Split built-in providers and add provider tests.
 2. Add `enhance` session command and registry close-by-kind support.
-3. Change stream execution to startup-wait semantics with tests.
+3. Change stream execution to explicit lifecycle handles with tests.
 4. Migrate CommandSpec batch 1.
 5. Migrate CommandSpec batch 2.
 6. Migrate CommandSpec batch 3.
@@ -520,7 +596,7 @@ Focused tests to add or update:
 - `BuiltinCommandProviderSplitTest`
 - `EnhanceCommandTest`
 - `EnhancementSessionRegistryTest`
-- `CommandExecutionEngineStreamStartupTest`
+- `CommandExecutionEngineStreamLifecycleTest`
 - `BuiltinCommandSpecTest`
 - `ConfigCommandSchemaBoundaryTest`
 - `CommandProcessorFactoryRequestUsageTest`
@@ -542,8 +618,9 @@ Existing tests that must continue passing:
 - Built-in command names and metadata remain stable unless explicitly changed by tests.
 - Users can list and stop active enhancement sessions through one `enhance` command.
 - `reset`, detach, and shutdown still close all enhancement sessions.
-- A long foreground stream does not keep the caller waiting for the entire stream duration after
-  startup succeeds.
+- A long foreground stream runs on the stream executor, does not occupy the short-command executor,
+  and keeps the same client connection serialized until the terminal stream frame.
+- The global sync command timeout no longer acts as the foreground stream lifecycle timeout.
 - Stream cancellation still works for timeout, disconnect, job stop, reset, and detach paths.
 - Migrated commands use generated help and parser validation from `CommandSpec`.
 - New command-layer config reads use typed snapshots or schema keys.
