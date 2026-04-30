@@ -12,6 +12,8 @@ import com.javasleuth.core.command.impl.StackCommand;
 import com.javasleuth.core.command.impl.TraceCommand;
 import com.javasleuth.core.command.impl.TtCommand;
 import com.javasleuth.core.command.impl.WatchCommand;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.CommandSpecParser;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.vmtool.VmToolSessionRegistry;
@@ -64,6 +66,44 @@ public class ListenerModeRequirementTest {
     }
 
     @Test
+    public void streamCommands_reparseWhenBackgroundFlagRemovedFromRawArgs() throws Exception {
+        resetLegacyState();
+
+        ProductionConfig config = ProductionConfig.createDefault();
+        SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(config);
+        JobManager jobManager = new JobManager();
+        jobManager.configureExecution(1, 1);
+        SleuthSpyDispatcher dispatcher = new SleuthSpyDispatcher();
+        Instrumentation inst = fakeInstrumentationWithLoadedClasses(DummyTarget.class);
+        try {
+            assertStaleBackgroundContextDoesNotStartJob(
+                new WatchCommand(inst, transformer, config, jobManager, dispatcher),
+                WatchCommand.spec(),
+                new String[] {"watch", DummyTarget.class.getName(), "doWork", "-t", "1", "--bg"},
+                new String[] {"watch", DummyTarget.class.getName(), "doWork", "-t", "1"},
+                "watch"
+            );
+            assertStaleBackgroundContextDoesNotStartJob(
+                new TraceCommand(inst, transformer, config, jobManager, dispatcher),
+                TraceCommand.spec(),
+                new String[] {"trace", DummyTarget.class.getName(), "doWork", "-t", "1", "--bg"},
+                new String[] {"trace", DummyTarget.class.getName(), "doWork", "-t", "1"},
+                "trace"
+            );
+            assertStaleBackgroundContextDoesNotStartJob(
+                new MonitorCommand(inst, transformer, jobManager, dispatcher),
+                MonitorCommand.spec(),
+                new String[] {"monitor", DummyTarget.class.getName(), "doWork", "-n", "1", "-i", "1", "--bg"},
+                new String[] {"monitor", DummyTarget.class.getName(), "doWork", "-n", "1", "-i", "1"},
+                "monitor"
+            );
+        } finally {
+            CommandContextHolder.clear();
+            jobManager.shutdown("test cleanup");
+        }
+    }
+
+    @Test
     public void vmtoolTrack_requiresInstalledDispatcher_andDoesNotRegisterLegacyFallback() {
         resetLegacyState();
 
@@ -99,6 +139,26 @@ public class ListenerModeRequirementTest {
         TtInterceptor.clear();
         VmToolInterceptor.clearAll();
         SleuthSpyAPI.destroy();
+    }
+
+    private static void assertStaleBackgroundContextDoesNotStartJob(
+        Command command,
+        CommandSpec spec,
+        String[] capturedArgs,
+        String[] currentArgs,
+        String commandName
+    ) throws Exception {
+        CommandContext context = new CommandContext("c", "i", "s", true)
+            .withParsedCommand(CommandSpecParser.parse(spec, capturedArgs));
+        CommandContextHolder.set(context);
+        try {
+            String output = command.execute(currentArgs);
+
+            Assert.assertTrue(output, output.contains("SleuthSpyDispatcher is not installed"));
+            Assert.assertFalse(output, output.contains("Started " + commandName + " in background"));
+        } finally {
+            CommandContextHolder.clear();
+        }
     }
 
     private static Instrumentation fakeInstrumentationWithLoadedClasses(Class<?>... loadedClasses) {

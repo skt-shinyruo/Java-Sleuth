@@ -211,6 +211,9 @@ public class TraceCommand implements StreamCommand, SpecBackedCommand {
     private ParsedCommand parsedOrFallback(String[] args) {
         CommandContext ctx = CommandContextHolder.get();
         ParsedCommand parsed = ctx != null ? ctx.getParsedCommand() : null;
+        if (parsed != null && Boolean.TRUE.equals(parsed.booleanOption("bg")) && !hasFlag(args, "--bg")) {
+            return CommandSpecParser.parse(spec(), args);
+        }
         return parsed != null ? parsed : CommandSpecParser.parse(spec(), args);
     }
 
@@ -641,6 +644,18 @@ public class TraceCommand implements StreamCommand, SpecBackedCommand {
             out.add(a);
         }
         return out.toArray(new String[0]);
+    }
+
+    private static boolean hasFlag(String[] args, String flag) {
+        if (args == null || flag == null || flag.isEmpty()) {
+            return false;
+        }
+        for (String arg : args) {
+            if (flag.equals(arg)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
