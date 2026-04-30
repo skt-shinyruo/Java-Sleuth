@@ -68,6 +68,81 @@ public class CommandProcessorFactoryRequestTest {
         }
     }
 
+    @SuppressWarnings("deprecation")
+    @Test
+    public void deprecatedCreateOverload_remainsCompatibilityWrapper() {
+        ProductionConfig config = ProductionConfig.createDefault();
+        SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(config);
+        Instrumentation instrumentation = fakeInstrumentation();
+        com.javasleuth.core.monitoring.MetricsCollector metrics =
+            new com.javasleuth.core.monitoring.MetricsCollector(config);
+
+        CommandProcessor processor = CommandProcessorFactory.create(
+            instrumentation,
+            transformer,
+            null,
+            config,
+            null,
+            null,
+            null,
+            null,
+            null,
+            metrics
+        );
+        try {
+            Assert.assertSame(metrics, processor.getMetricsCollector());
+        } finally {
+            try {
+                processor.shutdownGracefully(1);
+            } catch (Exception ignore) {
+                // best-effort for test cleanup
+            }
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    @Test
+    public void deprecatedCreateComponentsOverload_remainsCompatibilityWrapper() {
+        ProductionConfig config = ProductionConfig.createDefault();
+        SleuthClassFileTransformer transformer = new SleuthClassFileTransformer(config);
+        Instrumentation instrumentation = fakeInstrumentation();
+        com.javasleuth.core.monitoring.MetricsCollector metrics =
+            new com.javasleuth.core.monitoring.MetricsCollector(config);
+        JobManager jobManager = new JobManager();
+
+        CommandProcessorComponents components = CommandProcessorFactory.createComponents(
+            instrumentation,
+            transformer,
+            null,
+            config,
+            null,
+            null,
+            null,
+            null,
+            null,
+            metrics,
+            jobManager,
+            null
+        );
+        try {
+            Assert.assertSame(metrics, components.getMetricsCollector());
+        } finally {
+            try {
+                components.getShutdownCoordinator().shutdownGracefully(null, 1);
+            } catch (Exception ignore) {
+                // best-effort for test cleanup
+            }
+            try {
+                AutoCloseable ownedResources = components.getOwnedResources();
+                if (ownedResources != null) {
+                    ownedResources.close();
+                }
+            } catch (Exception ignore) {
+                // best-effort for test cleanup
+            }
+        }
+    }
+
     private static Instrumentation fakeInstrumentation() {
         return (Instrumentation) Proxy.newProxyInstance(
             Instrumentation.class.getClassLoader(),

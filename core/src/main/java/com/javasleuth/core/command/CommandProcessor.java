@@ -41,13 +41,23 @@ public class CommandProcessor {
     private volatile Thread jvmShutdownHook;
 
     public CommandProcessor(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
-        this(CommandProcessorFactory.createComponents(instrumentation, transformer, null));
+        this(CommandProcessorFactory.createComponents(
+            CommandProcessorFactoryRequest.builder(instrumentation, transformer).build()
+        ));
     }
 
     public CommandProcessor(Instrumentation instrumentation, SleuthClassFileTransformer transformer, Runnable shutdownHook) {
-        this(CommandProcessorFactory.createComponents(instrumentation, transformer, shutdownHook));
+        this(CommandProcessorFactory.createComponents(
+            CommandProcessorFactoryRequest.builder(instrumentation, transformer)
+                .withShutdownHook(shutdownHook)
+                .build()
+        ));
     }
 
+    /**
+     * @deprecated Use {@link CommandProcessorFactoryRequest} with {@link CommandProcessorFactory#create(CommandProcessorFactoryRequest)}
+     * or {@link CommandProcessorFactory#createComponents(CommandProcessorFactoryRequest)}.
+     */
     @Deprecated
     public CommandProcessor(
         Instrumentation instrumentation,
@@ -62,16 +72,16 @@ public class CommandProcessor {
         MetricsCollector metricsCollector
     ) {
         this(CommandProcessorFactory.createComponents(
-            instrumentation,
-            transformer,
-            shutdownHook,
-            config,
-            auditLogger,
-            authenticationManager,
-            authorizationManager,
-            dangerousConfirm,
-            clientSessionRegistry,
-            metricsCollector
+            CommandProcessorFactoryRequest.builder(instrumentation, transformer)
+                .withShutdownHook(shutdownHook)
+                .withConfig(config)
+                .withAuditLogger(auditLogger)
+                .withAuthenticationManager(authenticationManager)
+                .withAuthorizationManager(authorizationManager)
+                .withDangerousConfirm(dangerousConfirm)
+                .withClientSessionRegistry(clientSessionRegistry)
+                .withMetricsCollector(metricsCollector)
+                .build()
         ));
     }
 
