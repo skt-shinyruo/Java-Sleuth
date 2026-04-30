@@ -1,0 +1,196 @@
+package com.javasleuth.core.command.server.protocol;
+
+import com.javasleuth.core.command.CommandDescriptor;
+import com.javasleuth.core.command.CommandPipeline;
+import com.javasleuth.core.command.CommandProvider;
+import com.javasleuth.core.command.CommandProviderContext;
+import com.javasleuth.core.command.CommandRegistry;
+import com.javasleuth.core.command.StreamCommand;
+import com.javasleuth.core.command.StreamSink;
+import com.javasleuth.core.command.session.ClientSession;
+import com.javasleuth.core.command.session.ClientSessionIndex;
+import com.javasleuth.core.monitoring.MetricsCollector;
+import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.config.model.SleuthConfigParser;
+import com.javasleuth.foundation.security.AuditLogger;
+import com.javasleuth.foundation.security.AuthenticationManager;
+import com.javasleuth.foundation.security.AuthorizationManager;
+import com.javasleuth.foundation.security.CommandMeta;
+import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
+import com.javasleuth.foundation.security.InputValidator;
+import com.javasleuth.foundation.util.PerformanceOptimizer;
+import java.io.IOException;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import org.junit.Assert;
+import org.junit.Test;
+
+public class CommandRequestExecutorStreamLifecycleTest {
+    @Test
+    public void foregroundStreamRequestWaitsForCompletionWithoutGlobalCommandTimeout() throws Exception {
+        String oldTimeout = System.getProperty("sleuth.performance.command.timeout");
+        String oldTimeoutMax = System.getProperty("sleuth.performance.command.timeout.max");
+        try {
+            System.setProperty("sleuth.performance.command.timeout", "50");
+            System.setProperty("sleuth.performance.command.timeout.max", "50");
+
+            ProductionConfig config = ProductionConfig.createDefault();
+            CountDownLatch entered = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            CapturingReply reply = new CapturingReply();
+
+            try (
+                AuditLogger auditLogger = new AuditLogger(config);
+                AuthenticationManager authenticationManager = new AuthenticationManager(config, auditLogger);
+                DangerousCommandConfirmationManager dangerousConfirm =
+                    new DangerousCommandConfirmationManager(config, auditLogger);
+                PerformanceOptimizer optimizer = new PerformanceOptimizer(config)
+            ) {
+                MetricsCollector metrics = new MetricsCollector(config);
+                try {
+                    StreamCommand command = blockingStream(entered, release);
+                    CommandRegistry registry = registry(config, metrics, auditLogger, command);
+                    CommandPipeline pipeline = new CommandPipeline(
+                        new InputValidator(config, auditLogger),
+                        new AuthorizationManager(config, auditLogger, authenticationManager),
+                        dangerousConfirm,
+                        config,
+                        optimizer
+                    );
+                    try {
+                        CommandRequestExecutor executor = new CommandRequestExecutor(
+                            metrics,
+                            config,
+                            auditLogger,
+                            authenticationManager,
+                            registry,
+                            pipeline,
+                            new ClientSessionIndex()
+                        );
+                        ClientSession session = new ClientSession("session-a", "client-a", "test");
+                        FutureTask<Boolean> task = new FutureTask<Boolean>(() -> executor.execute(
+                            "client-a",
+                            "test",
+                            "session-a",
+                            "conn-a",
+                            session,
+                            SleuthConfigParser.parse(config.snapshot()).protocol(),
+                            SleuthConfigParser.parse(config.snapshot()).security(),
+                            true,
+                            "watch",
+                            reply,
+                            "auth required",
+                            "stream_write",
+                            "send disconnected",
+                            "close disconnected",
+                            "error disconnected"
+                        ));
+
+                        Thread thread = new Thread(task, "request-stream-test");
+                        thread.start();
+                        Assert.assertTrue("stream command did not start", entered.await(1, TimeUnit.SECONDS));
+                        Thread.sleep(150L);
+                        Assert.assertFalse("request should wait for stream completion", task.isDone());
+                        Assert.assertEquals(0, reply.endCount);
+
+                        release.countDown();
+                        Assert.assertFalse(task.get(1, TimeUnit.SECONDS));
+                        Assert.assertEquals(Collections.singletonList("done"), reply.data);
+                        Assert.assertEquals(1, reply.endCount);
+                        Assert.assertTrue(reply.errors.isEmpty());
+                    } finally {
+                        pipeline.shutdown();
+                        registry.shutdown();
+                    }
+                } finally {
+                    metrics.shutdown();
+                }
+            }
+        } finally {
+            setOrClearProperty("sleuth.performance.command.timeout", oldTimeout);
+            setOrClearProperty("sleuth.performance.command.timeout.max", oldTimeoutMax);
+        }
+    }
+
+    private static CommandRegistry registry(
+        ProductionConfig config,
+        MetricsCollector metrics,
+        AuditLogger auditLogger,
+        StreamCommand command
+    ) {
+        CommandProvider provider = new CommandProvider() {
+            @Override
+            public String getName() {
+                return "test";
+            }
+
+            @Override
+            public Collection<CommandDescriptor> getCommandDescriptors(CommandProviderContext context) {
+                return Collections.singletonList(
+                    CommandDescriptor.of("watch", command, CommandMeta.viewer(false, true))
+                );
+            }
+        };
+        return new CommandRegistry(
+            config,
+            metrics,
+            auditLogger,
+            Collections.singletonList(provider),
+            null,
+            new CommandProviderContext(null, null, metrics, config, auditLogger, null, null, null, null, null, null, null)
+        );
+    }
+
+    private static StreamCommand blockingStream(CountDownLatch entered, CountDownLatch release) {
+        return new StreamCommand() {
+            @Override
+            public String execute(String[] args) {
+                return "";
+            }
+
+            @Override
+            public void executeStream(String[] args, StreamSink sink) throws Exception {
+                entered.countDown();
+                release.await(1, TimeUnit.SECONDS);
+                sink.send("done");
+            }
+
+            @Override
+            public String getDescription() {
+                return "blocking stream";
+            }
+        };
+    }
+
+    private static void setOrClearProperty(String key, String value) {
+        if (value == null) {
+            System.clearProperty(key);
+        } else {
+            System.setProperty(key, value);
+        }
+    }
+
+    private static final class CapturingReply implements CommandReplyChannel {
+        private final java.util.List<String> data = new java.util.ArrayList<String>();
+        private final java.util.List<String> errors = new java.util.ArrayList<String>();
+        private int endCount;
+
+        @Override
+        public void sendData(String data) throws IOException {
+            this.data.add(data);
+        }
+
+        @Override
+        public void sendError(String message) throws IOException {
+            errors.add(message);
+        }
+
+        @Override
+        public void end() throws IOException {
+            endCount++;
+        }
+    }
+}

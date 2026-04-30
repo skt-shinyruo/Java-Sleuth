@@ -8,6 +8,7 @@ import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
 import com.javasleuth.foundation.security.InputValidator;
 import com.javasleuth.core.command.pipeline.CommandExecutionEngine;
+import com.javasleuth.core.command.pipeline.StreamExecutionHandle;
 import com.javasleuth.foundation.util.PerformanceOptimizer;
 import org.junit.Test;
 
@@ -61,34 +62,40 @@ public class CommandPipelineStreamExecutionTest {
                 InputValidator validator = new InputValidator(config, auditLogger);
                 CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config, optimizer);
                 try {
+                    StreamCommand cmd = new StreamCommand() {
+                        @Override
+                        public String execute(String[] args) {
+                            return "";
+                        }
 
-            StreamCommand cmd = new StreamCommand() {
-                @Override
-                public String execute(String[] args) {
-                    return "";
-                }
+                        @Override
+                        public void executeStream(String[] args, StreamSink sink) {
+                            sink.send("a\u0000b");
+                        }
 
-                @Override
-                public void executeStream(String[] args, StreamSink sink) {
-                    sink.send("a\u0000b");
-                }
+                        @Override
+                        public String getDescription() {
+                            return "test";
+                        }
+                    };
 
-                @Override
-                public String getDescription() {
-                    return "test";
-                }
-            };
+                    CommandRegistry.Entry entry = new CommandRegistry.Entry(cmd, CommandMeta.viewer(false, true), "test");
+                    CapturingSink sink = new CapturingSink();
+                    CommandPipeline.StreamResult r = pipeline.executeStreamPrechecked(
+                        entry,
+                        new String[]{"watch"},
+                        new CommandContext("c", "i", "s", true),
+                        sink
+                    );
 
-            CommandRegistry.Entry entry = new CommandRegistry.Entry(cmd, CommandMeta.viewer(false, true), "test");
-            CapturingSink sink = new CapturingSink();
-            CommandPipeline.StreamResult r = pipeline.executeStreamPrechecked(entry, new String[]{"watch"}, new CommandContext("c", "i", "s", true), sink);
-
-            assertNotNull(r);
-            assertTrue(r.isSuccess());
-            assertEquals(1, sink.sent.size());
-            assertEquals("ab", sink.sent.get(0));
-            assertEquals(1, sink.closeCount);
-            assertEquals(0, sink.errorCount);
+                    assertNotNull(r);
+                    assertTrue(r.isSuccess());
+                    assertNotNull(r.getHandle());
+                    assertTrue(r.getHandle().awaitCompletion().isSuccess());
+                    assertEquals(1, sink.sent.size());
+                    assertEquals("ab", sink.sent.get(0));
+                    assertEquals(1, sink.closeCount);
+                    assertEquals(0, sink.errorCount);
                 } finally {
                     pipeline.shutdown();
                 }
@@ -99,7 +106,7 @@ public class CommandPipelineStreamExecutionTest {
     }
 
     @Test
-    public void streamTimeout_sendsErrorAndDoesNotClose() throws Exception {
+    public void streamReturnsAfterStartupAndClosesSinkOnCompletion() throws Exception {
         String oldTimeout = System.getProperty("sleuth.performance.command.timeout");
         String oldTimeoutMax = System.getProperty("sleuth.performance.command.timeout.max");
         try {
@@ -117,34 +124,49 @@ public class CommandPipelineStreamExecutionTest {
                 InputValidator validator = new InputValidator(config, auditLogger);
                 CommandPipeline pipeline = new CommandPipeline(validator, authz, dangerousConfirm, config, optimizer);
                 try {
+                    CountDownLatch started = new CountDownLatch(1);
+                    CountDownLatch release = new CountDownLatch(1);
 
-            StreamCommand cmd = new StreamCommand() {
-                @Override
-                public String execute(String[] args) {
-                    return "";
-                }
+                    StreamCommand cmd = new StreamCommand() {
+                        @Override
+                        public String execute(String[] args) {
+                            return "";
+                        }
 
-                @Override
-                public void executeStream(String[] args, StreamSink sink) throws Exception {
-                    Thread.sleep(200);
-                }
+                        @Override
+                        public void executeStream(String[] args, StreamSink sink) throws Exception {
+                            started.countDown();
+                            release.await(1, TimeUnit.SECONDS);
+                            sink.send("done");
+                        }
 
-                @Override
-                public String getDescription() {
-                    return "sleep";
-                }
-            };
+                        @Override
+                        public String getDescription() {
+                            return "sleep";
+                        }
+                    };
 
-            CommandRegistry.Entry entry = new CommandRegistry.Entry(cmd, CommandMeta.viewer(false, true), "test");
-            CapturingSink sink = new CapturingSink();
-            CommandPipeline.StreamResult r = pipeline.executeStreamPrechecked(entry, new String[]{"watch"}, new CommandContext("c", "i", "s", true), sink);
+                    CommandRegistry.Entry entry = new CommandRegistry.Entry(cmd, CommandMeta.viewer(false, true), "test");
+                    CapturingSink sink = new CapturingSink();
+                    long startMs = System.currentTimeMillis();
+                    CommandPipeline.StreamResult r = pipeline.executeStreamPrechecked(
+                        entry,
+                        new String[]{"watch"},
+                        new CommandContext("c", "i", "s", true),
+                        sink
+                    );
 
-            assertNotNull(r);
-            assertFalse(r.isSuccess());
-            assertEquals(0, sink.closeCount);
-            assertEquals(1, sink.errorCount);
-            assertNotNull(sink.lastError);
-            assertTrue(sink.lastError.toLowerCase().contains("timed out"));
+                    assertNotNull(r);
+                    assertTrue(r.isSuccess());
+                    assertNotNull(r.getHandle());
+                    assertTrue("stream command did not start", started.await(1, TimeUnit.SECONDS));
+                    assertTrue("pipeline should return after stream startup", System.currentTimeMillis() - startMs < 500);
+                    assertEquals(0, sink.closeCount);
+                    release.countDown();
+                    assertTrue(r.getHandle().awaitCompletion().isSuccess());
+                    assertEquals(1, sink.closeCount);
+                    assertEquals(0, sink.errorCount);
+                    assertEquals("done", sink.sent.get(0));
                 } finally {
                     pipeline.shutdown();
                 }
@@ -156,16 +178,12 @@ public class CommandPipelineStreamExecutionTest {
     }
 
     @Test
-    public void streamTimeout_cancelsContextTokenVisibleToCommand() throws Exception {
-        String oldTimeout = System.getProperty("sleuth.performance.command.timeout");
-        String oldTimeoutMax = System.getProperty("sleuth.performance.command.timeout.max");
-        String oldStreamCore = System.getProperty("sleuth.performance.command.stream.executor.core.size");
-        String oldStreamMax = System.getProperty("sleuth.performance.command.stream.executor.max.size");
+    public void streamHandleCancel_cancelsContextTokenVisibleToCommand() throws Exception {
+        String oldStreamCore = System.getProperty("sleuth.performance.command.stream.executor.core");
+        String oldStreamMax = System.getProperty("sleuth.performance.command.stream.executor.max");
         try {
-            System.setProperty("sleuth.performance.command.timeout", "100");
-            System.setProperty("sleuth.performance.command.timeout.max", "100");
-            System.setProperty("sleuth.performance.command.stream.executor.core.size", "1");
-            System.setProperty("sleuth.performance.command.stream.executor.max.size", "1");
+            System.setProperty("sleuth.performance.command.stream.executor.core", "1");
+            System.setProperty("sleuth.performance.command.stream.executor.max", "1");
 
             ProductionConfig config = ProductionConfig.createDefault();
             CommandExecutionEngine engine = new CommandExecutionEngine(config);
@@ -203,24 +221,19 @@ public class CommandPipelineStreamExecutionTest {
                     }
                 };
 
-                try {
-                    engine.executeStream(cmd, new String[]{"watch"}, CommandMeta.viewer(false, true), 100,
-                        new CapturingSink(), new CommandContext("c", "i", "s", true));
-                    fail("Expected timeout");
-                } catch (Exception e) {
-                    assertTrue(e.getMessage().toLowerCase().contains("timed out"));
-                }
+                StreamExecutionHandle handle = engine.executeStream(cmd, new String[]{"watch"}, CommandMeta.viewer(false, true), 100,
+                    new CapturingSink(), new CommandContext("c", "i", "s", true));
+                handle.cancel("test");
 
                 assertTrue(observed.await(1, TimeUnit.SECONDS));
                 assertTrue(observedCancellation.get());
+                assertFalse(handle.awaitCompletion().isSuccess());
             } finally {
                 engine.shutdown();
             }
         } finally {
-            setOrClearProperty("sleuth.performance.command.timeout", oldTimeout);
-            setOrClearProperty("sleuth.performance.command.timeout.max", oldTimeoutMax);
-            setOrClearProperty("sleuth.performance.command.stream.executor.core.size", oldStreamCore);
-            setOrClearProperty("sleuth.performance.command.stream.executor.max.size", oldStreamMax);
+            setOrClearProperty("sleuth.performance.command.stream.executor.core", oldStreamCore);
+            setOrClearProperty("sleuth.performance.command.stream.executor.max", oldStreamMax);
         }
     }
 

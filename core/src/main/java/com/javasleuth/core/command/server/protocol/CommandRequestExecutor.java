@@ -13,6 +13,8 @@ import com.javasleuth.core.command.CommandPipeline;
 import com.javasleuth.core.command.CommandRegistry;
 import com.javasleuth.core.command.StreamCommand;
 import com.javasleuth.core.command.StreamSink;
+import com.javasleuth.core.command.pipeline.StreamCompletion;
+import com.javasleuth.core.command.pipeline.StreamExecutionHandle;
 import com.javasleuth.core.command.session.ClientDisconnectedException;
 import com.javasleuth.core.command.session.ClientSessionIndex;
 import com.javasleuth.core.command.session.ClientSession;
@@ -136,6 +138,18 @@ public final class CommandRequestExecutor {
 
                 CommandPipeline.StreamResult streamResult = pipeline.executeStreamPrechecked(entry, execArgs, context, sink);
                 streamSuccess = streamResult != null && streamResult.isSuccess();
+                StreamExecutionHandle handle = streamResult != null ? streamResult.getHandle() : null;
+                if (streamSuccess && handle != null) {
+                    StreamCompletion completion;
+                    try {
+                        completion = handle.awaitCompletion();
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        handle.cancel("request_interrupted");
+                        throw new Exception("Command interrupted");
+                    }
+                    streamSuccess = completion != null && completion.isSuccess();
+                }
 
                 auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, streamSuccess);
                 long duration = System.currentTimeMillis() - commandStart;

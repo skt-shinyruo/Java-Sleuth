@@ -479,6 +479,8 @@ public class BuiltinCommandSpecTest {
             );
 
             Assert.assertTrue(result.isSuccess());
+            Assert.assertNotNull(result.getHandle());
+            Assert.assertTrue(result.getHandle().awaitCompletion().isSuccess());
             Assert.assertEquals(1, sink.sent.size());
             Assert.assertEquals("flag=true,token=true", sink.sent.get(0));
         });
