@@ -20,6 +20,7 @@ public final class OptionSpec {
     private final Long min;
     private final Long max;
     private final boolean repeatable;
+    private final boolean missingValueAsEmptyString;
 
     private OptionSpec(Builder builder) {
         this.name = builder.name;
@@ -29,6 +30,7 @@ public final class OptionSpec {
         this.min = builder.min;
         this.max = builder.max;
         this.repeatable = builder.repeatable;
+        this.missingValueAsEmptyString = builder.missingValueAsEmptyString;
     }
 
     public static Builder flag(String name) {
@@ -75,6 +77,10 @@ public final class OptionSpec {
         return repeatable;
     }
 
+    public boolean isMissingValueAsEmptyString() {
+        return missingValueAsEmptyString;
+    }
+
     public boolean hasRange() {
         return min != null && max != null;
     }
@@ -88,6 +94,7 @@ public final class OptionSpec {
         private Long min;
         private Long max;
         private boolean repeatable;
+        private boolean missingValueAsEmptyString;
 
         private Builder(String name, Type type) {
             if (name == null || name.trim().isEmpty()) {
@@ -122,13 +129,25 @@ public final class OptionSpec {
             return this;
         }
 
+        public Builder missingValueAsEmptyString() {
+            this.missingValueAsEmptyString = true;
+            return this;
+        }
+
         public OptionSpec build() {
+            validateMissingValueConfiguration();
             validateRangeConfiguration();
             if (defaultValueSet) {
                 defaultValue = normalizeDefaultValue(defaultValue);
                 validateDefaultRange();
             }
             return new OptionSpec(this);
+        }
+
+        private void validateMissingValueConfiguration() {
+            if (missingValueAsEmptyString && type != Type.STRING) {
+                throw new IllegalArgumentException("Missing value as empty string is only supported for string options: " + name);
+            }
         }
 
         private void validateRangeConfiguration() {

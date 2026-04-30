@@ -18,7 +18,9 @@ public class TraceCommandSampleOptionRemovedTest {
     public void shouldRejectRemovedSampleOptions() throws Exception {
         TraceCommand cmd = new TraceCommand(null, null, ProductionConfig.createDefault(), new JobManager());
         assertRemovedSampleMessage(cmd, new String[] {"trace", "C", "m", "--sample", "0.1"});
+        assertRemovedSampleMessage(cmd, new String[] {"trace", "C", "m", "--sample"});
         assertRemovedSampleMessage(cmd, new String[] {"trace", "C", "m", "--sample-rate=0.1"});
+        assertRemovedSampleMessage(cmd, new String[] {"trace", "C", "m", "--sample-rate"});
     }
 
     private static void assertRemovedSampleMessage(TraceCommand cmd, String[] args) throws Exception {
