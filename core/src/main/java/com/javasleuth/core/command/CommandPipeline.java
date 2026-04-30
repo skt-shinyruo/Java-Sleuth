@@ -195,7 +195,7 @@ public class CommandPipeline {
             if (spec != null) {
                 ParsedCommand parsed = CommandSpecParser.parse(spec, args);
                 if (parsed.isHelpRequested()) {
-                    return new Result(true, CommandHelpRenderer.render(spec), null);
+                    return new Result(true, sanitizeOutput(CommandHelpRenderer.render(spec)), null);
                 }
                 if (effectiveContext != null) {
                     effectiveContext = effectiveContext.withParsedCommand(parsed);
@@ -243,7 +243,7 @@ public class CommandPipeline {
         if (spec != null) {
             ParsedCommand parsed = CommandSpecParser.parse(spec, args);
             if (parsed.isHelpRequested()) {
-                sink.send(CommandHelpRenderer.render(spec));
+                sink.send(sanitizeOutput(CommandHelpRenderer.render(spec)));
                 sink.close(null);
                 return StreamResult.ok();
             }
@@ -267,5 +267,17 @@ public class CommandPipeline {
             return cap;
         }
         return timeoutMs;
+    }
+
+    private String sanitizeOutput(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        if (inputValidator == null) {
+            return raw;
+        }
+        InputValidator.ValidationResult outputValidation = inputValidator.sanitizeOutput(raw);
+        String sanitized = outputValidation != null ? outputValidation.getSanitizedOutput() : null;
+        return sanitized != null ? sanitized : raw;
     }
 }

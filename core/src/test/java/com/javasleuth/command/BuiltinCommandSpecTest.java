@@ -106,6 +106,40 @@ public class BuiltinCommandSpecTest {
     }
 
     @Test
+    public void syncPipelineSanitizesSpecHelpOutput() {
+        withValidationEnabled(() -> withPipeline(pipeline -> {
+            CommandSpec spec = CommandSpec.builder("sample")
+                .description("Sample\u0000 command")
+                .usage("sample [--flag]")
+                .meta(CommandMeta.viewer(false, true))
+                .option(OptionSpec.flag("flag").alias("--flag").build())
+                .build();
+            Command command = new Command() {
+                @Override
+                public String execute(String[] args) {
+                    return "executed";
+                }
+
+                @Override
+                public String getDescription() {
+                    return "Sample command";
+                }
+            };
+            CommandRegistry.Entry entry = new CommandRegistry.Entry(command, spec.getMeta(), "test", null, null, spec);
+
+            CommandPipeline.Result result = pipeline.executePrechecked(
+                entry,
+                new String[]{"sample", "--help"},
+                new CommandContext("c", "i", "s", false)
+            );
+
+            Assert.assertTrue(result.isSuccess());
+            Assert.assertEquals(CommandHelpRenderer.render(spec).replace("\u0000", ""), result.getOutput());
+            Assert.assertFalse(result.getOutput().contains("\u0000"));
+        }));
+    }
+
+    @Test
     public void streamPipelineReturnsSpecHelpWithoutExecutingCommand() throws Exception {
         withPipelineThrows(pipeline -> {
             CommandSpec spec = sampleSpec();
@@ -181,6 +215,49 @@ public class BuiltinCommandSpecTest {
             Assert.assertEquals(CommandHelpRenderer.render(spec), sink.sent.get(0));
             Assert.assertEquals(1, sink.closeCount);
         });
+    }
+
+    @Test
+    public void streamPipelineSanitizesSpecHelpOutputWithoutCloseSummaryPayload() throws Exception {
+        withValidationEnabledThrows(() -> withPipelineThrows(pipeline -> {
+            CommandSpec spec = CommandSpec.builder("sample")
+                .description("Sample\u0000 command")
+                .usage("sample [--flag]")
+                .meta(CommandMeta.viewer(false, true))
+                .option(OptionSpec.flag("flag").alias("--flag").build())
+                .build();
+            StreamCommand command = new StreamCommand() {
+                @Override
+                public String execute(String[] args) {
+                    return "";
+                }
+
+                @Override
+                public void executeStream(String[] args, StreamSink sink) {
+                    sink.send("executed");
+                }
+
+                @Override
+                public String getDescription() {
+                    return "Sample command";
+                }
+            };
+            CommandRegistry.Entry entry = new CommandRegistry.Entry(command, spec.getMeta(), "test", null, null, spec);
+            ProtocolLikeSink sink = new ProtocolLikeSink();
+
+            CommandPipeline.StreamResult result = pipeline.executeStreamPrechecked(
+                entry,
+                new String[]{"sample", "--help"},
+                new CommandContext("c", "i", "s", true),
+                sink
+            );
+
+            Assert.assertTrue(result.isSuccess());
+            Assert.assertEquals(1, sink.sent.size());
+            Assert.assertEquals(CommandHelpRenderer.render(spec).replace("\u0000", ""), sink.sent.get(0));
+            Assert.assertFalse(sink.sent.get(0).contains("\u0000"));
+            Assert.assertEquals(1, sink.closeCount);
+        }));
     }
 
     @Test
@@ -315,12 +392,42 @@ public class BuiltinCommandSpecTest {
         }
     }
 
+    private static void withValidationEnabled(Runnable runnable) {
+        try {
+            withValidationEnabledThrows(() -> runnable.run());
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    private static void withValidationEnabledThrows(ThrowingRunnable runnable) throws Exception {
+        String oldValidation = System.getProperty("sleuth.security.input.validation");
+        try {
+            System.setProperty("sleuth.security.input.validation", "true");
+            runnable.run();
+        } finally {
+            setOrClearProperty("sleuth.security.input.validation", oldValidation);
+        }
+    }
+
+    private static void setOrClearProperty(String key, String value) {
+        if (value == null) {
+            System.clearProperty(key);
+        } else {
+            System.setProperty(key, value);
+        }
+    }
+
     private interface PipelineConsumer {
         void accept(CommandPipeline pipeline);
     }
 
     private interface ThrowingPipelineConsumer {
         void accept(CommandPipeline pipeline) throws Exception;
+    }
+
+    private interface ThrowingRunnable {
+        void run() throws Exception;
     }
 
     private static final class CapturingSink implements StreamSink {
