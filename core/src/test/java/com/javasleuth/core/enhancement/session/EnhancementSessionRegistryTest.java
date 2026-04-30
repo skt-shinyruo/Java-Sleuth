@@ -74,6 +74,56 @@ public class EnhancementSessionRegistryTest {
     }
 
     @Test
+    public void closeSummaryApisReportClosedMissingAndFailedSessions() {
+        EnhancementSessionRegistry registry = new EnhancementSessionRegistry();
+        AtomicInteger watchClosed = new AtomicInteger(0);
+        AtomicInteger traceClosed = new AtomicInteger(0);
+
+        registry.register(
+            EnhancementSessionDescriptor.builder("watch-1", EnhancementSessionKind.WATCH)
+                .withClientId("client-a")
+                .build(),
+            reason -> watchClosed.incrementAndGet()
+        );
+        registry.register(
+            EnhancementSessionDescriptor.builder("watch-2", EnhancementSessionKind.WATCH)
+                .withClientId("client-a")
+                .build(),
+            reason -> {
+                throw new IllegalStateException("watch boom");
+            }
+        );
+        registry.register(
+            EnhancementSessionDescriptor.builder("trace-1", EnhancementSessionKind.TRACE)
+                .withClientId("client-b")
+                .build(),
+            reason -> traceClosed.incrementAndGet()
+        );
+
+        EnhancementSessionCloseSummary watchSummary = registry.closeByKind(EnhancementSessionKind.WATCH, "enhance_stop");
+        Assert.assertEquals(2, watchSummary.getTotal());
+        Assert.assertEquals(1, watchSummary.getClosed());
+        Assert.assertEquals(0, watchSummary.getMissing());
+        Assert.assertEquals(1, watchSummary.getFailed());
+        Assert.assertTrue(watchSummary.getFailureMessages().get("watch-2").contains("watch boom"));
+        Assert.assertEquals(1, watchClosed.get());
+        Assert.assertEquals(0, traceClosed.get());
+        Assert.assertEquals("trace-1", registry.list().get(0).getSessionId());
+
+        EnhancementSessionCloseSummary clientSummary = registry.closeByClientSummary("client-b", "enhance_stop");
+        Assert.assertEquals(1, clientSummary.getTotal());
+        Assert.assertEquals(1, clientSummary.getClosed());
+        Assert.assertEquals(0, clientSummary.getFailed());
+        Assert.assertEquals(1, traceClosed.get());
+
+        EnhancementSessionCloseSummary missingSummary = registry.closeOneSummary("missing", "enhance_stop");
+        Assert.assertEquals(1, missingSummary.getTotal());
+        Assert.assertEquals(0, missingSummary.getClosed());
+        Assert.assertEquals(1, missingSummary.getMissing());
+        Assert.assertEquals(0, missingSummary.getFailed());
+    }
+
+    @Test
     public void closeAllIsIdempotentAndRecordsFailures() {
         EnhancementSessionRegistry registry = new EnhancementSessionRegistry();
         AtomicInteger closed = new AtomicInteger(0);
