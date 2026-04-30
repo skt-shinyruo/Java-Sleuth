@@ -17,6 +17,7 @@ import com.javasleuth.foundation.util.SleuthLogContext;
 import com.javasleuth.foundation.util.SleuthThreadFactory;
 import com.javasleuth.foundation.security.CommandMeta;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -26,6 +27,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 命令执行引擎：统一 timeout/executor/impact permit，供 Pipeline 使用。
@@ -84,9 +86,9 @@ public final class CommandExecutionEngine {
         return executeWithTimeout(command, args, timeoutMs, permit, context);
     }
 
-    public void executeStream(StreamCommand command, String[] args, CommandMeta meta, long timeoutMs, StreamSink sink, CommandContext context) throws Exception {
+    public StreamExecutionHandle executeStream(StreamCommand command, String[] args, CommandMeta meta, long timeoutMs, StreamSink sink, CommandContext context) throws Exception {
         ImpactPermit permit = acquireImpactPermit(meta);
-        executeStreamWithTimeout(command, args, timeoutMs, permit, sink, context);
+        return executeStreamWithTimeout(command, args, timeoutMs, permit, sink, context);
     }
 
     private static final class ImpactPermit {
@@ -260,30 +262,15 @@ public final class CommandExecutionEngine {
         }
     }
 
-    private void executeStreamWithTimeout(StreamCommand command, String[] args, long timeoutMs, ImpactPermit permit, StreamSink sink, CommandContext context) throws Exception {
-        if (timeoutMs <= 0) {
-            try {
-                applyContext(context);
-                command.executeStream(args, sink);
-            } finally {
-                clearContext();
-                if (permit != null) {
-                    permit.release();
-                }
-            }
-            return;
-        }
-
+    private StreamExecutionHandle executeStreamWithTimeout(StreamCommand command, String[] args, long timeoutMs, ImpactPermit permit, StreamSink sink, CommandContext context) throws Exception {
         CancellationTokenSource source = new CancellationTokenSource();
+        StreamStartup startup = new StreamStartup();
+        CountDownLatch completionLatch = new CountDownLatch(1);
+        AtomicReference<StreamCompletion> completion = new AtomicReference<StreamCompletion>();
         PermitFutureTaskVoid task = new PermitFutureTaskVoid(permit, () -> {
-            applyContext(context != null ? context.withCancellationToken(source.token()) : null);
-            try {
-                command.executeStream(args, sink);
-            } finally {
-                clearContext();
-            }
-            return null;
+            return executeStreamTask(command, args, sink, context, source, startup, completionLatch, completion);
         });
+        StreamExecutionHandle handle = new StreamExecutionHandle(task, source, startup.started, completionLatch, completion);
         try {
             streamCommandExecutor.execute(task);
         } catch (RejectedExecutionException rejected) {
@@ -294,7 +281,8 @@ public final class CommandExecutionEngine {
         }
 
         try {
-            task.get(timeoutMs, TimeUnit.MILLISECONDS);
+            startup.await(currentStreamStartupTimeoutMs());
+            return handle;
         } catch (TimeoutException e) {
             source.cancel();
             task.cancel(true);
@@ -308,20 +296,8 @@ public final class CommandExecutionEngine {
                 // Task won't run: PermitFutureTaskVoid.run() won't execute, release here.
                 permit.release();
             }
-            throw new Exception("Command timed out after " + timeoutMs + "ms");
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof RuntimeException && cause.getCause() != null) {
-                cause = cause.getCause();
-            }
-            if (cause instanceof ClientDisconnectedException) {
-                source.cancel();
-                throw (ClientDisconnectedException) cause;
-            }
-            if (cause instanceof Exception) {
-                throw (Exception) cause;
-            }
-            throw new Exception(cause != null ? cause.getMessage() : "Command execution failed");
+            handle.complete(StreamCompletion.cancelled("startup timeout"));
+            throw new Exception("Stream command startup timed out after " + currentStreamStartupTimeoutMs() + "ms");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             source.cancel();
@@ -335,7 +311,148 @@ public final class CommandExecutionEngine {
             if (removed && permit != null) {
                 permit.release();
             }
+            handle.complete(StreamCompletion.cancelled("startup interrupted"));
             throw new Exception("Command interrupted");
+        } catch (Exception e) {
+            throw e;
+        }
+    }
+
+    private Void executeStreamTask(
+        StreamCommand command,
+        String[] args,
+        StreamSink sink,
+        CommandContext context,
+        CancellationTokenSource source,
+        StreamStartup startup,
+        CountDownLatch completionLatch,
+        AtomicReference<StreamCompletion> completion
+    ) throws Exception {
+        boolean closeOnExit = false;
+        try {
+            applyContext(context != null ? context.withCancellationToken(source.token()) : null);
+            startup.started();
+            command.executeStream(args, sink);
+            closeOnExit = true;
+            Throwable closeFailure = closeStreamSink(sink, null);
+            if (closeFailure != null) {
+                source.cancel();
+                complete(completion, completionLatch, StreamCompletion.failed(closeFailure));
+                throw asException(closeFailure);
+            } else if (source.token().isCancelled()) {
+                complete(completion, completionLatch, StreamCompletion.cancelled("cancelled"));
+            } else {
+                complete(completion, completionLatch, StreamCompletion.success());
+            }
+            return null;
+        } catch (ClientDisconnectedException e) {
+            source.cancel();
+            startup.failed(e);
+            complete(completion, completionLatch, StreamCompletion.failed(e));
+            throw e;
+        } catch (Throwable t) {
+            startup.failed(t);
+            if (source.token().isCancelled() || Thread.currentThread().isInterrupted()) {
+                closeStreamSink(sink, "cancelled");
+                complete(completion, completionLatch, StreamCompletion.cancelled("cancelled"));
+                return null;
+            }
+            errorStreamSink(sink, t);
+            complete(completion, completionLatch, StreamCompletion.failed(t));
+            if (t instanceof Exception) {
+                throw (Exception) t;
+            }
+            throw new Exception(t);
+        } finally {
+            clearContext();
+            if (!closeOnExit && completion.get() == null) {
+                Throwable closeFailure = closeStreamSink(sink, null);
+                if (closeFailure != null) {
+                    complete(completion, completionLatch, StreamCompletion.failed(closeFailure));
+                } else {
+                    complete(completion, completionLatch, StreamCompletion.success());
+                }
+            }
+        }
+    }
+
+    private long currentStreamStartupTimeoutMs() {
+        return SleuthConfigSchema.PERFORMANCE_COMMAND_STREAM_STARTUP_TIMEOUT_MS.read(config);
+    }
+
+    private static void complete(
+        AtomicReference<StreamCompletion> completion,
+        CountDownLatch completionLatch,
+        StreamCompletion result
+    ) {
+        if (completion.compareAndSet(null, result)) {
+            completionLatch.countDown();
+        }
+    }
+
+    private static Throwable closeStreamSink(StreamSink sink, String summary) {
+        if (sink == null) {
+            return null;
+        }
+        try {
+            sink.close(summary);
+            return null;
+        } catch (Throwable t) {
+            return t;
+        }
+    }
+
+    private static void errorStreamSink(StreamSink sink, Throwable t) {
+        if (sink == null) {
+            return;
+        }
+        String message = t != null && t.getMessage() != null ? t.getMessage() : "Stream command failed";
+        try {
+            sink.error(message);
+        } catch (Throwable ignore) {
+            // The original stream failure remains the lifecycle result.
+        }
+    }
+
+    private static Exception asException(Throwable t) {
+        if (t instanceof Exception) {
+            return (Exception) t;
+        }
+        return new Exception(t);
+    }
+
+    private static final class StreamStartup {
+        private final CountDownLatch latch = new CountDownLatch(1);
+        private final AtomicBoolean started = new AtomicBoolean(false);
+        private final AtomicBoolean signaled = new AtomicBoolean(false);
+        private final AtomicReference<Throwable> failure = new AtomicReference<Throwable>();
+
+        void started() {
+            started.set(true);
+            if (signaled.compareAndSet(false, true)) {
+                latch.countDown();
+            }
+        }
+
+        void failed(Throwable t) {
+            failure.compareAndSet(null, t);
+            if (signaled.compareAndSet(false, true)) {
+                latch.countDown();
+            }
+        }
+
+        void await(long timeoutMs) throws Exception {
+            if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) {
+                throw new TimeoutException("stream startup timeout");
+            }
+            Throwable t = failure.get();
+            if (t == null) {
+                return;
+            }
+            if (t instanceof Exception) {
+                throw (Exception) t;
+            }
+            throw new Exception(t);
         }
     }
 

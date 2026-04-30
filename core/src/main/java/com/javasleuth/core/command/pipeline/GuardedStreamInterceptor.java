@@ -25,6 +25,9 @@ public final class GuardedStreamInterceptor implements PipelineInterceptor<Strea
 
         try {
             CommandPipeline.StreamResult r = next.handle(wrapped);
+            if (r != null && r.getHandle() != null && !r.getHandle().isDone()) {
+                return r;
+            }
             guarded.ensureClosed();
             return r != null ? r : CommandPipeline.StreamResult.ok();
         } catch (ClientDisconnectedException e) {

@@ -169,6 +169,14 @@ public final class SleuthConfigSchema {
             .build()
     );
 
+    public static final ConfigKey<Long> PERFORMANCE_COMMAND_STREAM_STARTUP_TIMEOUT_MS = register(
+        ConfigKey.longKey("performance.command.stream.startup.timeout.ms")
+            .defaultValue(3000L)
+            .longRange(100, 60000)
+            .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
+            .build()
+    );
+
     public static final ConfigKey<Long> PERFORMANCE_COMMAND_TIMEOUT_MS = register(
         ConfigKey.longKey("performance.command.timeout")
             .defaultValue(60000L)

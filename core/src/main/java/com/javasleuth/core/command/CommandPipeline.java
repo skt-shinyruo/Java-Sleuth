@@ -9,6 +9,7 @@ import com.javasleuth.core.command.pipeline.PipelineChain;
 import com.javasleuth.core.command.pipeline.PrecheckDecision;
 import com.javasleuth.core.command.pipeline.PrecheckPipeline;
 import com.javasleuth.core.command.pipeline.OutputSanitizeInterceptor;
+import com.javasleuth.core.command.pipeline.StreamExecutionHandle;
 import com.javasleuth.core.command.pipeline.StreamInvocation;
 import com.javasleuth.core.command.pipeline.SyncInvocation;
 import com.javasleuth.core.command.spec.CommandHelpRenderer;
@@ -89,10 +90,16 @@ public class CommandPipeline {
     public static class StreamResult {
         private final boolean success;
         private final String error;
+        private final StreamExecutionHandle handle;
 
         public StreamResult(boolean success, String error) {
+            this(success, error, null);
+        }
+
+        public StreamResult(boolean success, String error, StreamExecutionHandle handle) {
             this.success = success;
             this.error = error;
+            this.handle = handle;
         }
 
         public static StreamResult ok() {
@@ -103,12 +110,20 @@ public class CommandPipeline {
             return new StreamResult(false, error);
         }
 
+        public static StreamResult started(StreamExecutionHandle handle) {
+            return new StreamResult(true, null, handle);
+        }
+
         public boolean isSuccess() {
             return success;
         }
 
         public String getError() {
             return error;
+        }
+
+        public StreamExecutionHandle getHandle() {
+            return handle;
         }
     }
 
@@ -157,8 +172,15 @@ public class CommandPipeline {
 
         this.streamChain = PipelineChain.of(
             inv -> {
-                executionEngine.executeStream(inv.getCommand(), inv.getArgs(), inv.getMeta(), inv.getTimeoutMs(), inv.getSink(), inv.getContext());
-                return StreamResult.ok();
+                StreamExecutionHandle handle = executionEngine.executeStream(
+                    inv.getCommand(),
+                    inv.getArgs(),
+                    inv.getMeta(),
+                    inv.getTimeoutMs(),
+                    inv.getSink(),
+                    inv.getContext()
+                );
+                return StreamResult.started(handle);
             },
             Arrays.asList(new GuardedStreamInterceptor(inputValidator))
         );
