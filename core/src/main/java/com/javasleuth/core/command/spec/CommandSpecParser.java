@@ -22,13 +22,15 @@ public final class CommandSpecParser {
         String[] actualArgs = args == null ? new String[0] : args;
         if (!spec.getSubcommands().isEmpty() && actualArgs.length > 1 && !isHelpToken(actualArgs[1])) {
             SubcommandSpec subcommand = spec.subcommand(actualArgs[1]);
-            if (subcommand == null) {
+            if (subcommand != null) {
+                String[] nestedArgs = new String[actualArgs.length - 1];
+                nestedArgs[0] = subcommand.getName();
+                System.arraycopy(actualArgs, 2, nestedArgs, 1, actualArgs.length - 2);
+                return parse(subcommand.getSpec(), nestedArgs).withSubcommandName(subcommand.getName());
+            }
+            if (!spec.isUnknownSubcommandAsArgument()) {
                 throw new CommandSpecParseException("E_ARGS_UNKNOWN", "Unknown subcommand " + actualArgs[1]);
             }
-            String[] nestedArgs = new String[actualArgs.length - 1];
-            nestedArgs[0] = subcommand.getName();
-            System.arraycopy(actualArgs, 2, nestedArgs, 1, actualArgs.length - 2);
-            return parse(subcommand.getSpec(), nestedArgs).withSubcommandName(subcommand.getName());
         }
         for (int i = 1; i < actualArgs.length; i++) {
             String token = actualArgs[i];

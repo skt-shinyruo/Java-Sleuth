@@ -12,12 +12,8 @@ import java.util.List;
 final class SecurityOpsCommandProvider {
     Collection<CommandDescriptor> getCommandDescriptors(CommandProviderContext context) {
         List<CommandDescriptor> descriptors = new ArrayList<>();
-        BuiltinCommandMetas.add(
-            descriptors,
-            "audit",
-            new AuditCommand(context.requireAuditLogger()),
-            CommandMeta.admin(false, false).withAudit(false)
-        );
+        AuditCommand auditCommand = new AuditCommand(context.requireAuditLogger());
+        descriptors.add(CommandDescriptor.ofSpec(auditCommand.getSpec(), auditCommand));
         BuiltinCommandMetas.add(
             descriptors,
             "session",

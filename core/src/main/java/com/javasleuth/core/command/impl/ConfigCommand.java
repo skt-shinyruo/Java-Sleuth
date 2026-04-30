@@ -2,6 +2,13 @@ package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.agent.runtime.BootstrapMonitoringConfigSync;
 import com.javasleuth.core.command.Command;
+import com.javasleuth.core.command.SpecBackedCommand;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.command.spec.SubcommandSpec;
 import com.javasleuth.foundation.config.ConfigLoader;
 import com.javasleuth.foundation.config.ConfigOrigin;
 import com.javasleuth.foundation.config.ConfigUpdateSource;
@@ -11,8 +18,87 @@ import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.foundation.config.schema.ConfigKey;
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import com.javasleuth.foundation.config.SensitiveKeyMasker;
+import com.javasleuth.foundation.security.CommandMeta;
 
-public class ConfigCommand implements Command {
+public class ConfigCommand implements Command, SpecBackedCommand {
+    private static final CommandSpec SPEC = CommandSpec.builder("config")
+        .description("Manage production configuration settings")
+        .usage("config [status|get|set|remove|save|clear|reload|show]")
+        .meta(CommandMeta.admin(false, false))
+        .subcommand(SubcommandSpec.of(
+            "status",
+            "Show configuration status",
+            CommandSpec.builder("status")
+                .description("Show configuration status")
+                .usage("config status")
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "get",
+            "Show one configuration key",
+            CommandSpec.builder("get")
+                .description("Show one configuration key")
+                .usage("config get <key>")
+                .argument(ArgumentSpec.required("key"))
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "set",
+            "Set a runtime configuration override",
+            CommandSpec.builder("set")
+                .description("Set a runtime configuration override")
+                .usage("config set <key> <value>")
+                .argument(ArgumentSpec.required("key"))
+                .argument(ArgumentSpec.required("value"))
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "remove",
+            "Remove a runtime configuration override",
+            CommandSpec.builder("remove")
+                .description("Remove a runtime configuration override")
+                .usage("config remove <key>")
+                .argument(ArgumentSpec.required("key"))
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "save",
+            "Save configuration to disk",
+            CommandSpec.builder("save")
+                .description("Save configuration to disk")
+                .usage("config save [--include-runtime]")
+                .option(OptionSpec.flag("include-runtime").alias("--include-overrides").build())
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "clear",
+            "Clear runtime configuration overrides",
+            CommandSpec.builder("clear")
+                .description("Clear runtime configuration overrides")
+                .usage("config clear")
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "reload",
+            "Reload configuration from disk",
+            CommandSpec.builder("reload")
+                .description("Reload configuration from disk")
+                .usage("config reload")
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "show",
+            "Show the typed configuration snapshot",
+            CommandSpec.builder("show")
+                .description("Show the typed configuration snapshot")
+                .usage("config show")
+                .build()
+        ))
+        .example("config")
+        .example("config get server.port")
+        .example("config save --include-runtime")
+        .build();
+
     private final ProductionConfig config;
     private final SensitiveKeyMasker masker = new SensitiveKeyMasker();
 
@@ -20,64 +106,54 @@ public class ConfigCommand implements Command {
         this.config = config;
     }
 
+    public static CommandSpec spec() {
+        return SPEC;
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return SPEC;
+    }
+
     @Override
     public String execute(String[] args) throws Exception {
-        if (args.length == 1) {
+        ParsedCommand parsed = CommandSpecSupport.parsed(SPEC, args);
+        if (parsed.isHelpRequested()) {
+            return CommandHelpRenderer.render(SPEC);
+        }
+
+        String action = parsed.subcommandName();
+        if (action == null) {
             return renderStatus();
         }
 
-        String action = args[1].toLowerCase();
         switch (action) {
             case "status":
                 return renderStatus();
 
             case "get":
-                if (args.length < 3) {
-                    return "Usage: config get <key>";
-                }
-                String key = args[2];
+                String key = parsed.argument("key");
                 String value = config.getString(key, "NOT_FOUND");
                 String masked = masker.mask(key, value);
                 return key + " = " + masked + " (origin=" + config.getOrigin(key) + ")";
 
             case "set":
-                if (args.length < 4) {
-                    return "Usage: config set <key> <value>";
-                }
-                String setKey = args[2];
-                String setValue = args[3];
+                String setKey = parsed.argument("key");
+                String setValue = parsed.argument("value");
                 config.setRuntimeConfig(setKey, setValue, ConfigUpdateSource.COMMAND);
                 BootstrapMonitoringConfigSync.syncFromProductionConfigBestEffort(config);
                 return "Runtime configuration updated: " + setKey + " = " + masker.mask(setKey, setValue) +
                     " (origin=" + config.getOrigin(setKey) + ")";
 
             case "remove":
-                if (args.length < 3) {
-                    return "Usage: config remove <key>";
-                }
-                String removeKey = args[2];
+                String removeKey = parsed.argument("key");
                 config.removeRuntimeConfig(removeKey, ConfigUpdateSource.COMMAND);
                 BootstrapMonitoringConfigSync.syncFromProductionConfigBestEffort(config);
                 return "Runtime configuration removed: " + removeKey;
 
             case "save":
                 try {
-                    boolean includeRuntime = false;
-                    if (args.length > 2) {
-                        for (int i = 2; i < args.length; i++) {
-                            String a = args[i];
-                            if (a == null) {
-                                continue;
-                            }
-                            String t = a.trim().toLowerCase();
-                            if (t.isEmpty()) {
-                                continue;
-                            }
-                            if ("--include-runtime".equals(t) || "--include-overrides".equals(t)) {
-                                includeRuntime = true;
-                            }
-                        }
-                    }
+                    boolean includeRuntime = Boolean.TRUE.equals(parsed.booleanOption("include-runtime"));
                     config.saveConfiguration(includeRuntime);
                     return includeRuntime
                         ? "Configuration saved successfully (including runtime overrides)"
@@ -168,8 +244,7 @@ public class ConfigCommand implements Command {
                 return show.toString();
 
             default:
-                return "Unknown config action: " + action + "\n" +
-                       "Available actions: status, get, set, remove, save, clear, reload, show";
+                return CommandHelpRenderer.render(SPEC);
         }
     }
 

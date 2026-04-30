@@ -54,7 +54,8 @@ final class EnhancementCommandProvider {
             ),
             BuiltinCommandMetas.instrumentationStream()
         );
-        BuiltinCommandMetas.add(descriptors, "jobs", new JobsCommand(context.requireJobManager()), CommandMeta.operator(true, false));
+        JobsCommand jobsCommand = new JobsCommand(context.requireJobManager());
+        descriptors.add(CommandDescriptor.ofSpec(jobsCommand.getSpec(), jobsCommand));
         descriptors.add(CommandDescriptor.ofSpec(EnhanceCommand.spec(), new EnhanceCommand(context.requireEnhancementSessionRegistry())));
 
         MonitorCommand monitorCommand = new MonitorCommand(
