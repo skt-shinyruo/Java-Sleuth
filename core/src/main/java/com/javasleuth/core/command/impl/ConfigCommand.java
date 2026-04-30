@@ -133,7 +133,12 @@ public class ConfigCommand implements Command, SpecBackedCommand {
 
             case "get":
                 String key = parsed.argument("key");
-                String value = config.getString(key, "NOT_FOUND");
+                ConfigKey<?> schemaKey = SleuthConfigSchema.byKey(key);
+                if (schemaKey == null) {
+                    return "Unknown config key: " + key;
+                }
+                Object typedValue = schemaKey.read(config);
+                String value = typedValue == null ? "null" : String.valueOf(typedValue);
                 String masked = masker.mask(key, value);
                 return key + " = " + masked + " (origin=" + config.getOrigin(key) + ")";
 
