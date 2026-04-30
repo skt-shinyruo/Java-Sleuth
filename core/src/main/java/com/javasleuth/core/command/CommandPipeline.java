@@ -244,7 +244,7 @@ public class CommandPipeline {
             ParsedCommand parsed = CommandSpecParser.parse(spec, args);
             if (parsed.isHelpRequested()) {
                 sink.send(CommandHelpRenderer.render(spec));
-                sink.close("help");
+                sink.close(null);
                 return StreamResult.ok();
             }
             if (effectiveContext != null) {

@@ -141,9 +141,104 @@ public class BuiltinCommandSpecTest {
             Assert.assertEquals(1, sink.sent.size());
             Assert.assertEquals(CommandHelpRenderer.render(spec), sink.sent.get(0));
             Assert.assertEquals(1, sink.closeCount);
-            Assert.assertEquals("help", sink.lastCloseSummary);
+            Assert.assertNull(sink.lastCloseSummary);
             Assert.assertFalse(executed.get());
         });
+    }
+
+    @Test
+    public void streamPipelineSpecHelpDoesNotEmitCloseSummaryAsDataFrame() throws Exception {
+        withPipelineThrows(pipeline -> {
+            CommandSpec spec = sampleSpec();
+            StreamCommand command = new StreamCommand() {
+                @Override
+                public String execute(String[] args) {
+                    return "";
+                }
+
+                @Override
+                public void executeStream(String[] args, StreamSink sink) {
+                    sink.send("executed");
+                }
+
+                @Override
+                public String getDescription() {
+                    return "Sample command";
+                }
+            };
+            CommandRegistry.Entry entry = new CommandRegistry.Entry(command, spec.getMeta(), "test", null, null, spec);
+            ProtocolLikeSink sink = new ProtocolLikeSink();
+
+            CommandPipeline.StreamResult result = pipeline.executeStreamPrechecked(
+                entry,
+                new String[]{"sample", "--help"},
+                new CommandContext("c", "i", "s", true),
+                sink
+            );
+
+            Assert.assertTrue(result.isSuccess());
+            Assert.assertEquals(1, sink.sent.size());
+            Assert.assertEquals(CommandHelpRenderer.render(spec), sink.sent.get(0));
+            Assert.assertEquals(1, sink.closeCount);
+        });
+    }
+
+    @Test
+    public void syncPipelineSpecCommandSessionMutationPropagatesToOriginalContext() {
+        withPipeline(pipeline -> {
+            CommandSpec spec = sampleSpec();
+            Command command = new Command() {
+                @Override
+                public String execute(String[] args) {
+                    CommandContextHolder.get().setSessionId("new-session");
+                    return "ok";
+                }
+
+                @Override
+                public String getDescription() {
+                    return "Sample command";
+                }
+            };
+            CommandRegistry.Entry entry = new CommandRegistry.Entry(command, spec.getMeta(), "test", null, null, spec);
+            CommandContext context = new CommandContext("c", "i", "s", false);
+
+            CommandPipeline.Result result = pipeline.executePrechecked(
+                entry,
+                new String[]{"sample", "--flag"},
+                context
+            );
+
+            Assert.assertTrue(result.isSuccess());
+            Assert.assertEquals("new-session", context.getSessionId());
+        });
+    }
+
+    @Test
+    public void contextCopiesShareSessionMutationsAndPreserveParsedCommand() {
+        CommandSpec spec = sampleSpec();
+        CommandContext context = new CommandContext("c", "i", "s", false);
+        CommandContext parsed = context.withParsedCommand(com.javasleuth.core.command.spec.CommandSpecParser.parse(
+            spec,
+            new String[]{"sample", "--flag"}
+        ));
+        CancellationToken token = new CancellationToken() {
+            @Override
+            public boolean isCancelled() {
+                return false;
+            }
+
+            @Override
+            public void throwIfCancelled() {
+            }
+        };
+        CommandContext withToken = parsed.withCancellationToken(token);
+
+        withToken.setSessionId("new-session");
+
+        Assert.assertEquals("new-session", context.getSessionId());
+        Assert.assertSame(parsed.getParsedCommand(), withToken.getParsedCommand());
+        Assert.assertTrue(withToken.getParsedCommand().booleanOption("flag"));
+        Assert.assertSame(token, withToken.getCancellationToken());
     }
 
     @Test
@@ -242,6 +337,28 @@ public class BuiltinCommandSpecTest {
         public void close(String summary) {
             closeCount++;
             lastCloseSummary = summary;
+        }
+
+        @Override
+        public void error(String message) {
+        }
+    }
+
+    private static final class ProtocolLikeSink implements StreamSink {
+        private final List<String> sent = new ArrayList<>();
+        private int closeCount;
+
+        @Override
+        public void send(String data) {
+            sent.add(data);
+        }
+
+        @Override
+        public void close(String summary) {
+            if (summary != null && !summary.isEmpty()) {
+                sent.add(summary);
+            }
+            closeCount++;
         }
 
         @Override

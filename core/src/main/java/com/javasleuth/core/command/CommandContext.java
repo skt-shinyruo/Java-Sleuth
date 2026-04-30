@@ -4,9 +4,17 @@ import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.core.command.spec.ParsedCommand;
 
 public class CommandContext {
+    private static final class SessionState {
+        private String sessionId;
+
+        private SessionState(String sessionId) {
+            this.sessionId = sessionId;
+        }
+    }
+
     private final String clientId;
     private final String clientInfo;
-    private String sessionId;
+    private final SessionState sessionState;
     private final String connId;
     private final String commandName;
     private final boolean streaming;
@@ -48,9 +56,21 @@ public class CommandContext {
                            ClientSession clientSession,
                            CancellationToken cancellationToken,
                            ParsedCommand parsedCommand) {
+        this(clientId, clientInfo, new SessionState(sessionId), connId, commandName, streaming, clientSession, cancellationToken, parsedCommand);
+    }
+
+    private CommandContext(String clientId,
+                           String clientInfo,
+                           SessionState sessionState,
+                           String connId,
+                           String commandName,
+                           boolean streaming,
+                           ClientSession clientSession,
+                           CancellationToken cancellationToken,
+                           ParsedCommand parsedCommand) {
         this.clientId = clientId;
         this.clientInfo = clientInfo;
-        this.sessionId = sessionId;
+        this.sessionState = sessionState != null ? sessionState : new SessionState(null);
         this.connId = connId;
         this.commandName = commandName;
         this.streaming = streaming;
@@ -76,11 +96,11 @@ public class CommandContext {
     }
 
     public String getSessionId() {
-        return sessionId;
+        return sessionState.sessionId;
     }
 
     public void setSessionId(String sessionId) {
-        this.sessionId = sessionId;
+        sessionState.sessionId = sessionId;
     }
 
     public String getConnId() {
@@ -108,10 +128,10 @@ public class CommandContext {
     }
 
     public CommandContext withCancellationToken(CancellationToken token) {
-        return new CommandContext(clientId, clientInfo, sessionId, connId, commandName, streaming, clientSession, token, parsedCommand);
+        return new CommandContext(clientId, clientInfo, sessionState, connId, commandName, streaming, clientSession, token, parsedCommand);
     }
 
     public CommandContext withParsedCommand(ParsedCommand parsed) {
-        return new CommandContext(clientId, clientInfo, sessionId, connId, commandName, streaming, clientSession, cancellationToken, parsed);
+        return new CommandContext(clientId, clientInfo, sessionState, connId, commandName, streaming, clientSession, cancellationToken, parsed);
     }
 }
