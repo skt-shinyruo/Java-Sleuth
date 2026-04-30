@@ -13,6 +13,7 @@ import com.javasleuth.core.command.pipeline.StreamInvocation;
 import com.javasleuth.core.command.pipeline.SyncInvocation;
 import com.javasleuth.core.command.spec.CommandHelpRenderer;
 import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.CommandSpecParseException;
 import com.javasleuth.core.command.spec.CommandSpecParser;
 import com.javasleuth.core.command.spec.ParsedCommand;
 import com.javasleuth.foundation.security.AuthorizationManager;
@@ -205,6 +206,8 @@ public class CommandPipeline {
             SyncInvocation inv = new SyncInvocation(entry, entry.getCommand(), entry.getMeta(), commandName, args, effectiveContext, timeoutMs);
             String output = syncChain.handle(inv);
             return new Result(true, output, null);
+        } catch (CommandSpecParseException e) {
+            return new Result(false, null, CommandErrorMapper.toUserMessage(e, null, null));
         } catch (Exception e) {
             String errorId = CommandErrorMapper.newErrorId();
             SleuthLogger.error("Command execution failed (errorId=" + errorId + ")", e);
@@ -241,7 +244,16 @@ public class CommandPipeline {
         CommandContext effectiveContext = context;
         CommandSpec spec = entry != null ? entry.getSpec() : null;
         if (spec != null) {
-            ParsedCommand parsed = CommandSpecParser.parse(spec, args);
+            ParsedCommand parsed;
+            try {
+                parsed = CommandSpecParser.parse(spec, args);
+            } catch (CommandSpecParseException e) {
+                String message = CommandErrorMapper.toUserMessage(e, null, null);
+                if (sink != null) {
+                    sink.error(message);
+                }
+                return StreamResult.failed(message);
+            }
             if (parsed.isHelpRequested()) {
                 sink.send(sanitizeOutput(CommandHelpRenderer.render(spec)));
                 sink.close(null);
