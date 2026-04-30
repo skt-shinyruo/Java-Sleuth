@@ -1,6 +1,7 @@
 package com.javasleuth.core.command;
 
 import com.javasleuth.core.command.impl.MonitorCommand;
+import com.javasleuth.core.command.impl.VmToolCommand;
 import com.javasleuth.core.command.impl.WatchCommand;
 import com.javasleuth.core.command.spec.CommandSpecParseException;
 import com.javasleuth.core.command.spec.CommandSpecParser;
@@ -127,6 +128,16 @@ public class CommandArgsValidationTest {
             Assert.fail("expected range error");
         } catch (CommandSpecParseException expected) {
             Assert.assertEquals("E_ARGS_RANGE", expected.getCode());
+        }
+    }
+
+    @Test
+    public void vmtoolInstancesRejectsInvalidLimit() {
+        try {
+            CommandSpecParser.parse(VmToolCommand.spec(), new String[] {"vmtool", "instances", "track-1", "--limit", "abc"});
+            Assert.fail("expected invalid integer");
+        } catch (CommandSpecParseException expected) {
+            Assert.assertEquals("E_ARGS_INVALID", expected.getCode());
         }
     }
 }

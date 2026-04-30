@@ -8,17 +8,30 @@ import java.util.Map;
 
 public final class ParsedCommand {
     private final Map<String, String> arguments;
+    private final Map<String, List<String>> argumentValues;
     private final Map<String, List<Object>> options;
     private final boolean helpRequested;
+    private final String subcommandName;
 
     ParsedCommand(Map<String, String> arguments, Map<String, List<Object>> options, boolean helpRequested) {
+        this(arguments, new LinkedHashMap<String, List<String>>(), options, helpRequested, null);
+    }
+
+    ParsedCommand(Map<String, String> arguments, Map<String, List<String>> argumentValues, Map<String, List<Object>> options, boolean helpRequested, String subcommandName) {
         this.arguments = Collections.unmodifiableMap(new LinkedHashMap<>(arguments));
+        this.argumentValues = immutableStringListMap(argumentValues);
         this.options = immutableOptionMap(options);
         this.helpRequested = helpRequested;
+        this.subcommandName = subcommandName;
     }
 
     public String argument(String name) {
         return arguments.get(name);
+    }
+
+    public List<String> argumentValues(String name) {
+        List<String> values = argumentValues.get(name);
+        return values == null ? Collections.<String>emptyList() : values;
     }
 
     @SuppressWarnings("unchecked")
@@ -64,12 +77,28 @@ public final class ParsedCommand {
         return helpRequested;
     }
 
+    public String subcommandName() {
+        return subcommandName;
+    }
+
     public Map<String, String> getArguments() {
         return arguments;
     }
 
     public Map<String, List<Object>> getOptions() {
         return options;
+    }
+
+    ParsedCommand withSubcommandName(String name) {
+        return new ParsedCommand(arguments, argumentValues, options, helpRequested, name);
+    }
+
+    private static Map<String, List<String>> immutableStringListMap(Map<String, List<String>> input) {
+        Map<String, List<String>> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, List<String>> entry : input.entrySet()) {
+            copy.put(entry.getKey(), Collections.unmodifiableList(new ArrayList<>(entry.getValue())));
+        }
+        return Collections.unmodifiableMap(copy);
     }
 
     private static Map<String, List<Object>> immutableOptionMap(Map<String, List<Object>> input) {

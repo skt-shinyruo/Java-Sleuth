@@ -167,26 +167,15 @@ public class BuiltinCommandProvider implements CommandProvider {
         );
         add(descriptors, "mbean", new MBeanCommand(instrumentation), CommandMeta.operator(false, false));
         add(descriptors, "logger", new LoggerCommand(), CommandMeta.operator(true, false));
-        add(
-            descriptors,
-            "vmtool",
-            new VmToolCommand(
+        VmToolCommand vmtool = new VmToolCommand(
                 instrumentation,
                 context.requireTransformer(),
                 context.requireConfig(),
                 context.requireDangerousConfirm(),
                 context.requireVmToolSessionRegistry(),
                 context.requireEnhancementSessionRegistry()
-            ),
-            CommandMeta.operator(false, false)
-                .requiresBootstrap(BootstrapBridge.SPY_API)
-                .withCapability(CommandCapability.LONG_RUNNING)
-                .withImpact(CommandMeta.ImpactLevel.MEDIUM)
-                .withRateLimit(10)
-                .withSubcommandRole("invoke", UserRole.ADMIN)
-                .withSubcommandRole("invoke-static", UserRole.ADMIN)
-                .withSubcommandRole("invokestatic", UserRole.ADMIN)
-        );
+            );
+        descriptors.add(CommandDescriptor.ofSpec(vmtool.getSpec(), vmtool));
 
         add(
             descriptors,

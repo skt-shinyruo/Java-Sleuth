@@ -3,6 +3,15 @@ package com.javasleuth.core.command.impl;
 import com.javasleuth.core.command.Command;
 import com.javasleuth.core.command.CommandContext;
 import com.javasleuth.core.command.CommandContextHolder;
+import com.javasleuth.core.command.SpecBackedCommand;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.CommandSpecParser;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.command.spec.SubcommandSpec;
+import com.javasleuth.core.agent.runtime.BootstrapBridge;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.foundation.config.ConfigView;
@@ -14,6 +23,8 @@ import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
 import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
+import com.javasleuth.foundation.security.CommandCapability;
+import com.javasleuth.foundation.security.AuthenticationManager.UserRole;
 import com.javasleuth.foundation.security.SecurityValidator;
 import com.javasleuth.foundation.util.LoadedClassResolver;
 import com.javasleuth.core.util.SleuthObjectInspector;
@@ -39,13 +50,14 @@ import javax.management.ObjectName;
  *
  * <p>重要限制：实例追踪基于构造器插桩，只能覆盖“启用 track 后新创建”的对象。</p>
  */
-public class VmToolCommand implements Command {
+public class VmToolCommand implements Command, SpecBackedCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
     private final ConfigView config;
     private final DangerousCommandConfirmationManager dangerousConfirm;
     private final VmToolSessionRegistry registry;
     private final EnhancementSessionRegistry enhancementSessionRegistry;
+    private static final Integer INVALID_LOADER = Integer.valueOf(Integer.MIN_VALUE);
 
     public VmToolCommand(
         Instrumentation instrumentation,
@@ -88,6 +100,9 @@ public class VmToolCommand implements Command {
         if (sub.isEmpty() || "help".equals(sub) || "-h".equals(sub) || "--help".equals(sub)) {
             return getHelp();
         }
+        if (hasSubcommandHelpToken(args)) {
+            return getHelp();
+        }
         switch (sub) {
             case "track":
                 return handleTrack(args);
@@ -111,41 +126,119 @@ public class VmToolCommand implements Command {
         }
     }
 
+    public static CommandSpec spec() {
+        return CommandSpec.builder("vmtool")
+            .description("VmTool (lite) - track instances, inspect fields, and invoke methods")
+            .usage("vmtool <subcommand> [arguments] [options]")
+            .meta(CommandMeta.operator(false, false)
+                .requiresBootstrap(BootstrapBridge.SPY_API)
+                .withCapability(CommandCapability.LONG_RUNNING)
+                .withImpact(CommandMeta.ImpactLevel.MEDIUM)
+                .withRateLimit(10)
+                .withSubcommandRole("invoke", UserRole.ADMIN)
+                .withSubcommandRole("invoke-static", UserRole.ADMIN)
+                .withSubcommandRole("invokestatic", UserRole.ADMIN))
+            .subcommand(SubcommandSpec.builder("track")
+                .description("Track newly created instances of matching classes")
+                .argument(ArgumentSpec.required("class-pattern"))
+                .option(loaderOption())
+                .option(OptionSpec.flag("first").alias("--first").alias("--unsafe-first").build())
+                .option(OptionSpec.flag("subclasses").alias("--subclasses").alias("--include-subclasses").build())
+                .option(OptionSpec.integer("max").alias("--max").defaultValue(500).range(1, 100000).build())
+                .option(OptionSpec.integer("class-limit").alias("--class-limit").defaultValue(50).range(1, 10000).build())
+                .build())
+            .subcommand(SubcommandSpec.builder("stop")
+                .description("Stop an instance tracking session")
+                .argument(ArgumentSpec.required("track-id"))
+                .build())
+            .subcommand(SubcommandSpec.builder("tracks")
+                .description("List active instance tracking sessions")
+                .spec(CommandSpec.builder("tracks").build())
+                .build())
+            .subcommand(SubcommandSpec.builder("instances")
+                .description("List tracked instances")
+                .argument(ArgumentSpec.required("track-id"))
+                .option(OptionSpec.integer("limit").alias("--limit").defaultValue(50).range(1, 10000).build())
+                .option(OptionSpec.flag("alive").alias("--alive").alias("--alive-only").build())
+                .option(OptionSpec.string("where").alias("--where").repeatable(true).build())
+                .build())
+            .subcommand(SubcommandSpec.builder("inspect")
+                .description("Inspect fields on a tracked instance")
+                .argument(ArgumentSpec.required("track-id"))
+                .argument(ArgumentSpec.required("ref-id"))
+                .option(OptionSpec.integer("deep").alias("--deep").defaultValue(1).range(0, 100).build())
+                .option(OptionSpec.integer("fields").alias("--fields").defaultValue(80).range(1, 10000).build())
+                .option(OptionSpec.flag("static").alias("--static").alias("--include-static").build())
+                .build())
+            .subcommand(invokeSpec("invoke", "Invoke a method on a tracked instance"))
+            .subcommand(invokeStaticSpec("invoke-static", "Invoke a static method on a matching class"))
+            .subcommand(invokeStaticSpec("invokestatic", "Alias for invoke-static"))
+            .subcommand(SubcommandSpec.builder("histogram")
+                .description("Show class histogram rows matching a pattern")
+                .argument(ArgumentSpec.required("class-pattern"))
+                .option(OptionSpec.integer("top").alias("--top").defaultValue(20).range(1, 200).build())
+                .option(OptionSpec.flag("all").alias("--all").build())
+                .build())
+            .example("vmtool track com.example.Service --subclasses")
+            .example("vmtool instances track-1 --limit 20 --alive")
+            .example("vmtool invoke track-1 1 toString --confirm <token>")
+            .build();
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return spec();
+    }
+
+    private static SubcommandSpec invokeSpec(String name, String description) {
+        return SubcommandSpec.builder(name)
+            .description(description)
+            .argument(ArgumentSpec.required("track-id"))
+            .argument(ArgumentSpec.required("ref-id"))
+            .argument(ArgumentSpec.required("method"))
+            .argument(ArgumentSpec.trailing("args"))
+            .option(OptionSpec.flag("declared").alias("--declared").build())
+            .option(OptionSpec.flag("unsafe").alias("--unsafe").build())
+            .option(OptionSpec.integer("deep").alias("--deep").defaultValue(1).range(0, 100).build())
+            .option(OptionSpec.string("confirm").alias("--confirm").build())
+            .build();
+    }
+
+    private static SubcommandSpec invokeStaticSpec(String name, String description) {
+        return SubcommandSpec.builder(name)
+            .description(description)
+            .argument(ArgumentSpec.required("class-pattern"))
+            .argument(ArgumentSpec.required("method"))
+            .argument(ArgumentSpec.trailing("args"))
+            .option(loaderOption())
+            .option(OptionSpec.flag("first").alias("--first").alias("--unsafe-first").build())
+            .option(OptionSpec.flag("declared").alias("--declared").build())
+            .option(OptionSpec.flag("unsafe").alias("--unsafe").build())
+            .option(OptionSpec.integer("deep").alias("--deep").defaultValue(1).range(0, 100).build())
+            .option(OptionSpec.string("confirm").alias("--confirm").build())
+            .build();
+    }
+
+    private static OptionSpec loaderOption() {
+        return OptionSpec.string("loader").alias("--loader").alias("--loader-id").alias("--loader-hash").build();
+    }
+
     private String handleTrack(String[] args) {
         if (args.length < 3) {
             return "Usage: vmtool track <class-pattern> [options]\n" + getHelp();
         }
-        String classPattern = args[2];
+        ParsedCommand parsed = parsedOrFallback(args);
+        String classPattern = parsed.argument("class-pattern");
 
-        Integer loaderId = null;
-        boolean allowFirst = false;
-        boolean includeSubclasses = false;
         VmToolConfig vmTool = SleuthConfigParser.parse(configSnapshot()).vmTool();
-        int maxEntries = vmTool.getTrackMaxEntries();
-        int classLimit = vmTool.getTrackClassLimit();
-
-        for (int i = 3; i < args.length; i++) {
-            String a = args[i];
-            if ("--loader".equals(a) || "--loader-id".equals(a) || "--loader-hash".equals(a)) {
-                if (i + 1 < args.length) {
-                    Integer parsed = LoadedClassResolver.parseLoaderId(args[++i]);
-                    if (parsed == null) {
-                        return "Invalid --loader value: " + args[i] + " (expected: bootstrap/null/0x1234/1234)";
-                    }
-                    loaderId = parsed;
-                }
-            } else if ("--first".equals(a) || "--unsafe-first".equals(a)) {
-                allowFirst = true;
-            } else if ("--subclasses".equals(a) || "--include-subclasses".equals(a)) {
-                includeSubclasses = true;
-            } else if ("--max".equals(a) && i + 1 < args.length) {
-                maxEntries = parseInt(args[++i], maxEntries);
-            } else if ("--class-limit".equals(a) && i + 1 < args.length) {
-                classLimit = parseInt(args[++i], classLimit);
-            } else if ("-h".equals(a) || "--help".equals(a)) {
-                return getHelp();
-            }
+        Integer loaderId = parseLoader(parsed.stringOption("loader"));
+        if (loaderId == INVALID_LOADER) {
+            return invalidLoaderMessage(parsed.stringOption("loader"));
         }
+        boolean allowFirst = Boolean.TRUE.equals(parsed.booleanOption("first"));
+        boolean includeSubclasses = Boolean.TRUE.equals(parsed.booleanOption("subclasses"));
+        int maxEntries = parsed.intOption("max") != null ? parsed.intOption("max") : vmTool.getTrackMaxEntries();
+        int classLimit = parsed.intOption("class-limit") != null ? parsed.intOption("class-limit") : vmTool.getTrackClassLimit();
 
         VmToolSessionRegistry.StartResult r = registry.startTrack(
             instrumentation,
@@ -178,7 +271,7 @@ public class VmToolCommand implements Command {
         if (args.length < 3) {
             return "Usage: vmtool stop <track-id>";
         }
-        String trackId = args[2];
+        String trackId = parsedOrFallback(args).argument("track-id");
         // Best-effort remove cleanup in current session (if any).
         CommandContext ctx = CommandContextHolder.get();
         ClientSession clientSession = ctx != null ? ctx.getClientSession() : null;
@@ -268,23 +361,11 @@ public class VmToolCommand implements Command {
         if (args.length < 3) {
             return "Usage: vmtool instances <track-id> [options]";
         }
-        String trackId = args[2];
-        int limit = 50;
-        boolean aliveOnly = false;
-        List<String> rawConditions = new ArrayList<>();
-
-        for (int i = 3; i < args.length; i++) {
-            String a = args[i];
-            if ("--limit".equals(a) && i + 1 < args.length) {
-                limit = parseInt(args[++i], 50);
-            } else if ("--alive".equals(a) || "--alive-only".equals(a)) {
-                aliveOnly = true;
-            } else if ("--where".equals(a) && i + 1 < args.length) {
-                rawConditions.add(args[++i]);
-            } else if ("-h".equals(a) || "--help".equals(a)) {
-                return getHelp();
-            }
-        }
+        ParsedCommand parsed = parsedOrFallback(args);
+        String trackId = parsed.argument("track-id");
+        int limit = parsed.intOption("limit");
+        boolean aliveOnly = Boolean.TRUE.equals(parsed.booleanOption("alive"));
+        List<String> rawConditions = parsed.stringOptionValues("where");
 
         List<VmToolObjectConditionEvaluator.Condition> conditions = VmToolObjectConditionEvaluator.parse(rawConditions);
         boolean needInstance = conditions.stream().anyMatch(c -> c != null && c.getLhs() != null && c.getLhs().startsWith("field."));
@@ -335,28 +416,17 @@ public class VmToolCommand implements Command {
         if (args.length < 4) {
             return "Usage: vmtool inspect <track-id> <ref-id> [options]";
         }
-        String trackId = args[2];
-        long refId = parseLong(args[3], -1);
+        ParsedCommand parsed = parsedOrFallback(args);
+        String trackId = parsed.argument("track-id");
+        String refIdRaw = parsed.argument("ref-id");
+        long refId = parseLong(refIdRaw, -1);
         if (refId <= 0) {
-            return "Invalid ref-id: " + args[3];
+            return "Invalid ref-id: " + refIdRaw;
         }
 
-        int deep = 1;
-        int maxFields = 80;
-        boolean includeStatic = false;
-
-        for (int i = 4; i < args.length; i++) {
-            String a = args[i];
-            if ("--deep".equals(a) && i + 1 < args.length) {
-                deep = parseInt(args[++i], deep);
-            } else if ("--fields".equals(a) && i + 1 < args.length) {
-                maxFields = parseInt(args[++i], maxFields);
-            } else if ("--static".equals(a) || "--include-static".equals(a)) {
-                includeStatic = true;
-            } else if ("-h".equals(a) || "--help".equals(a)) {
-                return getHelp();
-            }
-        }
+        int deep = parsed.intOption("deep");
+        int maxFields = parsed.intOption("fields");
+        boolean includeStatic = Boolean.TRUE.equals(parsed.booleanOption("static"));
 
         Object instance = registry.getInstance(trackId, refId);
         if (instance == null) {
@@ -388,32 +458,18 @@ public class VmToolCommand implements Command {
             return "Usage: vmtool invoke <track-id> <ref-id> <method> ...";
         }
 
-        String trackId = effective[2];
-        long refId = parseLong(effective[3], -1);
+        ParsedCommand parsed = CommandSpecParser.parse(spec(), effective);
+        String trackId = parsed.argument("track-id");
+        String refIdRaw = parsed.argument("ref-id");
+        long refId = parseLong(refIdRaw, -1);
         if (refId <= 0) {
-            return "Invalid ref-id: " + effective[3];
+            return "Invalid ref-id: " + refIdRaw;
         }
-        String methodName = effective[4];
-
-        boolean declared = false;
-        boolean unsafe = false;
-        int deep = 1;
-        List<String> methodArgs = new ArrayList<>();
-
-        for (int i = 5; i < effective.length; i++) {
-            String a = effective[i];
-            if ("--declared".equals(a)) {
-                declared = true;
-            } else if ("--unsafe".equals(a)) {
-                unsafe = true;
-            } else if ("--deep".equals(a) && i + 1 < effective.length) {
-                deep = parseInt(effective[++i], deep);
-            } else if ("-h".equals(a) || "--help".equals(a)) {
-                return getHelp();
-            } else {
-                methodArgs.add(a);
-            }
-        }
+        String methodName = parsed.argument("method");
+        boolean declared = Boolean.TRUE.equals(parsed.booleanOption("declared"));
+        boolean unsafe = Boolean.TRUE.equals(parsed.booleanOption("unsafe"));
+        int deep = parsed.intOption("deep");
+        List<String> methodArgs = parsed.argumentValues("args");
 
         Object instance = registry.getInstance(trackId, refId);
         if (instance == null) {
@@ -455,40 +511,18 @@ public class VmToolCommand implements Command {
             return "Usage: vmtool invoke-static <class-pattern> <method> ...";
         }
 
-        String classPattern = effective[2];
-        String methodName = effective[3];
-
-        Integer loaderId = null;
-        boolean allowFirst = false;
-        boolean declared = false;
-        boolean unsafe = false;
-        int deep = 1;
-        List<String> methodArgs = new ArrayList<>();
-
-        for (int i = 4; i < effective.length; i++) {
-            String a = effective[i];
-            if ("--loader".equals(a) || "--loader-id".equals(a) || "--loader-hash".equals(a)) {
-                if (i + 1 < effective.length) {
-                    Integer parsed = LoadedClassResolver.parseLoaderId(effective[++i]);
-                    if (parsed == null) {
-                        return "Invalid --loader value: " + effective[i] + " (expected: bootstrap/null/0x1234/1234)";
-                    }
-                    loaderId = parsed;
-                }
-            } else if ("--first".equals(a) || "--unsafe-first".equals(a)) {
-                allowFirst = true;
-            } else if ("--declared".equals(a)) {
-                declared = true;
-            } else if ("--unsafe".equals(a)) {
-                unsafe = true;
-            } else if ("--deep".equals(a) && i + 1 < effective.length) {
-                deep = parseInt(effective[++i], deep);
-            } else if ("-h".equals(a) || "--help".equals(a)) {
-                return getHelp();
-            } else {
-                methodArgs.add(a);
-            }
+        ParsedCommand parsed = CommandSpecParser.parse(spec(), effective);
+        String classPattern = parsed.argument("class-pattern");
+        String methodName = parsed.argument("method");
+        Integer loaderId = parseLoader(parsed.stringOption("loader"));
+        if (loaderId == INVALID_LOADER) {
+            return invalidLoaderMessage(parsed.stringOption("loader"));
         }
+        boolean allowFirst = Boolean.TRUE.equals(parsed.booleanOption("first"));
+        boolean declared = Boolean.TRUE.equals(parsed.booleanOption("declared"));
+        boolean unsafe = Boolean.TRUE.equals(parsed.booleanOption("unsafe"));
+        int deep = parsed.intOption("deep");
+        List<String> methodArgs = parsed.argumentValues("args");
 
         LoadedClassResolver.Candidate resolved;
         try {
@@ -530,26 +564,17 @@ public class VmToolCommand implements Command {
         if (args.length < 3) {
             return "Usage: vmtool histogram <class-pattern> [--top <n>]";
         }
-        String pattern = normalizeClassPattern(args[2]);
-        int top = 20;
-        boolean all = false;
-        for (int i = 3; i < args.length; i++) {
-            String a = args[i];
-            if ("--top".equals(a) && i + 1 < args.length) {
-                top = parseInt(args[++i], top);
-            } else if ("--all".equals(a)) {
-                all = true;
-            } else if ("-h".equals(a) || "--help".equals(a)) {
-                return getHelp();
-            }
-        }
+        ParsedCommand parsed = parsedOrFallback(args);
+        String pattern = normalizeClassPattern(parsed.argument("class-pattern"));
+        int top = parsed.intOption("top");
+        boolean all = Boolean.TRUE.equals(parsed.booleanOption("all"));
         String raw = getHotspotClassHistogram(all);
         if (raw == null || raw.trim().isEmpty()) {
             return "HotSpot DiagnosticCommandMBean not available (or access denied).";
         }
         List<HistogramRow> rows = parseHistogram(raw, pattern);
         if (rows.isEmpty()) {
-            return "No histogram rows matched: " + args[2];
+            return "No histogram rows matched: " + parsed.argument("class-pattern");
         }
         rows.sort((a, b) -> Long.compare(b.bytes, a.bytes));
         int n = Math.min(Math.max(1, top), 200);
@@ -648,6 +673,36 @@ public class VmToolCommand implements Command {
         return r.getNormalizedArgs() != null ? r.getNormalizedArgs() : args;
     }
 
+    private ParsedCommand parsedOrFallback(String[] args) {
+        CommandContext ctx = CommandContextHolder.get();
+        ParsedCommand parsed = ctx != null ? ctx.getParsedCommand() : null;
+        return parsed != null ? parsed : CommandSpecParser.parse(spec(), args);
+    }
+
+    private static Integer parseLoader(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        Integer parsed = LoadedClassResolver.parseLoaderId(raw);
+        return parsed != null ? parsed : INVALID_LOADER;
+    }
+
+    private static String invalidLoaderMessage(String raw) {
+        return "Invalid --loader value: " + raw + " (expected: bootstrap/null/0x1234/1234)";
+    }
+
+    private static boolean hasSubcommandHelpToken(String[] args) {
+        if (args == null) {
+            return false;
+        }
+        for (int i = 2; i < args.length; i++) {
+            if ("-h".equals(args[i]) || "--help".equals(args[i]) || "help".equals(args[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static String normalizeClassPattern(String p) {
         if (p == null) {
             return "*";
@@ -700,17 +755,8 @@ public class VmToolCommand implements Command {
     }
 
     private String getHelp() {
-        return "VmTool command usage (simplified):\n" +
-            "  vmtool tracks\n" +
-            "  vmtool track <class-pattern> [--loader <id>] [--first] [--subclasses] [--max <n>] [--class-limit <n>]\n" +
-            "  vmtool instances <track-id> [--limit <n>] [--alive] [--where lhs:op:rhs]\n" +
-            "  vmtool inspect <track-id> <ref-id> [--deep <n>] [--fields <n>] [--static]\n" +
-            "  vmtool invoke <track-id> <ref-id> <method> [args...] [--declared] [--unsafe] [--deep <n>] [--confirm <token>]\n" +
-            "  vmtool invoke-static <class-pattern> <method> [args...] [--loader <id>] [--first] [--declared] [--unsafe] [--deep <n>] [--confirm <token>]\n" +
-            "  vmtool stop <track-id>\n" +
-            "  vmtool histogram <class-pattern> [--top <n>] [--all]\n" +
-            "\n" +
-            "Where condition examples:\n" +
+        return CommandHelpRenderer.render(spec()) +
+            "\nWhere condition examples:\n" +
             "  --where class:contains:Service\n" +
             "  --where field.userId:eq:123\n" +
             "  --where ageMs:gt:1000\n";

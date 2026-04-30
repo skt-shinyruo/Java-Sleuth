@@ -41,6 +41,7 @@ public final class SubcommandSpec {
         private final String name;
         private String description;
         private CommandSpec spec;
+        private CommandSpec.Builder specBuilder;
 
         private Builder(String name) {
             if (name == null || name.trim().isEmpty()) {
@@ -59,8 +60,36 @@ public final class SubcommandSpec {
             return this;
         }
 
+        public Builder argument(ArgumentSpec argument) {
+            builder().argument(argument);
+            return this;
+        }
+
+        public Builder option(OptionSpec option) {
+            builder().option(option);
+            return this;
+        }
+
+        public Builder hiddenOption(OptionSpec option) {
+            builder().hiddenOption(option);
+            return this;
+        }
+
+        public Builder example(String example) {
+            builder().example(example);
+            return this;
+        }
+
         public SubcommandSpec build() {
-            return new SubcommandSpec(name, description, spec);
+            CommandSpec actualSpec = spec != null ? spec : (specBuilder != null ? specBuilder.build() : null);
+            return new SubcommandSpec(name, description, actualSpec);
+        }
+
+        private CommandSpec.Builder builder() {
+            if (specBuilder == null) {
+                specBuilder = CommandSpec.builder(name).description(description).usage(name + " [options]");
+            }
+            return specBuilder;
         }
     }
 }
