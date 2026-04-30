@@ -43,9 +43,14 @@ public final class CommandSpecParser {
                     String rawValue = parsedToken.value;
                     if (rawValue == null) {
                         if (i + 1 >= actualArgs.length || isMissingValueToken(option, actualArgs[i + 1])) {
-                            throw new CommandSpecParseException("E_ARGS_MISSING", "Missing value for option " + parsedToken.name);
+                            if (option.isMissingValueAsEmptyString()) {
+                                rawValue = "";
+                            } else {
+                                throw new CommandSpecParseException("E_ARGS_MISSING", "Missing value for option " + parsedToken.name);
+                            }
+                        } else {
+                            rawValue = actualArgs[++i];
                         }
-                        rawValue = actualArgs[++i];
                     }
                     value = convert(option, rawValue);
                 }

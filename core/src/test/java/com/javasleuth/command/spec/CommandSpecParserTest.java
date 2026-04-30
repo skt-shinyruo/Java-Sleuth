@@ -47,6 +47,11 @@ public class CommandSpecParserTest {
     }
 
     @Test
+    public void missingStringOptionValueStillFails() {
+        assertCode("E_ARGS_MISSING", "watch", "A", "m", "--condition");
+    }
+
+    @Test
     public void unknownOptionFails() {
         assertCode("E_ARGS_UNKNOWN", "watch", "A", "m", "--missing");
     }
@@ -136,6 +141,21 @@ public class CommandSpecParserTest {
         Assert.assertEquals("old", parsed.stringOption("removed"));
         Assert.assertEquals(1, spec.getOptions().size());
         Assert.assertEquals("visible", spec.getOptions().get(0).getName());
+    }
+
+    @Test
+    public void parserAcceptsOptionalMissingStringOptionValues() {
+        CommandSpec spec = CommandSpec.builder("compat")
+            .hiddenOption(OptionSpec.string("removed").alias("--removed").missingValueAsEmptyString().build())
+            .build();
+
+        ParsedCommand bare = CommandSpecParser.parse(spec, new String[] {"compat", "--removed"});
+        ParsedCommand equalsValue = CommandSpecParser.parse(spec, new String[] {"compat", "--removed=old"});
+        ParsedCommand separateValue = CommandSpecParser.parse(spec, new String[] {"compat", "--removed", "old"});
+
+        Assert.assertEquals("", bare.stringOption("removed"));
+        Assert.assertEquals("old", equalsValue.stringOption("removed"));
+        Assert.assertEquals("old", separateValue.stringOption("removed"));
     }
 
     @Test
@@ -236,6 +256,23 @@ public class CommandSpecParserTest {
                 OptionSpec.flag("verbose").range(0, 1).build();
             }
         }, "Range is only supported for numeric options");
+    }
+
+    @Test
+    public void missingValueAsEmptyStringRejectedForNonStringOptions() {
+        assertInvalidOptionSpec(new Runnable() {
+            @Override
+            public void run() {
+                OptionSpec.flag("verbose").missingValueAsEmptyString().build();
+            }
+        }, "Missing value as empty string is only supported for string options");
+
+        assertInvalidOptionSpec(new Runnable() {
+            @Override
+            public void run() {
+                OptionSpec.integer("count").missingValueAsEmptyString().build();
+            }
+        }, "Missing value as empty string is only supported for string options");
     }
 
     @Test
