@@ -55,6 +55,11 @@ public final class SubcommandSpec {
             return this;
         }
 
+        public Builder usage(String usage) {
+            builder().usage(usage);
+            return this;
+        }
+
         public Builder spec(CommandSpec spec) {
             this.spec = spec;
             return this;

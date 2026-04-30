@@ -1,6 +1,8 @@
 package com.javasleuth.foundation.config;
 
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
+import com.javasleuth.foundation.config.model.SleuthConfig;
+import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.foundation.config.schema.ConfigKey;
 import com.javasleuth.foundation.config.schema.ConfigValidationResult;
 import java.io.File;
@@ -219,6 +221,24 @@ public class ProductionConfig implements ConfigView, MutableConfig {
         Properties defaults = s != null ? s.defaultProperties : new Properties();
         Properties file = s != null ? s.fileProperties : new Properties();
         return new ConfigSnapshot(effective, defaults, file, runtimeStore.snapshot(), null);
+    }
+
+    public <T> T read(ConfigKey<T> key) {
+        if (key == null) {
+            return null;
+        }
+        return key.read(this);
+    }
+
+    public SleuthConfig typedSnapshot() {
+        return SleuthConfigParser.parse(snapshot());
+    }
+
+    public String getKnownRaw(ConfigKey<?> key) {
+        if (key == null) {
+            return null;
+        }
+        return getString(key.getKey(), key.getLiteralDefaultValue());
     }
 
     private static void validateRuntimeOverrideKey(String key) {

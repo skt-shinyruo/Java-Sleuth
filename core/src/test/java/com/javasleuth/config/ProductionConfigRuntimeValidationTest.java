@@ -1,8 +1,10 @@
 package com.javasleuth.config;
 
 import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.config.model.SleuthConfig;
 import com.javasleuth.foundation.config.schema.ConfigKey;
 import com.javasleuth.foundation.config.schema.ConfigValidationResult;
+import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -75,5 +77,19 @@ public class ProductionConfigRuntimeValidationTest {
         Assert.assertFalse(result.isValid());
         Assert.assertFalse(result.getError().contains("leaked-secret"));
         Assert.assertTrue(result.getError().contains("<sensitive>"));
+    }
+
+    @Test
+    public void exposesSchemaReadBoundaryConveniences() {
+        ProductionConfig config = new ProductionConfig();
+        config.setRuntimeConfig("server.port", "4567");
+
+        Integer port = config.read(SleuthConfigSchema.SERVER_PORT);
+        String rawPort = config.getKnownRaw(SleuthConfigSchema.SERVER_PORT);
+        SleuthConfig typed = config.typedSnapshot();
+
+        Assert.assertEquals(Integer.valueOf(4567), port);
+        Assert.assertEquals("4567", rawPort);
+        Assert.assertEquals(4567, typed.server().getPort());
     }
 }

@@ -16,6 +16,7 @@ import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.config.model.SleuthConfig;
 import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.foundation.config.model.VmToolConfig;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
@@ -40,7 +41,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -93,34 +93,32 @@ public class VmToolCommand implements Command, SpecBackedCommand {
 
     @Override
     public String execute(String[] args) throws Exception {
-        if (args == null || args.length < 2) {
-            return getHelp();
+        ParsedCommand parsed = parsedOrFallback(args);
+        String sub = parsed.subcommandName();
+        if (parsed.isHelpRequested()) {
+            return getHelp(sub);
         }
-        String sub = args[1] != null ? args[1].trim().toLowerCase(Locale.ROOT) : "";
-        if (sub.isEmpty() || "help".equals(sub) || "-h".equals(sub) || "--help".equals(sub)) {
-            return getHelp();
-        }
-        if (hasSubcommandHelpToken(args)) {
+        if (sub == null) {
             return getHelp();
         }
         switch (sub) {
             case "track":
-                return handleTrack(args);
+                return handleTrack(parsed);
             case "stop":
-                return handleStop(args);
+                return handleStop(parsed);
             case "tracks":
                 return handleTracks();
             case "instances":
-                return handleInstances(args);
+                return handleInstances(parsed);
             case "inspect":
-                return handleInspect(args);
+                return handleInspect(parsed);
             case "invoke":
                 return handleInvoke(args);
             case "invoke-static":
             case "invokestatic":
                 return handleInvokeStatic(args);
             case "histogram":
-                return handleHistogram(args);
+                return handleHistogram(parsed);
             default:
                 return "Unknown vmtool subcommand: " + sub + "\n" + getHelp();
         }
@@ -140,6 +138,7 @@ public class VmToolCommand implements Command, SpecBackedCommand {
                 .withSubcommandRole("invokestatic", UserRole.ADMIN))
             .subcommand(SubcommandSpec.builder("track")
                 .description("Track newly created instances of matching classes")
+                .usage("vmtool track <class-pattern> [options]")
                 .argument(ArgumentSpec.required("class-pattern"))
                 .option(loaderOption())
                 .option(OptionSpec.flag("first").alias("--first").alias("--unsafe-first").build())
@@ -149,14 +148,16 @@ public class VmToolCommand implements Command, SpecBackedCommand {
                 .build())
             .subcommand(SubcommandSpec.builder("stop")
                 .description("Stop an instance tracking session")
+                .usage("vmtool stop <track-id>")
                 .argument(ArgumentSpec.required("track-id"))
                 .build())
             .subcommand(SubcommandSpec.builder("tracks")
                 .description("List active instance tracking sessions")
-                .spec(CommandSpec.builder("tracks").build())
+                .usage("vmtool tracks")
                 .build())
             .subcommand(SubcommandSpec.builder("instances")
                 .description("List tracked instances")
+                .usage("vmtool instances <track-id> [options]")
                 .argument(ArgumentSpec.required("track-id"))
                 .option(OptionSpec.integer("limit").alias("--limit").defaultValue(50).range(1, 10000).build())
                 .option(OptionSpec.flag("alive").alias("--alive").alias("--alive-only").build())
@@ -164,6 +165,7 @@ public class VmToolCommand implements Command, SpecBackedCommand {
                 .build())
             .subcommand(SubcommandSpec.builder("inspect")
                 .description("Inspect fields on a tracked instance")
+                .usage("vmtool inspect <track-id> <ref-id> [options]")
                 .argument(ArgumentSpec.required("track-id"))
                 .argument(ArgumentSpec.required("ref-id"))
                 .option(OptionSpec.integer("deep").alias("--deep").defaultValue(1).range(0, 100).build())
@@ -193,6 +195,7 @@ public class VmToolCommand implements Command, SpecBackedCommand {
     private static SubcommandSpec invokeSpec(String name, String description) {
         return SubcommandSpec.builder(name)
             .description(description)
+            .usage("vmtool " + name + " <track-id> <ref-id> <method> [args...] [options]")
             .argument(ArgumentSpec.required("track-id"))
             .argument(ArgumentSpec.required("ref-id"))
             .argument(ArgumentSpec.required("method"))
@@ -207,6 +210,7 @@ public class VmToolCommand implements Command, SpecBackedCommand {
     private static SubcommandSpec invokeStaticSpec(String name, String description) {
         return SubcommandSpec.builder(name)
             .description(description)
+            .usage("vmtool " + name + " <class-pattern> <method> [args...] [options]")
             .argument(ArgumentSpec.required("class-pattern"))
             .argument(ArgumentSpec.required("method"))
             .argument(ArgumentSpec.trailing("args"))
@@ -223,14 +227,10 @@ public class VmToolCommand implements Command, SpecBackedCommand {
         return OptionSpec.string("loader").alias("--loader").alias("--loader-id").alias("--loader-hash").build();
     }
 
-    private String handleTrack(String[] args) {
-        if (args.length < 3) {
-            return "Usage: vmtool track <class-pattern> [options]\n" + getHelp();
-        }
-        ParsedCommand parsed = parsedOrFallback(args);
+    private String handleTrack(ParsedCommand parsed) {
         String classPattern = parsed.argument("class-pattern");
 
-        VmToolConfig vmTool = SleuthConfigParser.parse(configSnapshot()).vmTool();
+        VmToolConfig vmTool = typedConfig().vmTool();
         Integer loaderId = parseLoader(parsed.stringOption("loader"));
         if (loaderId == INVALID_LOADER) {
             return invalidLoaderMessage(parsed.stringOption("loader"));
@@ -269,15 +269,14 @@ public class VmToolCommand implements Command, SpecBackedCommand {
         return r != null ? r.getMessage() : "vmtool track failed.";
     }
 
-    private ConfigView configSnapshot() {
-        return config instanceof ProductionConfig ? ((ProductionConfig) config).snapshot() : config;
+    private SleuthConfig typedConfig() {
+        return config instanceof ProductionConfig
+            ? ((ProductionConfig) config).typedSnapshot()
+            : SleuthConfigParser.parse(config);
     }
 
-    private String handleStop(String[] args) {
-        if (args.length < 3) {
-            return "Usage: vmtool stop <track-id>";
-        }
-        String trackId = parsedOrFallback(args).argument("track-id");
+    private String handleStop(ParsedCommand parsed) {
+        String trackId = parsed.argument("track-id");
         // Best-effort remove cleanup in current session (if any).
         CommandContext ctx = CommandContextHolder.get();
         ClientSession clientSession = ctx != null ? ctx.getClientSession() : null;
@@ -363,11 +362,7 @@ public class VmToolCommand implements Command, SpecBackedCommand {
         return sb.toString().trim();
     }
 
-    private String handleInstances(String[] args) {
-        if (args.length < 3) {
-            return "Usage: vmtool instances <track-id> [options]";
-        }
-        ParsedCommand parsed = parsedOrFallback(args);
+    private String handleInstances(ParsedCommand parsed) {
         String trackId = parsed.argument("track-id");
         int limit = parsed.intOption("limit");
         boolean aliveOnly = Boolean.TRUE.equals(parsed.booleanOption("alive"));
@@ -418,11 +413,7 @@ public class VmToolCommand implements Command, SpecBackedCommand {
         return sb.toString().trim();
     }
 
-    private String handleInspect(String[] args) {
-        if (args.length < 4) {
-            return "Usage: vmtool inspect <track-id> <ref-id> [options]";
-        }
-        ParsedCommand parsed = parsedOrFallback(args);
+    private String handleInspect(ParsedCommand parsed) {
         String trackId = parsed.argument("track-id");
         String refIdRaw = parsed.argument("ref-id");
         long refId = parseLong(refIdRaw, -1);
@@ -450,18 +441,11 @@ public class VmToolCommand implements Command, SpecBackedCommand {
     }
 
     private String handleInvoke(String[] args) throws Exception {
-        if (args.length < 5) {
-            return "Usage: vmtool invoke <track-id> <ref-id> <method> [args...] [options]";
-        }
-
         // Dangerous confirm (per-subcommand)
         String[] effective = confirmDangerousIfRequired(args, "invoke");
         if (effective == null) {
             // confirm flow already returned message as exception? keep consistent:
             return "vmtool invoke blocked by confirmation manager.";
-        }
-        if (effective.length < 5) {
-            return "Usage: vmtool invoke <track-id> <ref-id> <method> ...";
         }
 
         ParsedCommand parsed = CommandSpecParser.parse(spec(), effective);
@@ -505,16 +489,9 @@ public class VmToolCommand implements Command, SpecBackedCommand {
     }
 
     private String handleInvokeStatic(String[] args) throws Exception {
-        if (args.length < 4) {
-            return "Usage: vmtool invoke-static <class-pattern> <method> [args...] [options]";
-        }
-
         String[] effective = confirmDangerousIfRequired(args, "invoke-static");
         if (effective == null) {
             return "vmtool invoke-static blocked by confirmation manager.";
-        }
-        if (effective.length < 4) {
-            return "Usage: vmtool invoke-static <class-pattern> <method> ...";
         }
 
         ParsedCommand parsed = CommandSpecParser.parse(spec(), effective);
@@ -566,11 +543,7 @@ public class VmToolCommand implements Command, SpecBackedCommand {
         }
     }
 
-    private String handleHistogram(String[] args) {
-        if (args.length < 3) {
-            return "Usage: vmtool histogram <class-pattern> [--top <n>]";
-        }
-        ParsedCommand parsed = parsedOrFallback(args);
+    private String handleHistogram(ParsedCommand parsed) {
         String pattern = normalizeClassPattern(parsed.argument("class-pattern"));
         int top = parsed.intOption("top");
         boolean all = Boolean.TRUE.equals(parsed.booleanOption("all"));
@@ -697,18 +670,6 @@ public class VmToolCommand implements Command, SpecBackedCommand {
         return "Invalid --loader value: " + raw + " (expected: bootstrap/null/0x1234/1234)";
     }
 
-    private static boolean hasSubcommandHelpToken(String[] args) {
-        if (args == null) {
-            return false;
-        }
-        for (int i = 2; i < args.length; i++) {
-            if ("-h".equals(args[i]) || "--help".equals(args[i]) || "help".equals(args[i])) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private static String normalizeClassPattern(String p) {
         if (p == null) {
             return "*";
@@ -761,8 +722,25 @@ public class VmToolCommand implements Command, SpecBackedCommand {
     }
 
     private String getHelp() {
-        return CommandHelpRenderer.render(spec()) +
-            "\nWhere condition examples:\n" +
+        return getHelp(null);
+    }
+
+    private String getHelp(String subcommandName) {
+        CommandSpec helpSpec = spec();
+        if (subcommandName != null) {
+            SubcommandSpec subcommand = helpSpec.subcommand(subcommandName);
+            if (subcommand != null) {
+                helpSpec = subcommand.getSpec();
+            }
+        }
+        return CommandHelpRenderer.render(helpSpec) + whereHelp(subcommandName);
+    }
+
+    private static String whereHelp(String subcommandName) {
+        if (subcommandName != null && !"instances".equals(subcommandName)) {
+            return "";
+        }
+        return "\nWhere condition examples:\n" +
             "  --where class:contains:Service\n" +
             "  --where field.userId:eq:123\n" +
             "  --where ageMs:gt:1000\n";

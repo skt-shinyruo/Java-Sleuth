@@ -3,6 +3,7 @@ package com.javasleuth.core.command;
 import com.javasleuth.core.command.impl.MonitorCommand;
 import com.javasleuth.core.command.impl.VmToolCommand;
 import com.javasleuth.core.command.impl.WatchCommand;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
 import com.javasleuth.core.command.spec.CommandSpecParseException;
 import com.javasleuth.core.command.spec.CommandSpecParser;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
@@ -160,6 +161,38 @@ public class CommandArgsValidationTest {
     }
 
     @Test
+    public void vmtoolSubcommandHelpUsesSubcommandSpec() throws Exception {
+        ProductionConfig config = ProductionConfig.createDefault();
+        try (
+            AuditLogger auditLogger = new AuditLogger(config);
+            DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger)
+        ) {
+            VmToolCommand command = vmtoolCommand(config, dangerousConfirm);
+
+            String help = command.execute(new String[] {"vmtool", "track", "--help"});
+
+            Assert.assertTrue(help, help.contains("Usage: vmtool track <class-pattern>"));
+            Assert.assertFalse(help, help.contains("Subcommands:"));
+            Assert.assertNotEquals(CommandHelpRenderer.render(VmToolCommand.spec()), help);
+        }
+    }
+
+    @Test
+    public void vmtoolSubcommandsUseSpecMissingArgumentErrors() throws Exception {
+        ProductionConfig config = ProductionConfig.createDefault();
+        try (
+            AuditLogger auditLogger = new AuditLogger(config);
+            DangerousCommandConfirmationManager dangerousConfirm = new DangerousCommandConfirmationManager(config, auditLogger)
+        ) {
+            VmToolCommand command = vmtoolCommand(config, dangerousConfirm);
+
+            assertVmtoolMissingArgument(command, new String[] {"vmtool", "track"});
+            assertVmtoolMissingArgument(command, new String[] {"vmtool", "instances"});
+            assertVmtoolMissingArgument(command, new String[] {"vmtool", "invoke", "track-1", "1"});
+        }
+    }
+
+    @Test
     public void vmtoolTrackUsesRuntimeConfigWhenLimitsAreOmitted() throws Exception {
         SleuthSpyAPI.destroy();
 
@@ -230,5 +263,24 @@ public class CommandArgsValidationTest {
                 }
                 return null;
             });
+    }
+
+    private static VmToolCommand vmtoolCommand(ProductionConfig config, DangerousCommandConfirmationManager dangerousConfirm) {
+        return new VmToolCommand(
+            fakeInstrumentationWithLoadedClasses(),
+            new SleuthClassFileTransformer(config),
+            config,
+            dangerousConfirm,
+            new VmToolSessionRegistry(new SleuthSpyDispatcher())
+        );
+    }
+
+    private static void assertVmtoolMissingArgument(VmToolCommand command, String[] args) throws Exception {
+        try {
+            command.execute(args);
+            Assert.fail("expected missing argument error");
+        } catch (CommandSpecParseException expected) {
+            Assert.assertEquals("E_ARGS_MISSING", expected.getCode());
+        }
     }
 }

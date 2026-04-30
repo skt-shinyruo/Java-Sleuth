@@ -14,7 +14,6 @@ import com.javasleuth.foundation.config.ConfigOrigin;
 import com.javasleuth.foundation.config.ConfigUpdateSource;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.model.SleuthConfig;
-import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.foundation.config.schema.ConfigKey;
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import com.javasleuth.foundation.config.SensitiveKeyMasker;
@@ -137,7 +136,7 @@ public class ConfigCommand implements Command, SpecBackedCommand {
                 if (schemaKey == null) {
                     return "Unknown config key: " + key;
                 }
-                Object typedValue = schemaKey.read(config);
+                Object typedValue = config.read(schemaKey);
                 String value = typedValue == null ? "null" : String.valueOf(typedValue);
                 String masked = masker.mask(key, value);
                 return key + " = " + masked + " (origin=" + config.getOrigin(key) + ")";
@@ -186,7 +185,7 @@ public class ConfigCommand implements Command, SpecBackedCommand {
 
             case "show":
                 StringBuilder show = new StringBuilder();
-                SleuthConfig typed = SleuthConfigParser.parse(config.snapshot());
+                SleuthConfig typed = config.typedSnapshot();
                 show.append("=== CURRENT CONFIGURATION ===\n");
                 show.append("\n-- Server Settings --\n");
                 show.append("server.bind.address = ").append(typed.server().getBindAddress()).append("\n");
@@ -259,7 +258,7 @@ public class ConfigCommand implements Command, SpecBackedCommand {
     }
 
     private String renderStatus() {
-        SleuthConfig typed = SleuthConfigParser.parse(config.snapshot());
+        SleuthConfig typed = config.typedSnapshot();
         int runtimeOverrides = countKnownRuntimeOverrides();
         StringBuilder status = new StringBuilder();
         status.append("=== CONFIGURATION STATUS ===\n");
