@@ -237,8 +237,14 @@ public class VmToolCommand implements Command, SpecBackedCommand {
         }
         boolean allowFirst = Boolean.TRUE.equals(parsed.booleanOption("first"));
         boolean includeSubclasses = Boolean.TRUE.equals(parsed.booleanOption("subclasses"));
-        int maxEntries = parsed.intOption("max") != null ? parsed.intOption("max") : vmTool.getTrackMaxEntries();
-        int classLimit = parsed.intOption("class-limit") != null ? parsed.intOption("class-limit") : vmTool.getTrackClassLimit();
+        int maxEntries = vmTool.getTrackMaxEntries();
+        int classLimit = vmTool.getTrackClassLimit();
+        if (parsed.isOptionExplicit("max")) {
+            maxEntries = parsed.intOption("max");
+        }
+        if (parsed.isOptionExplicit("class-limit")) {
+            classLimit = parsed.intOption("class-limit");
+        }
 
         VmToolSessionRegistry.StartResult r = registry.startTrack(
             instrumentation,

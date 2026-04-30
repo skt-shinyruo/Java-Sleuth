@@ -17,6 +17,7 @@ public final class CommandSpecParser {
         Map<String, Boolean> explicitOptions = new LinkedHashMap<>();
         List<String> positional = new ArrayList<>();
         boolean helpRequested = false;
+        int trailingStart = firstTrailingArgumentIndex(spec);
 
         String[] actualArgs = args == null ? new String[0] : args;
         if (!spec.getSubcommands().isEmpty() && actualArgs.length > 1 && !isHelpToken(actualArgs[1])) {
@@ -39,6 +40,10 @@ public final class CommandSpecParser {
                 ParsedOptionToken parsedToken = splitOptionToken(token);
                 OptionSpec option = optionsByToken.get(parsedToken.name);
                 if (option == null) {
+                    if (trailingStart >= 0 && positional.size() >= trailingStart) {
+                        positional.add(token);
+                        continue;
+                    }
                     throw new CommandSpecParseException("E_ARGS_UNKNOWN", "Unknown option " + parsedToken.name);
                 }
                 if (!option.isRepeatable() && explicitOptions.containsKey(option.getName())) {
@@ -75,7 +80,7 @@ public final class CommandSpecParser {
         if (!helpRequested) {
             bindArguments(spec, positional, arguments, argumentValues);
         }
-        return new ParsedCommand(arguments, argumentValues, options, helpRequested, null);
+        return new ParsedCommand(arguments, argumentValues, options, explicitOptions, helpRequested, null);
     }
 
     private static Map<String, OptionSpec> buildOptionIndex(CommandSpec spec) {
@@ -136,6 +141,16 @@ public final class CommandSpecParser {
         if (positional.size() > specs.size()) {
             throw new CommandSpecParseException("E_ARGS_INVALID", "Too many arguments");
         }
+    }
+
+    private static int firstTrailingArgumentIndex(CommandSpec spec) {
+        List<ArgumentSpec> specs = spec.getArguments();
+        for (int i = 0; i < specs.size(); i++) {
+            if (specs.get(i).isTrailing()) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static Object convert(OptionSpec option, String value) {
