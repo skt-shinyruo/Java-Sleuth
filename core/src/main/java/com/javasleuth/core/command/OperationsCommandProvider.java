@@ -26,7 +26,8 @@ final class OperationsCommandProvider {
             new MetricsCommand(context.requireMetricsCollector()),
             CommandMeta.viewer(false, false)
         );
-        BuiltinCommandMetas.add(descriptors, "config", new ConfigCommand(context.requireConfig()), CommandMeta.admin(false, false));
+        ConfigCommand configCommand = new ConfigCommand(context.requireConfig());
+        descriptors.add(CommandDescriptor.ofSpec(configCommand.getSpec(), configCommand));
         BuiltinCommandMetas.add(descriptors, "version", new VersionCommand(), CommandMeta.viewer(true, false));
         BuiltinCommandMetas.add(descriptors, "quit", new QuitCommand(), CommandMeta.viewer(false, false));
         BuiltinCommandMetas.add(

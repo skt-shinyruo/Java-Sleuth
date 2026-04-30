@@ -46,7 +46,8 @@ final class JvmDiagnosticsCommandProvider {
             CommandMeta.viewer(true, false).withImpact(CommandMeta.ImpactLevel.MEDIUM)
         );
         BuiltinCommandMetas.add(descriptors, "mbean", new MBeanCommand(instrumentation), CommandMeta.operator(false, false));
-        BuiltinCommandMetas.add(descriptors, "logger", new LoggerCommand(), CommandMeta.operator(true, false));
+        LoggerCommand loggerCommand = new LoggerCommand();
+        descriptors.add(CommandDescriptor.ofSpec(loggerCommand.getSpec(), loggerCommand));
         return descriptors;
     }
 }

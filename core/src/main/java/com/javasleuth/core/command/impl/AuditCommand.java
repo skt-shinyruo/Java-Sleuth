@@ -1,44 +1,126 @@
 package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.command.Command;
+import com.javasleuth.core.command.SpecBackedCommand;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.command.spec.SubcommandSpec;
+import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.security.AuditLogger;
 
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class AuditCommand implements Command {
+public class AuditCommand implements Command, SpecBackedCommand {
+    private static final CommandSpec SPEC = CommandSpec.builder("audit")
+        .description("View and manage audit logs")
+        .usage("audit [status|tail|security|search|clear|summary]")
+        .meta(CommandMeta.admin(false, false).withAudit(false))
+        .subcommand(SubcommandSpec.of(
+            "status",
+            "Show audit status",
+            CommandSpec.builder("status")
+                .description("Show audit status")
+                .usage("audit status")
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "tail",
+            "Show recent audit log entries",
+            CommandSpec.builder("tail")
+                .description("Show recent audit log entries")
+                .usage("audit tail [lines] [--lines <int>]")
+                .argument(ArgumentSpec.optional("lines"))
+                .option(OptionSpec.integer("lines").alias("--lines").defaultValue(20).range(1, 100000).build())
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "security",
+            "Show recent security log entries",
+            CommandSpec.builder("security")
+                .description("Show recent security log entries")
+                .usage("audit security [lines] [--lines <int>]")
+                .argument(ArgumentSpec.optional("lines"))
+                .option(OptionSpec.integer("lines").alias("--lines").defaultValue(20).range(1, 100000).build())
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "search",
+            "Search audit log entries",
+            CommandSpec.builder("search")
+                .description("Search audit log entries")
+                .usage("audit search <pattern> [lines] [--lines <int>]")
+                .argument(ArgumentSpec.required("pattern"))
+                .argument(ArgumentSpec.optional("lines"))
+                .option(OptionSpec.integer("lines").alias("--lines").defaultValue(50).range(1, 100000).build())
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "clear",
+            "Clear audit log files",
+            CommandSpec.builder("clear")
+                .description("Clear audit log files")
+                .usage("audit clear")
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "summary",
+            "Show audit summary",
+            CommandSpec.builder("summary")
+                .description("Show audit summary")
+                .usage("audit summary")
+                .build()
+        ))
+        .example("audit tail 50")
+        .example("audit search COMMAND --lines 100")
+        .build();
+
     private final AuditLogger auditLogger;
 
     public AuditCommand(AuditLogger auditLogger) {
         this.auditLogger = auditLogger;
     }
 
+    public static CommandSpec spec() {
+        return SPEC;
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return SPEC;
+    }
+
     @Override
     public String execute(String[] args) throws Exception {
-        if (args.length == 1) {
+        ParsedCommand parsed = CommandSpecSupport.parsed(SPEC, args);
+        if (parsed.isHelpRequested()) {
+            return CommandHelpRenderer.render(SPEC);
+        }
+
+        String action = parsed.subcommandName();
+        if (action == null) {
             return auditLogger.getAuditStatus();
         }
 
-        String action = args[1].toLowerCase();
         switch (action) {
             case "status":
                 return auditLogger.getAuditStatus();
 
             case "tail":
-                int lines = args.length > 2 ? Integer.parseInt(args[2]) : 20;
+                int lines = lineCount(parsed, 20);
                 return tailAuditLog("sleuth-audit.log", lines);
 
             case "security":
-                int securityLines = args.length > 2 ? Integer.parseInt(args[2]) : 20;
+                int securityLines = lineCount(parsed, 20);
                 return tailAuditLog("sleuth-security.log", securityLines);
 
             case "search":
-                if (args.length < 3) {
-                    return "Usage: audit search <pattern> [lines]";
-                }
-                String pattern = args[2];
-                int searchLines = args.length > 3 ? Integer.parseInt(args[3]) : 50;
+                String pattern = parsed.argument("pattern");
+                int searchLines = lineCount(parsed, 50);
                 return searchAuditLog("sleuth-audit.log", pattern, searchLines);
 
             case "clear":
@@ -48,9 +130,17 @@ public class AuditCommand implements Command {
                 return getAuditSummary();
 
             default:
-                return "Unknown audit action: " + action + "\n" +
-                       "Available actions: status, tail [lines], security [lines], search <pattern> [lines], clear, summary";
+                return CommandHelpRenderer.render(SPEC);
         }
+    }
+
+    private int lineCount(ParsedCommand parsed, int defaultValue) {
+        if (parsed.isOptionExplicit("lines")) {
+            Integer lines = parsed.intOption("lines");
+            return lines != null ? lines : defaultValue;
+        }
+        String raw = parsed.argument("lines");
+        return raw == null ? defaultValue : Integer.parseInt(raw);
     }
 
     private String tailAuditLog(String filename, int lines) {

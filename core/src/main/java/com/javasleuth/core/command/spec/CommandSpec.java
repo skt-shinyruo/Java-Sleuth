@@ -20,6 +20,7 @@ public final class CommandSpec {
     private final List<OptionSpec> hiddenOptions;
     private final List<SubcommandSpec> subcommands;
     private final List<String> examples;
+    private final boolean unknownSubcommandAsArgument;
 
     private CommandSpec(Builder builder) {
         this.name = builder.name;
@@ -31,6 +32,7 @@ public final class CommandSpec {
         this.hiddenOptions = immutableCopy(builder.hiddenOptions);
         this.subcommands = immutableCopy(builder.subcommands);
         this.examples = immutableCopy(builder.examples);
+        this.unknownSubcommandAsArgument = builder.unknownSubcommandAsArgument;
     }
 
     public static Builder builder(String name) {
@@ -90,6 +92,10 @@ public final class CommandSpec {
         return examples;
     }
 
+    public boolean isUnknownSubcommandAsArgument() {
+        return unknownSubcommandAsArgument;
+    }
+
     private static <T> List<T> immutableCopy(List<T> input) {
         return Collections.unmodifiableList(new ArrayList<>(input));
     }
@@ -104,6 +110,7 @@ public final class CommandSpec {
         private final List<OptionSpec> hiddenOptions = new ArrayList<>();
         private final List<SubcommandSpec> subcommands = new ArrayList<>();
         private final List<String> examples = new ArrayList<>();
+        private boolean unknownSubcommandAsArgument;
 
         private Builder(String name) {
             if (name == null || name.trim().isEmpty()) {
@@ -159,6 +166,11 @@ public final class CommandSpec {
             if (example != null && !example.trim().isEmpty()) {
                 examples.add(example);
             }
+            return this;
+        }
+
+        public Builder unknownSubcommandAsArgument(boolean unknownSubcommandAsArgument) {
+            this.unknownSubcommandAsArgument = unknownSubcommandAsArgument;
             return this;
         }
 

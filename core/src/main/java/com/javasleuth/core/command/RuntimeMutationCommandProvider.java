@@ -48,12 +48,8 @@ final class RuntimeMutationCommandProvider {
             CommandMeta.viewer(true, false).withSubcommandRole("set", UserRole.ADMIN)
         );
         BuiltinCommandMetas.add(descriptors, "sysenv", new SysEnvCommand(instrumentation), CommandMeta.viewer(true, false));
-        BuiltinCommandMetas.add(
-            descriptors,
-            "vmoption",
-            new VmOptionCommand(instrumentation),
-            CommandMeta.operator(true, false).withSubcommandRole("set", UserRole.ADMIN)
-        );
+        VmOptionCommand vmOptionCommand = new VmOptionCommand(instrumentation);
+        descriptors.add(CommandDescriptor.ofSpec(vmOptionCommand.getSpec(), vmOptionCommand));
         BuiltinCommandMetas.add(
             descriptors,
             "heapdump",

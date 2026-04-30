@@ -2,7 +2,10 @@ package com.javasleuth.core.command;
 
 import com.javasleuth.core.command.spec.CommandHelpRenderer;
 import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.CommandSpecParseException;
+import com.javasleuth.core.command.spec.CommandSpecParser;
 import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
 import com.javasleuth.core.command.impl.TraceCommand;
 import com.javasleuth.core.command.impl.VmToolCommand;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
@@ -66,6 +69,61 @@ public class BuiltinCommandSpecTest {
             assertHasSpec(descriptors, "trace");
             assertHasSpec(descriptors, "monitor");
             assertHasSpec(descriptors, "vmtool");
+        });
+    }
+
+    @Test
+    public void operationalBatchCommandsExposeSpecs() {
+        withProviderContext(context -> {
+            BuiltinCommandProvider provider = new BuiltinCommandProvider();
+            Collection<CommandDescriptor> descriptors = provider.getCommandDescriptors(context);
+            assertSpecBackedDescriptor(descriptors, "jobs");
+            assertSpecBackedDescriptor(descriptors, "config");
+            assertSpecBackedDescriptor(descriptors, "audit");
+            assertSpecBackedDescriptor(descriptors, "logger");
+            assertSpecBackedDescriptor(descriptors, "vmoption");
+        });
+    }
+
+    @Test
+    public void operationalBatchSpecsCoverSubcommandsAndValidatedOptions() {
+        withProviderContext(context -> {
+            BuiltinCommandProvider provider = new BuiltinCommandProvider();
+            Collection<CommandDescriptor> descriptors = provider.getCommandDescriptors(context);
+
+            CommandSpec jobs = requiredSpec(descriptors, "jobs");
+            Assert.assertNotNull(jobs.subcommand("list"));
+            Assert.assertNotNull(jobs.subcommand("tail"));
+            Assert.assertNotNull(jobs.subcommand("stop"));
+            expectParseFailure(jobs, new String[]{"jobs", "tail", "job-1", "--lines", "NaN"}, "E_ARGS_INVALID");
+
+            CommandSpec config = requiredSpec(descriptors, "config");
+            Assert.assertNotNull(config.subcommand("get"));
+            Assert.assertNotNull(config.subcommand("set"));
+            Assert.assertNotNull(config.subcommand("save"));
+            ParsedCommand save = CommandSpecParser.parse(config, new String[]{"config", "save", "--include-overrides"});
+            Assert.assertEquals("save", save.subcommandName());
+            Assert.assertTrue(save.booleanOption("include-runtime"));
+
+            CommandSpec audit = requiredSpec(descriptors, "audit");
+            Assert.assertNotNull(audit.subcommand("tail"));
+            Assert.assertNotNull(audit.subcommand("security"));
+            Assert.assertNotNull(audit.subcommand("search"));
+            expectParseFailure(audit, new String[]{"audit", "search", "COMMAND", "--lines", "bad"}, "E_ARGS_INVALID");
+
+            CommandSpec logger = requiredSpec(descriptors, "logger");
+            Assert.assertNotNull(logger.subcommand("list"));
+            Assert.assertNotNull(logger.subcommand("set"));
+            expectParseFailure(logger, new String[]{"logger", "list", "--limit", "bad"}, "E_ARGS_INVALID");
+
+            CommandSpec vmoption = requiredSpec(descriptors, "vmoption");
+            Assert.assertNotNull(vmoption.subcommand("list"));
+            Assert.assertNotNull(vmoption.subcommand("get"));
+            Assert.assertNotNull(vmoption.subcommand("set"));
+            expectParseFailure(vmoption, new String[]{"vmoption", "list", "--limit", "bad"}, "E_ARGS_INVALID");
+            ParsedCommand patternFallback = CommandSpecParser.parse(vmoption, new String[]{"vmoption", "*GC*"});
+            Assert.assertNull(patternFallback.subcommandName());
+            Assert.assertEquals("*GC*", patternFallback.argument("pattern"));
         });
     }
 
@@ -503,6 +561,40 @@ public class BuiltinCommandSpecTest {
             }
         }
         Assert.fail("Missing built-in command descriptor for " + commandName);
+    }
+
+    private static CommandSpec requiredSpec(Collection<CommandDescriptor> descriptors, String commandName) {
+        for (CommandDescriptor descriptor : descriptors) {
+            if (commandName.equals(descriptor.getName())) {
+                Assert.assertNotNull(commandName + " should expose a command spec", descriptor.getSpec());
+                return descriptor.getSpec();
+            }
+        }
+        Assert.fail("Missing built-in command descriptor for " + commandName);
+        return null;
+    }
+
+    private static void assertSpecBackedDescriptor(Collection<CommandDescriptor> descriptors, String commandName) {
+        for (CommandDescriptor descriptor : descriptors) {
+            if (commandName.equals(descriptor.getName())) {
+                Assert.assertNotNull(commandName + " should expose a command spec", descriptor.getSpec());
+                Assert.assertTrue(commandName + " command should implement SpecBackedCommand",
+                    descriptor.getCommand() instanceof SpecBackedCommand);
+                Assert.assertSame(descriptor.getSpec(), ((SpecBackedCommand) descriptor.getCommand()).getSpec());
+                Assert.assertSame(descriptor.getSpec().getMeta(), descriptor.getMeta());
+                return;
+            }
+        }
+        Assert.fail("Missing built-in command descriptor for " + commandName);
+    }
+
+    private static void expectParseFailure(CommandSpec spec, String[] args, String code) {
+        try {
+            CommandSpecParser.parse(spec, args);
+            Assert.fail("Expected parse failure " + code);
+        } catch (CommandSpecParseException expected) {
+            Assert.assertEquals(code, expected.getCode());
+        }
     }
 
     private static void withProviderContext(ProviderContextConsumer consumer) {

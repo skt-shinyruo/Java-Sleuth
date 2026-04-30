@@ -1,6 +1,14 @@
 package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.command.Command;
+import com.javasleuth.core.command.SpecBackedCommand;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.command.spec.SubcommandSpec;
+import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import java.util.ArrayList;
 import java.util.Enumeration;
@@ -10,21 +18,67 @@ import java.util.logging.Level;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
 
-public class LoggerCommand implements Command {
+public class LoggerCommand implements Command, SpecBackedCommand {
+    private static final CommandSpec SPEC = CommandSpec.builder("logger")
+        .description("Manage java.util.logging loggers")
+        .usage("logger [list|set]")
+        .meta(CommandMeta.operator(true, false))
+        .subcommand(SubcommandSpec.of(
+            "list",
+            "List loggers",
+            CommandSpec.builder("list")
+                .description("List loggers")
+                .usage("logger list [pattern] [limit] [--limit <int>]")
+                .argument(ArgumentSpec.optional("pattern"))
+                .argument(ArgumentSpec.optional("limit"))
+                .option(OptionSpec.integer("limit").alias("--limit").defaultValue(50).range(1, 100000).build())
+                .build()
+        ))
+        .subcommand(SubcommandSpec.of(
+            "set",
+            "Set a logger level",
+            CommandSpec.builder("set")
+                .description("Set a logger level")
+                .usage("logger set <name> <LEVEL>")
+                .argument(ArgumentSpec.required("name"))
+                .argument(ArgumentSpec.required("level"))
+                .build()
+        ))
+        .example("logger list com.example.* 100")
+        .example("logger set com.example.Service INFO")
+        .build();
+
+    public static CommandSpec spec() {
+        return SPEC;
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return SPEC;
+    }
+
     @Override
     public String execute(String[] args) {
-        if (args == null || args.length == 1) {
+        ParsedCommand parsed = CommandSpecSupport.parsed(SPEC, args);
+        if (parsed.isHelpRequested()) {
+            return CommandHelpRenderer.render(SPEC);
+        }
+
+        String action = parsed.subcommandName();
+        if (action == null) {
             return list(null, 50);
         }
 
-        String action = args[1].toLowerCase(Locale.ROOT);
         switch (action) {
             case "list":
-                return list(args.length >= 3 ? args[2] : null, args.length >= 4 ? parseInt(args[3], 50) : 50);
+                return list(
+                    parsed.argument("pattern"),
+                    CommandSpecSupport.intOptionOrArgument(parsed, "limit", "limit", 50)
+                );
             case "set":
-                return set(args);
+                return set(parsed);
             default:
-                return "Unknown logger action: " + action + "\n" + getHelp();
+                return CommandHelpRenderer.render(SPEC);
         }
     }
 
@@ -60,12 +114,9 @@ public class LoggerCommand implements Command {
         return sb.toString().trim();
     }
 
-    private String set(String[] args) {
-        if (args.length < 4) {
-            return "Usage: logger set <name> <LEVEL>";
-        }
-        String name = args[2];
-        String levelRaw = args[3];
+    private String set(ParsedCommand parsed) {
+        String name = parsed.argument("name");
+        String levelRaw = parsed.argument("level");
         Level level;
         try {
             level = Level.parse(levelRaw.toUpperCase(Locale.ROOT));
@@ -88,23 +139,6 @@ public class LoggerCommand implements Command {
             cur = cur.getParent();
         }
         return null;
-    }
-
-    private int parseInt(String v, int def) {
-        if (v == null) {
-            return def;
-        }
-        try {
-            return Integer.parseInt(v);
-        } catch (NumberFormatException e) {
-            return def;
-        }
-    }
-
-    private String getHelp() {
-        return "Logger command usage:\n" +
-            "  logger list [pattern] [limit]\n" +
-            "  logger set <name> <LEVEL>\n";
     }
 
     @Override
