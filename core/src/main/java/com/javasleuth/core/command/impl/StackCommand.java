@@ -1,26 +1,32 @@
 package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.command.JobManager;
+import com.javasleuth.core.command.CommandContext;
+import com.javasleuth.core.command.CommandContextHolder;
+import com.javasleuth.core.command.SpecBackedCommand;
 import com.javasleuth.core.command.StreamCommand;
 import com.javasleuth.core.command.StreamSink;
 import com.javasleuth.core.command.impl.stack.StackTraceLiteEngine;
-import com.javasleuth.core.command.impl.stack.StackTraceLiteParser;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.CommandSpecOptionTokens;
+import com.javasleuth.core.command.spec.CommandSpecParser;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.agent.runtime.BootstrapBridge;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
+import com.javasleuth.foundation.security.CommandCapability;
+import com.javasleuth.foundation.security.CommandMeta;
 import java.lang.instrument.Instrumentation;
-import java.lang.management.ManagementFactory;
-import java.lang.management.ThreadMXBean;
-import java.util.Locale;
 
 /**
- * StackCommand 提供两类能力：
- * 1) 线程栈采样/分析（legacy stack monitor/dump/analyze/...）
- * 2) 方法触发栈追踪（Arthas 风格简化版）：stack <class-pattern> <method-pattern> [options]
+ * Method-triggered stack tracing, Arthas-style lite mode.
  */
-public class StackCommand implements StreamCommand {
-    private final StackTraceLiteParser traceParser;
+public class StackCommand implements StreamCommand, SpecBackedCommand {
     private final StackTraceLiteEngine traceEngine;
     private final JobManager jobManager;
 
@@ -51,13 +57,33 @@ public class StackCommand implements StreamCommand {
         SleuthSpyDispatcher spyDispatcher,
         EnhancementSessionRegistry sessionRegistry
     ) {
-        ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
-        this.traceParser = new StackTraceLiteParser();
         this.traceEngine = new StackTraceLiteEngine(instrumentation, transformer, config, spyDispatcher, sessionRegistry);
         if (jobManager == null) {
             throw new IllegalArgumentException("jobManager");
         }
         this.jobManager = jobManager;
+    }
+
+    public static CommandSpec spec() {
+        return CommandSpec.builder("stack")
+            .description("Trace call stacks when a matching method is invoked")
+            .usage("stack <class-pattern> <method-pattern> [options]")
+            .meta(instrumentationStreamMeta())
+            .argument(ArgumentSpec.required("class-pattern"))
+            .argument(ArgumentSpec.required("method-pattern"))
+            .option(OptionSpec.integer("count").alias("-n").alias("--count").defaultValue(10).range(1, 100000).build())
+            .option(OptionSpec.longNumber("timeout").alias("-t").alias("--timeout").defaultValue(30L).range(1, 86400).build())
+            .option(OptionSpec.integer("depth").alias("--depth").defaultValue(20).range(1, 200).build())
+            .option(OptionSpec.flag("bg").alias("--bg").build())
+            .example("stack com.example.* doWork -n 5 --depth 30")
+            .example("stack *Service* *method* -t 60")
+            .example("stack com.example.* doWork --bg")
+            .build();
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return spec();
     }
 
     @Override
@@ -72,27 +98,16 @@ public class StackCommand implements StreamCommand {
 
     private String runStack(String[] args, StreamSink sink) throws Exception {
         if (args == null || args.length < 2) {
-            return getUsage();
+            return CommandHelpRenderer.render(spec());
         }
 
-        String sub = args[1];
-        if ("-h".equals(sub) || "--help".equals(sub) || "help".equalsIgnoreCase(sub)) {
-            return getUsage();
+        ParsedCommand parsed = parsedOrFallback(args);
+        if (parsed.isHelpRequested()) {
+            return CommandHelpRenderer.render(spec());
         }
 
-        String action = sub.toLowerCase(Locale.ROOT);
-        // Arthas-like: stack <class-pattern> <method-pattern> [options]
-        if (args.length < 3) {
-            return getTraceHelp();
-        }
-
-        StackTraceLiteParser.ParseResult parsed = traceParser.parse(args);
-        if (parsed.isInvalid() || parsed.isShowHelp()) {
-            return getTraceHelp();
-        }
-
-        if (parsed.isBackground()) {
-            String[] jobArgs = parsed.getSanitizedArgs();
+        if (Boolean.TRUE.equals(parsed.booleanOption("bg"))) {
+            String[] jobArgs = CommandSpecOptionTokens.removeOptionTokens(args, spec(), "bg");
             String commandLine = String.join(" ", jobArgs);
             String jobId = jobManager.submitStreamJob(
                 "stack",
@@ -109,59 +124,32 @@ public class StackCommand implements StreamCommand {
         }
 
         return traceEngine.start(
-            parsed.getClassPattern(),
-            parsed.getMethodPattern(),
-            parsed.getMaxCount(),
-            parsed.getTimeoutSeconds(),
-            parsed.getDepth(),
+            parsed.argument("class-pattern"),
+            parsed.argument("method-pattern"),
+            parsed.intOption("count"),
+            parsed.longOption("timeout"),
+            parsed.intOption("depth"),
             sink
         );
     }
 
-    private String getUsage() {
-        return "Stack command usage:\n" +
-            "  stack <class-pattern> <method-pattern> [options]   - Trace call stacks when method is invoked (lite)\n" +
-            "  stack dump [thread-id]                            - Dump stack traces (all threads or specific)\n" +
-            "  stack monitor start [intervalMs]                  - Start continuous monitoring (default 1000ms, range: 10-600000)\n" +
-            "  stack monitor stop                                - Stop monitoring\n" +
-            "  stack monitor status                              - Show monitoring status\n" +
-            "  stack analyze [limit]                             - Analyze collected stack patterns (default 10, range: 1-200)\n" +
-            "  stack blocked                                     - Show blocked/waiting threads\n" +
-            "  stack deadlock                                    - Check for deadlocks\n" +
-            "  stack hot [limit]                                 - Show hottest stack traces (default 5, range: 1-50)\n" +
-            "  stack stats                                       - Show stack statistics\n" +
-            "  stack clear                                       - Clear collected data\n" +
-            "\n" +
-            "Stack trace options:\n" +
-            "  -n, --count <num>     Max events to capture (default: 10)\n" +
-            "  -t, --timeout <sec>   Timeout in seconds (default: 30)\n" +
-            "  --depth <frames>      Max stack frames to print (default: 20, max: 200)\n" +
-            "  --bg                 Run in background (use jobs tail/stop)\n" +
-            "\n" +
-            "Examples:\n" +
-            "  stack com.example.* doWork -n 5 --depth 30\n" +
-            "  stack com.example.* doWork --bg\n" +
-            "  stack dump\n" +
-            "  stack monitor start 500\n" +
-            "  stack analyze 20";
+    private ParsedCommand parsedOrFallback(String[] args) {
+        CommandContext ctx = CommandContextHolder.get();
+        ParsedCommand parsed = ctx != null ? ctx.getParsedCommand() : null;
+        if (parsed != null && Boolean.TRUE.equals(parsed.booleanOption("bg")) && !CommandSpecOptionTokens.hasOptionToken(args, spec(), "bg")) {
+            return CommandSpecParser.parse(spec(), args);
+        }
+        return parsed != null ? parsed : CommandSpecParser.parse(spec(), args);
+    }
+
+    private static CommandMeta instrumentationStreamMeta() {
+        return CommandMeta.operator(false, true)
+            .requiresBootstrap(BootstrapBridge.SPY_API)
+            .withCapability(CommandCapability.LONG_RUNNING);
     }
 
     @Override
     public String getDescription() {
         return "Stack sampling and Arthas-like stack trace (lite)";
-    }
-
-    private String getTraceHelp() {
-        return "Stack trace (lite) usage:\n" +
-            "  stack <class-pattern> <method-pattern> [options]\n\n" +
-            "Options:\n" +
-            "  -n, --count <num>     Max events to capture (default: 10)\n" +
-            "  -t, --timeout <sec>   Timeout in seconds (default: 30)\n" +
-            "  --depth <frames>      Max stack frames to print (default: 20, max: 200)\n" +
-            "  --bg                 Run in background (use jobs tail/stop)\n" +
-            "  -h, --help           Show this help\n\n" +
-            "Examples:\n" +
-            "  stack com.example.* doWork -n 5 --depth 30\n" +
-            "  stack *Service* *method* -t 60\n";
     }
 }

@@ -1,30 +1,41 @@
 package com.javasleuth.core.command.impl;
 
 import com.javasleuth.core.command.JobManager;
+import com.javasleuth.core.command.CommandContext;
+import com.javasleuth.core.command.CommandContextHolder;
+import com.javasleuth.core.command.SpecBackedCommand;
 import com.javasleuth.core.command.StreamCommand;
 import com.javasleuth.core.command.StreamSink;
 import com.javasleuth.core.command.impl.tt.TtFormatter;
 import com.javasleuth.core.command.impl.tt.TtRecordEngine;
-import com.javasleuth.core.command.impl.tt.TtRecordParser;
 import com.javasleuth.core.command.impl.tt.TtRecordStore;
 import com.javasleuth.core.command.impl.tt.TtReplayTemplateGenerator;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.CommandSpecOptionTokens;
+import com.javasleuth.core.command.spec.CommandSpecParser;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.command.spec.SubcommandSpec;
+import com.javasleuth.core.agent.runtime.BootstrapBridge;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.bootstrap.data.TtRecord;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.bootstrap.util.SleuthValueFormatter;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
+import com.javasleuth.foundation.security.CommandCapability;
+import com.javasleuth.foundation.security.CommandMeta;
 import java.lang.instrument.Instrumentation;
 import java.time.Instant;
 import java.util.List;
 
-public class TtCommand implements StreamCommand {
-    private final TtRecordParser recordParser;
+public class TtCommand implements StreamCommand, SpecBackedCommand {
     private final TtRecordEngine recordEngine;
     private final TtReplayTemplateGenerator replayGenerator;
     private final JobManager jobManager;
     private final TtRecordStore recordStore;
-    private final SleuthSpyDispatcher spyDispatcher;
 
     public TtCommand(
         Instrumentation instrumentation,
@@ -56,12 +67,90 @@ public class TtCommand implements StreamCommand {
         if (jobManager == null) {
             throw new IllegalArgumentException("jobManager");
         }
-        this.recordParser = new TtRecordParser();
         this.recordStore = new TtRecordStore();
-        this.spyDispatcher = spyDispatcher;
         this.recordEngine = new TtRecordEngine(instrumentation, transformer, config, recordStore, spyDispatcher, sessionRegistry);
         this.replayGenerator = new TtReplayTemplateGenerator();
         this.jobManager = jobManager;
+    }
+
+    public static CommandSpec spec() {
+        return recordOptions(CommandSpec.builder("tt")
+            .description("Record, list, inspect, and replay method time-travel records (lite)")
+            .usage("tt <class-pattern> <method-pattern> [options]")
+            .meta(instrumentationStreamMeta())
+            .argument(ArgumentSpec.required("class-pattern"))
+            .argument(ArgumentSpec.required("method-pattern"))
+            .unknownSubcommandAsArgument(true))
+            .subcommand(SubcommandSpec.of(
+                "record",
+                "Record method invocations",
+                recordOptions(CommandSpec.builder("record")
+                    .description("Record method invocations")
+                    .usage("tt record <class-pattern> <method-pattern> [options]")
+                    .argument(ArgumentSpec.required("class-pattern"))
+                    .argument(ArgumentSpec.required("method-pattern")))
+                    .build()
+            ))
+            .subcommand(SubcommandSpec.of(
+                "list",
+                "List captured records",
+                CommandSpec.builder("list")
+                    .description("List captured records")
+                    .usage("tt list [limit]")
+                    .argument(ArgumentSpec.optional("limit"))
+                    .build()
+            ))
+            .subcommand(SubcommandSpec.of(
+                "detail",
+                "Show record details",
+                CommandSpec.builder("detail")
+                    .description("Show record details")
+                    .usage("tt detail <recordId>")
+                    .argument(ArgumentSpec.required("record-id"))
+                    .build()
+            ))
+            .subcommand(SubcommandSpec.of(
+                "replay",
+                "Generate a replay template for a record",
+                CommandSpec.builder("replay")
+                    .description("Generate a replay template for a record")
+                    .usage("tt replay <recordId>")
+                    .argument(ArgumentSpec.required("record-id"))
+                    .build()
+            ))
+            .subcommand(SubcommandSpec.of(
+                "clear",
+                "Clear captured records",
+                CommandSpec.builder("clear")
+                    .description("Clear captured records")
+                    .usage("tt clear")
+                    .build()
+            ))
+            .subcommand(SubcommandSpec.of(
+                "stop",
+                "Stop an active TT recording session",
+                CommandSpec.builder("stop")
+                    .description("Stop an active TT recording session")
+                    .usage("tt stop <ttId>")
+                    .argument(ArgumentSpec.required("tt-id"))
+                    .build()
+            ))
+            .example("tt com.example.* doWork -n 100")
+            .example("tt record com.example.* doWork --bg")
+            .example("tt detail 42")
+            .build();
+    }
+
+    private static CommandSpec.Builder recordOptions(CommandSpec.Builder builder) {
+        return builder
+            .option(OptionSpec.integer("count").alias("-n").alias("--count").defaultValue(100).range(1, 100000).build())
+            .option(OptionSpec.longNumber("timeout").alias("-t").alias("--timeout").defaultValue(30L).range(1, 86400).build())
+            .option(OptionSpec.flag("bg").alias("--bg").build());
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return spec();
     }
 
     @Override
@@ -79,54 +168,42 @@ public class TtCommand implements StreamCommand {
             return getHelp();
         }
 
-        // Subcommands: list/detail/replay/stop/clear/record
-        String sub = args[1].toLowerCase();
+        ParsedCommand parsed = parsedOrFallback(args);
+        if (parsed.isHelpRequested()) {
+            return getHelp();
+        }
+
+        String sub = parsed.subcommandName();
+        if (sub == null) {
+            return runRecord(parsed, args, sink);
+        }
         switch (sub) {
             case "list":
-                return list(args);
+                return list(parsed);
             case "detail":
-                return detail(args);
+                return detail(parsed);
             case "replay":
-                return replay(args);
+                return replay(parsed);
             case "clear":
                 recordStore.clear();
                 return "TT records cleared.";
             case "stop":
-                return stop(args);
+                return stop(parsed);
             case "record":
-                // tt record <class-pattern> <method-pattern> [options]
-                if (args.length < 4) {
-                    return "Usage: tt record <class-pattern> <method-pattern> [options]";
-                }
-                String[] shifted = new String[args.length - 1];
-                shifted[0] = "tt";
-                System.arraycopy(args, 2, shifted, 1, args.length - 2);
-                return runRecord(shifted, sink);
+                return runRecord(parsed, args, sink);
             default:
-                break;
+                return getHelp();
         }
-
-        // Default: tt <class-pattern> <method-pattern>
-        return runRecord(args, sink);
     }
 
-    private String runRecord(String[] args, StreamSink sink) throws Exception {
-        if (args == null || args.length < 3) {
-            return getHelp();
-        }
-
-        TtRecordParser.ParseResult parsed = recordParser.parse(args);
-        if (parsed.isInvalid() || parsed.isShowHelp()) {
-            return getHelp();
-        }
-
-        if (parsed.isBackground()) {
-            String[] jobArgs = parsed.getSanitizedArgs();
+    private String runRecord(ParsedCommand parsed, String[] args, StreamSink sink) throws Exception {
+        if (Boolean.TRUE.equals(parsed.booleanOption("bg"))) {
+            String[] jobArgs = CommandSpecOptionTokens.removeOptionTokens(args, spec(), "bg");
             String commandLine = String.join(" ", jobArgs);
             String jobId = jobManager.submitStreamJob(
                 "tt",
                 commandLine,
-                jobSink -> runRecord(jobArgs, jobSink)
+                jobSink -> runTt(jobArgs, jobSink)
             );
             String msg = "Started tt in background. Job ID: " + jobId + " (use: jobs tail " + jobId + ")";
             if (sink != null) {
@@ -138,19 +215,31 @@ public class TtCommand implements StreamCommand {
         }
 
         return recordEngine.record(
-            parsed.getClassPattern(),
-            parsed.getMethodPattern(),
-            parsed.getMaxCount(),
-            parsed.getTimeoutSeconds(),
+            parsed.argument("class-pattern"),
+            parsed.argument("method-pattern"),
+            parsed.intOption("count"),
+            parsed.longOption("timeout"),
             sink
         );
     }
 
-    private String list(String[] args) {
-        int n = 50;
-        if (args.length >= 3) {
-            n = parseInt(args[2], 50);
+    private ParsedCommand parsedOrFallback(String[] args) {
+        CommandContext ctx = CommandContextHolder.get();
+        ParsedCommand parsed = ctx != null ? ctx.getParsedCommand() : null;
+        if (parsed != null && Boolean.TRUE.equals(parsed.booleanOption("bg")) && !CommandSpecOptionTokens.hasOptionToken(args, spec(), "bg")) {
+            return CommandSpecParser.parse(spec(), args);
         }
+        return parsed != null ? parsed : CommandSpecParser.parse(spec(), args);
+    }
+
+    private static CommandMeta instrumentationStreamMeta() {
+        return CommandMeta.operator(false, true)
+            .requiresBootstrap(BootstrapBridge.SPY_API)
+            .withCapability(CommandCapability.LONG_RUNNING);
+    }
+
+    private String list(ParsedCommand parsed) {
+        int n = parseInt(parsed.argument("limit"), 50);
         List<TtRecord> records = recordStore.list(n);
         if (records.isEmpty()) {
             return "No TT records.";
@@ -169,15 +258,12 @@ public class TtCommand implements StreamCommand {
         return sb.toString().trim();
     }
 
-    private String detail(String[] args) {
-        if (args.length < 3) {
-            return "Usage: tt detail <recordId>";
-        }
+    private String detail(ParsedCommand parsed) {
         long id;
         try {
-            id = Long.parseLong(args[2]);
+            id = Long.parseLong(parsed.argument("record-id"));
         } catch (NumberFormatException e) {
-            return "Invalid recordId: " + args[2];
+            return "Invalid recordId: " + parsed.argument("record-id");
         }
         TtRecord r = recordStore.find(id);
         if (r == null) {
@@ -208,11 +294,8 @@ public class TtCommand implements StreamCommand {
         return sb.toString().trim();
     }
 
-    private String stop(String[] args) {
-        if (args.length < 3) {
-            return "Usage: tt stop <ttId>";
-        }
-        String ttId = args[2];
+    private String stop(ParsedCommand parsed) {
+        String ttId = parsed.argument("tt-id");
         boolean ok = recordEngine.stop(ttId);
         if (!ok) {
             return "TT session not found: " + ttId;
@@ -220,15 +303,12 @@ public class TtCommand implements StreamCommand {
         return "TT stopped: " + ttId;
     }
 
-    private String replay(String[] args) {
-        if (args.length < 3) {
-            return "Usage: tt replay <recordId>";
-        }
+    private String replay(ParsedCommand parsed) {
         long id;
         try {
-            id = Long.parseLong(args[2]);
+            id = Long.parseLong(parsed.argument("record-id"));
         } catch (NumberFormatException e) {
-            return "Invalid recordId: " + args[2];
+            return "Invalid recordId: " + parsed.argument("record-id");
         }
 
         TtRecord r = recordStore.find(id);
@@ -250,18 +330,7 @@ public class TtCommand implements StreamCommand {
     }
 
     private String getHelp() {
-        return "TT (lite) command usage:\n" +
-            "  tt <class-pattern> <method-pattern> [options]\n" +
-            "  tt record <class-pattern> <method-pattern> [options]\n" +
-            "  tt list [n]\n" +
-            "  tt detail <recordId>\n" +
-            "  tt replay <recordId>            - Generate replay template (lite, no execution)\n" +
-            "  tt clear\n" +
-            "  tt stop <ttId>\n\n" +
-            "Options:\n" +
-            "  -n, --count <num>     Max records to capture (default: 100)\n" +
-            "  -t, --timeout <sec>   Timeout in seconds (default: 30)\n" +
-            "  --bg                 Run in background (use jobs tail/stop)\n";
+        return CommandHelpRenderer.render(spec());
     }
 
     @Override
