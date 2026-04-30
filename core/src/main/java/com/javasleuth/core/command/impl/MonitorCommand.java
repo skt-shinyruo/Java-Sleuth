@@ -4,8 +4,16 @@ import com.javasleuth.core.command.CancellationToken;
 import com.javasleuth.core.command.JobManager;
 import com.javasleuth.core.command.CommandContext;
 import com.javasleuth.core.command.CommandContextHolder;
+import com.javasleuth.core.command.SpecBackedCommand;
 import com.javasleuth.core.command.StreamCommand;
 import com.javasleuth.core.command.StreamSink;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.CommandSpecParser;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.agent.runtime.BootstrapBridge;
 import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.core.enhancement.ClassEnhancer;
 import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
@@ -15,6 +23,8 @@ import com.javasleuth.core.enhancement.MonitorEnhancer;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.MonitorAdviceListener;
+import com.javasleuth.foundation.security.CommandCapability;
+import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.util.LoadedClassResolver;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import com.javasleuth.foundation.util.StringUtils;
@@ -33,7 +43,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Usage:
  *   monitor <class-pattern> <method-pattern> [-i <ms>] [-n <rounds>] [--limit <classes>] [--bg]
  */
-public class MonitorCommand implements StreamCommand {
+public class MonitorCommand implements StreamCommand, SpecBackedCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
     private final JobManager jobManager;
@@ -85,46 +95,54 @@ public class MonitorCommand implements StreamCommand {
         runMonitor(args, sink);
     }
 
+    public static CommandSpec spec() {
+        return CommandSpec.builder("monitor")
+            .description("Monitor method statistics periodically (simplified)")
+            .usage("monitor <class-pattern> <method-pattern> [options]")
+            .meta(instrumentationStreamMeta())
+            .argument(ArgumentSpec.required("class-pattern"))
+            .argument(ArgumentSpec.required("method-pattern"))
+            .option(OptionSpec.longNumber("interval").alias("-i").alias("--interval").defaultValue(5000L).range(1, 86400000).build())
+            .option(OptionSpec.integer("count").alias("-n").alias("--count").defaultValue(10).range(1, 100000).build())
+            .option(OptionSpec.integer("limit").alias("--limit").defaultValue(50).range(1, 10000).build())
+            .option(OptionSpec.flag("bg").alias("--bg").build())
+            .example("monitor com.example.* execute*")
+            .example("monitor *Service* *method* -i 1000 -n 20")
+            .example("monitor MyClass doWork --limit 10")
+            .build();
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return spec();
+    }
+
     private String runMonitor(String[] args, StreamSink sink) throws Exception {
         if (args == null || args.length < 3) {
-            String help = getHelp();
+            String help = CommandHelpRenderer.render(spec());
             if (sink != null) {
                 sink.error(help);
                 return "";
             }
             return help;
         }
-
-        boolean background = false;
-        String classPattern = args[1];
-        String methodPattern = args[2];
-
-        long intervalMs = 5000;
-        int rounds = 10;
-        int classLimit = 50;
-
-        for (int i = 3; i < args.length; i++) {
-            String a = args[i];
-            if ("-i".equals(a) || "--interval".equals(a)) {
-                if (i + 1 < args.length) {
-                    intervalMs = parseLong(args[++i], 5000);
-                }
-            } else if ("-n".equals(a) || "--count".equals(a)) {
-                if (i + 1 < args.length) {
-                    rounds = parseInt(args[++i], 10);
-                }
-            } else if ("--limit".equals(a)) {
-                if (i + 1 < args.length) {
-                    classLimit = parseInt(args[++i], 50);
-                }
-            } else if ("--bg".equals(a)) {
-                background = true;
-            } else if ("-h".equals(a) || "--help".equals(a)) {
-                return getHelp();
+        ParsedCommand parsed = parsedOrFallback(args);
+        if (parsed.isHelpRequested()) {
+            String help = CommandHelpRenderer.render(spec());
+            if (sink != null) {
+                sink.send(help);
+                return "";
             }
+            return help;
         }
 
-        if (background) {
+        String classPattern = parsed.argument("class-pattern");
+        String methodPattern = parsed.argument("method-pattern");
+        long intervalMs = parsed.longOption("interval");
+        int rounds = parsed.intOption("count");
+        int classLimit = parsed.intOption("limit");
+
+        if (Boolean.TRUE.equals(parsed.booleanOption("bg"))) {
             String[] jobArgs = removeFlag(args, "--bg");
             String commandLine = String.join(" ", jobArgs);
             String jobId = jobManager.submitStreamJob(
@@ -142,6 +160,18 @@ public class MonitorCommand implements StreamCommand {
         }
 
         return startMonitoring(classPattern, methodPattern, intervalMs, rounds, classLimit, sink);
+    }
+
+    private ParsedCommand parsedOrFallback(String[] args) {
+        CommandContext ctx = CommandContextHolder.get();
+        ParsedCommand parsed = ctx != null ? ctx.getParsedCommand() : null;
+        return parsed != null ? parsed : CommandSpecParser.parse(spec(), args);
+    }
+
+    private static CommandMeta instrumentationStreamMeta() {
+        return CommandMeta.operator(false, true)
+            .requiresBootstrap(BootstrapBridge.SPY_API)
+            .withCapability(CommandCapability.LONG_RUNNING);
     }
 
     private String startMonitoring(String classPattern, String methodPattern,
@@ -415,28 +445,6 @@ public class MonitorCommand implements StreamCommand {
         return ctx != null ? ctx.getCancellationToken() : CancellationToken.NONE;
     }
 
-    private int parseInt(String raw, int def) {
-        if (raw == null) {
-            return def;
-        }
-        try {
-            return Integer.parseInt(raw.trim());
-        } catch (NumberFormatException e) {
-            return def;
-        }
-    }
-
-    private long parseLong(String raw, long def) {
-        if (raw == null) {
-            return def;
-        }
-        try {
-            return Long.parseLong(raw.trim());
-        } catch (NumberFormatException e) {
-            return def;
-        }
-    }
-
     private String truncate(String s, int maxLen) {
         if (s == null) {
             return "";
@@ -445,17 +453,6 @@ public class MonitorCommand implements StreamCommand {
             return s;
         }
         return s.substring(0, Math.max(0, maxLen - 3)) + "...";
-    }
-
-    private String getHelp() {
-        return "Monitor command usage:\n" +
-            "  monitor <class-pattern> <method-pattern> [options]\n\n" +
-            "Options:\n" +
-            "  -i, --interval <ms>  Sampling interval in ms (default: 5000)\n" +
-            "  -n, --count <num>    Number of rounds (default: 10)\n" +
-            "  --limit <num>        Max classes to instrument (default: 50)\n" +
-            "  --bg                 Run in background (use jobs tail/stop)\n" +
-            "  -h, --help           Show this help\n";
     }
 
     @Override

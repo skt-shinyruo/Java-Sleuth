@@ -1,5 +1,9 @@
 package com.javasleuth.core.command;
 
+import com.javasleuth.core.command.impl.MonitorCommand;
+import com.javasleuth.core.command.impl.WatchCommand;
+import com.javasleuth.core.command.spec.CommandSpecParseException;
+import com.javasleuth.core.command.spec.CommandSpecParser;
 import com.javasleuth.foundation.security.AuthenticationManager.UserRole;
 import com.javasleuth.foundation.security.CommandMeta;
 import java.util.Locale;
@@ -103,6 +107,26 @@ public class CommandArgsValidationTest {
             Assert.assertEquals(UserRole.ADMIN, meta.getRequiredRoleForArgs(new String[]{"mbean", "INFO"}));
         } finally {
             Locale.setDefault(original);
+        }
+    }
+
+    @Test
+    public void watchRejectsInvalidCount() {
+        try {
+            CommandSpecParser.parse(WatchCommand.spec(), new String[] {"watch", "A", "m", "-n", "abc"});
+            Assert.fail("expected invalid integer");
+        } catch (CommandSpecParseException expected) {
+            Assert.assertEquals("E_ARGS_INVALID", expected.getCode());
+        }
+    }
+
+    @Test
+    public void monitorRejectsZeroInterval() {
+        try {
+            CommandSpecParser.parse(MonitorCommand.spec(), new String[] {"monitor", "A", "m", "-i", "0"});
+            Assert.fail("expected range error");
+        } catch (CommandSpecParseException expected) {
+            Assert.assertEquals("E_ARGS_RANGE", expected.getCode());
         }
     }
 }

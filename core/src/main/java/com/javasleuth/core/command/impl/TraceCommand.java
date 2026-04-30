@@ -5,8 +5,16 @@ import com.javasleuth.core.command.CancellationToken;
 import com.javasleuth.core.command.CommandContext;
 import com.javasleuth.core.command.CommandContextHolder;
 import com.javasleuth.core.command.JobManager;
+import com.javasleuth.core.command.SpecBackedCommand;
 import com.javasleuth.core.command.StreamCommand;
 import com.javasleuth.core.command.StreamSink;
+import com.javasleuth.core.command.spec.ArgumentSpec;
+import com.javasleuth.core.command.spec.CommandHelpRenderer;
+import com.javasleuth.core.command.spec.CommandSpec;
+import com.javasleuth.core.command.spec.CommandSpecParser;
+import com.javasleuth.core.command.spec.OptionSpec;
+import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.agent.runtime.BootstrapBridge;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.model.MonitoringConfig;
@@ -22,6 +30,8 @@ import com.javasleuth.bootstrap.data.TraceResult;
 import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.TraceAdviceListener;
+import com.javasleuth.foundation.security.CommandCapability;
+import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.util.LoadedClassResolver;
 import com.javasleuth.core.command.util.SleuthConditionEvaluator;
 import com.javasleuth.foundation.util.SleuthLogger;
@@ -40,7 +50,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
 
-public class TraceCommand implements StreamCommand {
+public class TraceCommand implements StreamCommand, SpecBackedCommand {
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
     private final ConfigView config;
@@ -97,100 +107,84 @@ public class TraceCommand implements StreamCommand {
         runTrace(args, sink);
     }
 
+    public static CommandSpec spec() {
+        return CommandSpec.builder("trace")
+            .description("Trace method execution call chains with timing")
+            .usage("trace <class-pattern> <method-pattern> [options]")
+            .meta(instrumentationStreamMeta())
+            .argument(ArgumentSpec.required("class-pattern"))
+            .argument(ArgumentSpec.required("method-pattern"))
+            .option(OptionSpec.integer("depth").alias("-d").alias("--depth").defaultValue(10).range(1, 1000).build())
+            .option(OptionSpec.integer("count").alias("-n").alias("--count").defaultValue(20).range(1, 100000).build())
+            .option(OptionSpec.longNumber("timeout").alias("-t").alias("--timeout").defaultValue(30L).range(1, 86400).build())
+            .option(OptionSpec.string("loader").alias("--loader").alias("--loader-id").alias("--loader-hash").build())
+            .option(OptionSpec.flag("first").alias("--first").alias("--unsafe-first").build())
+            .option(OptionSpec.string("expr").alias("--expr").build())
+            .option(OptionSpec.string("condition").alias("--condition").repeatable(true).build())
+            .option(OptionSpec.flag("bg").alias("--bg").build())
+            .option(OptionSpec.string("sample").alias("--sample").build())
+            .option(OptionSpec.string("sample-rate").alias("--sample-rate").build())
+            .example("trace com.example.* execute*")
+            .example("trace *Service* *method* -d 5 -n 50")
+            .example("trace MyClass doWork -t 60")
+            .build();
+    }
+
+    @Override
+    public CommandSpec getSpec() {
+        return spec();
+    }
+
     private String runTrace(String[] args, StreamSink sink) throws Exception {
-        if (args.length < 3) {
-            String help = getHelp();
+        if (args == null || args.length < 3) {
+            String help = CommandHelpRenderer.render(spec());
             if (sink != null) {
                 sink.error(help);
                 return "";
             }
             return help;
         }
-
-        boolean background = false;
-        Integer loaderId = null;
-        boolean allowFirstWhenAmbiguous = false;
-        String classPattern = args[1];
-        String methodPattern = args[2];
-
-        // Parse options
-        int maxDepth = 10;
-        int maxCount = 20;
-        long timeoutSeconds = 30;
-        String exprRaw = null;
-        List<String> rawConditions = new ArrayList<>();
-
-        for (int i = 3; i < args.length; i++) {
-            switch (args[i]) {
-                case "-d":
-                case "--depth":
-                    if (i + 1 < args.length) {
-                        maxDepth = Integer.parseInt(args[++i]);
-                    }
-                    break;
-                case "-n":
-                case "--count":
-                    if (i + 1 < args.length) {
-                        maxCount = Integer.parseInt(args[++i]);
-                    }
-                    break;
-                case "-t":
-                case "--timeout":
-                    if (i + 1 < args.length) {
-                        timeoutSeconds = Long.parseLong(args[++i]);
-                    }
-                    break;
-                case "--expr":
-                    if (i + 1 < args.length) {
-                        exprRaw = args[++i];
-                    }
-                    break;
-                case "--condition":
-                    if (i + 1 < args.length) {
-                        rawConditions.add(args[++i]);
-                    }
-                    break;
-                case "--sample":
-                case "--sample-rate":
-                    String sampleRemovedMsg = "ERROR: --sample/--sample-rate 已移除 (removed). "
-                        + "Trace sampling is always 1.0 (collect all).";
-                    if (sink != null) {
-                        sink.error(sampleRemovedMsg);
-                        return "";
-                    }
-                    return sampleRemovedMsg;
-                case "--bg":
-                    background = true;
-                    break;
-                case "--loader":
-                case "--loader-id":
-                case "--loader-hash":
-                    if (i + 1 < args.length) {
-                        String raw = args[++i];
-                        Integer parsed = LoadedClassResolver.parseLoaderId(raw);
-                        if (parsed == null) {
-                            String msg = "Invalid --loader value: " + raw +
-                                " (expected: bootstrap/null/0x1234/1234)";
-                            if (sink != null) {
-                                sink.error(msg);
-                                return "";
-                            }
-                            return msg;
-                        }
-                        loaderId = parsed;
-                    }
-                    break;
-                case "--first":
-                case "--unsafe-first":
-                    allowFirstWhenAmbiguous = true;
-                    break;
-                case "-h":
-                case "--help":
-                    return getHelp();
+        ParsedCommand parsed = parsedOrFallback(args);
+        if (parsed.isHelpRequested()) {
+            String help = CommandHelpRenderer.render(spec());
+            if (sink != null) {
+                sink.send(help);
+                return "";
             }
+            return help;
         }
 
-        if (background) {
+        if (parsed.stringOption("sample") != null || parsed.stringOption("sample-rate") != null) {
+            String sampleRemovedMsg = "ERROR: --sample/--sample-rate 已移除 (removed). "
+                + "Trace sampling is always 1.0 (collect all).";
+            if (sink != null) {
+                sink.error(sampleRemovedMsg);
+                return "";
+            }
+            return sampleRemovedMsg;
+        }
+
+        String classPattern = parsed.argument("class-pattern");
+        String methodPattern = parsed.argument("method-pattern");
+        int maxDepth = parsed.intOption("depth");
+        int maxCount = parsed.intOption("count");
+        long timeoutSeconds = parsed.longOption("timeout");
+        Integer loaderId = null;
+        String loaderRaw = parsed.stringOption("loader");
+        if (loaderRaw != null) {
+            loaderId = LoadedClassResolver.parseLoaderId(loaderRaw);
+            if (loaderId == null) {
+                String msg = "Invalid --loader value: " + loaderRaw + " (expected: bootstrap/null/0x1234/1234)";
+                if (sink != null) {
+                    sink.error(msg);
+                    return "";
+                }
+                return msg;
+            }
+        }
+        boolean allowFirstWhenAmbiguous = Boolean.TRUE.equals(parsed.booleanOption("first"));
+
+        if (Boolean.TRUE.equals(parsed.booleanOption("bg"))) {
             String[] jobArgs = removeFlag(args, "--bg");
             String commandLine = String.join(" ", jobArgs);
             String jobId = jobManager.submitStreamJob(
@@ -207,11 +201,23 @@ public class TraceCommand implements StreamCommand {
             return msg;
         }
 
-        List<String> expr = parseExpr(exprRaw);
-        List<SleuthConditionEvaluator.Condition> conditions = SleuthConditionEvaluator.parseConditions(rawConditions);
+        List<String> expr = parseExpr(parsed.stringOption("expr"));
+        List<SleuthConditionEvaluator.Condition> conditions = SleuthConditionEvaluator.parseConditions(parsed.stringOptionValues("condition"));
 
         return startTracing(classPattern, methodPattern, maxDepth, maxCount, timeoutSeconds, loaderId, allowFirstWhenAmbiguous,
             expr, conditions, sink);
+    }
+
+    private ParsedCommand parsedOrFallback(String[] args) {
+        CommandContext ctx = CommandContextHolder.get();
+        ParsedCommand parsed = ctx != null ? ctx.getParsedCommand() : null;
+        return parsed != null ? parsed : CommandSpecParser.parse(spec(), args);
+    }
+
+    private static CommandMeta instrumentationStreamMeta() {
+        return CommandMeta.operator(false, true)
+            .requiresBootstrap(BootstrapBridge.SPY_API)
+            .withCapability(CommandCapability.LONG_RUNNING);
     }
 
     private String startTracing(String classPattern, String methodPattern,
@@ -600,25 +606,6 @@ public class TraceCommand implements StreamCommand {
             // best-effort
         }
         return null;
-    }
-
-    private String getHelp() {
-        return "Trace command usage:\n" +
-               "  trace <class-pattern> <method-pattern> [options]\n\n" +
-               "Options:\n" +
-               "  -d, --depth <num>     Maximum trace depth (default: 10)\n" +
-               "  -n, --count <num>     Maximum number of invocations to capture (default: 20)\n" +
-               "  -t, --timeout <sec>   Timeout in seconds (default: 30)\n" +
-               "  --loader <id>         Select target ClassLoader when multiple loaded classes match\n" +
-               "  --first               Use first matched class when ambiguous (unsafe)\n" +
-               "  --expr <fields>       Output fields (comma-separated), e.g. tree,cost,thread\n" +
-               "  --condition <c>       Filter condition (lhs:op:rhs), can repeat; e.g. cost:gt:1000000\n" +
-               "  --bg                 Run in background (use jobs tail/stop)\n" +
-               "  -h, --help            Show this help\n\n" +
-               "Examples:\n" +
-               "  trace com.example.* execute*\n" +
-               "  trace *Service* *method* -d 5 -n 50\n" +
-               "  trace MyClass doWork -t 60\n";
     }
 
     private static List<String> parseExpr(String raw) {
