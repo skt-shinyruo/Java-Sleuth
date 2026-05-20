@@ -1,16 +1,17 @@
 package com.javasleuth.foundation.config;
 
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 
 /**
- * Immutable snapshot for request-level configuration consistency (optional).
+ * Immutable effective snapshot for request-level configuration consistency.
+ *
+ * <p>Layer priority matches {@link ProductionConfig}: runtime overrides, then system properties captured
+ * at config load/reload time, then file values, then defaults. This class never reads live global
+ * {@link System} properties; callers must pass any captured system layer explicitly.</p>
  */
 public final class ConfigSnapshot implements ConfigView {
-    private static final String SYS_PROP_PREFIX = "sleuth.";
-
     private final Properties baseProperties;
     private final Properties defaultProperties;
     private final Properties fileProperties;
@@ -28,7 +29,7 @@ public final class ConfigSnapshot implements ConfigView {
         this.defaultProperties = defaultProperties != null ? cloneProperties(defaultProperties) : new Properties();
         this.fileProperties = fileProperties != null ? cloneProperties(fileProperties) : new Properties();
         this.runtimeOverrides = runtimeOverrides != null ? new HashMap<>(runtimeOverrides) : new HashMap<>();
-        this.systemOverrides = systemOverrides != null ? new HashMap<>(systemOverrides) : captureSystemOverrides();
+        this.systemOverrides = systemOverrides != null ? new HashMap<>(systemOverrides) : new HashMap<>();
     }
 
     @Override
@@ -97,32 +98,6 @@ public final class ConfigSnapshot implements ConfigView {
             return ConfigOrigin.DEFAULT;
         }
         return ConfigOrigin.UNKNOWN;
-    }
-
-    private static Map<String, String> captureSystemOverrides() {
-        Map<String, String> out = new HashMap<>();
-        Properties sys = System.getProperties();
-        if (sys == null) {
-            return out;
-        }
-        for (String name : sys.stringPropertyNames()) {
-            if (name == null) {
-                continue;
-            }
-            String lower = name.toLowerCase(Locale.ROOT);
-            if (!lower.startsWith(SYS_PROP_PREFIX)) {
-                continue;
-            }
-            String k = name.substring(SYS_PROP_PREFIX.length());
-            if (k.trim().isEmpty()) {
-                continue;
-            }
-            String v = sys.getProperty(name);
-            if (v != null) {
-                out.put(k, v);
-            }
-        }
-        return out;
     }
 
     private static Properties cloneProperties(Properties src) {

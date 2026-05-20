@@ -2,6 +2,7 @@ package com.javasleuth.foundation.config;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,6 +104,104 @@ public class ConfigSemanticsTest {
         Assert.assertEquals("1", loaded2.getProperty("a"));
         Assert.assertEquals("2", loaded2.getProperty("b"));
         Assert.assertEquals("abcdef", loaded2.getProperty("security.auth.admin.password"));
+    }
+
+    @Test
+    public void productionConfigShouldResolveFromLoadedLayersAndRuntimeOnly() throws Exception {
+        String oldFile = System.getProperty(ConfigLoader.CONFIG_FILE_PROPERTY);
+        String oldPort = System.getProperty("sleuth.server.port");
+        String oldCustom = System.getProperty("sleuth.demo.custom");
+
+        File tmp = File.createTempFile("sleuth-config-layering", ".properties");
+        tmp.deleteOnExit();
+        Properties p = new Properties();
+        p.setProperty("server.port", "4567");
+        try (FileOutputStream out = new FileOutputStream(tmp)) {
+            p.store(out, "test");
+        }
+
+        try {
+            System.setProperty(ConfigLoader.CONFIG_FILE_PROPERTY, tmp.getAbsolutePath());
+            System.setProperty("sleuth.server.port", "5678");
+            System.setProperty("sleuth.demo.custom", "custom-load");
+
+            ProductionConfig config = ProductionConfig.createDefault();
+            Assert.assertEquals("5678", config.getString("server.port", "x"));
+            Assert.assertEquals(ConfigOrigin.SYSTEM_PROPERTY, config.getOrigin("server.port"));
+            Assert.assertEquals("5678", config.snapshot().getString("server.port", "x"));
+            Assert.assertEquals(ConfigOrigin.SYSTEM_PROPERTY, config.snapshot().getOrigin("server.port"));
+            Assert.assertEquals("custom-load", config.getString("demo.custom", "x"));
+            Assert.assertEquals(ConfigOrigin.SYSTEM_PROPERTY, config.getOrigin("demo.custom"));
+
+            System.setProperty("sleuth.server.port", "6789");
+            System.setProperty("sleuth.demo.custom", "custom-late");
+            Assert.assertEquals("5678", config.getString("server.port", "x"));
+            Assert.assertEquals(ConfigOrigin.SYSTEM_PROPERTY, config.getOrigin("server.port"));
+            Assert.assertEquals("5678", config.snapshot().getString("server.port", "x"));
+            Assert.assertEquals(ConfigOrigin.SYSTEM_PROPERTY, config.snapshot().getOrigin("server.port"));
+            Assert.assertEquals("custom-load", config.getString("demo.custom", "x"));
+
+            config.setRuntimeConfig("server.port", "7890", ConfigUpdateSource.COMMAND);
+            Assert.assertEquals("7890", config.getString("server.port", "x"));
+            Assert.assertEquals(ConfigOrigin.RUNTIME_OVERRIDE, config.getOrigin("server.port"));
+            Assert.assertEquals("7890", config.snapshot().getString("server.port", "x"));
+            Assert.assertEquals(ConfigOrigin.RUNTIME_OVERRIDE, config.snapshot().getOrigin("server.port"));
+
+            config.removeRuntimeConfig("server.port", ConfigUpdateSource.COMMAND);
+            Assert.assertEquals("5678", config.getString("server.port", "x"));
+            Assert.assertEquals(ConfigOrigin.SYSTEM_PROPERTY, config.getOrigin("server.port"));
+
+            System.clearProperty("sleuth.server.port");
+            System.clearProperty("sleuth.demo.custom");
+            Assert.assertEquals("5678", config.getString("server.port", "x"));
+            Assert.assertEquals(ConfigOrigin.SYSTEM_PROPERTY, config.getOrigin("server.port"));
+            Assert.assertEquals("custom-load", config.getString("demo.custom", "x"));
+            Assert.assertEquals(ConfigOrigin.SYSTEM_PROPERTY, config.getOrigin("demo.custom"));
+        } finally {
+            if (oldFile == null) {
+                System.clearProperty(ConfigLoader.CONFIG_FILE_PROPERTY);
+            } else {
+                System.setProperty(ConfigLoader.CONFIG_FILE_PROPERTY, oldFile);
+            }
+            if (oldPort == null) {
+                System.clearProperty("sleuth.server.port");
+            } else {
+                System.setProperty("sleuth.server.port", oldPort);
+            }
+            if (oldCustom == null) {
+                System.clearProperty("sleuth.demo.custom");
+            } else {
+                System.setProperty("sleuth.demo.custom", oldCustom);
+            }
+            try {
+                tmp.delete();
+            } catch (Exception ignore) {
+            }
+        }
+    }
+
+    @Test
+    public void explicitSnapshotShouldNotCaptureGlobalSystemPropertiesImplicitly() {
+        String old = System.getProperty("sleuth.snapshot.only");
+        try {
+            Properties defaults = new Properties();
+            defaults.setProperty("snapshot.only", "default");
+
+            Properties base = new Properties();
+            base.putAll(defaults);
+
+            System.setProperty("sleuth.snapshot.only", "system");
+            ConfigSnapshot snapshot = new ConfigSnapshot(base, defaults, new Properties(), new HashMap<>(), null);
+
+            Assert.assertEquals("default", snapshot.getString("snapshot.only", "x"));
+            Assert.assertEquals(ConfigOrigin.DEFAULT, snapshot.getOrigin("snapshot.only"));
+        } finally {
+            if (old == null) {
+                System.clearProperty("sleuth.snapshot.only");
+            } else {
+                System.setProperty("sleuth.snapshot.only", old);
+            }
+        }
     }
 
     @Test
@@ -244,6 +343,35 @@ public class ConfigSemanticsTest {
             try {
                 tmp.delete();
             } catch (Exception ignore) {
+            }
+        }
+    }
+
+    @Test
+    public void loaderShouldRejectForbiddenSystemPropertyWhenStrict() {
+        String oldPolicy = System.getProperty("sleuth.config.forbidden.keys.policy");
+        String oldProtocol = System.getProperty("sleuth.protocol.mode");
+
+        try {
+            System.setProperty("sleuth.config.forbidden.keys.policy", "strict");
+            System.setProperty("sleuth.protocol.mode", "framed");
+
+            try {
+                new ConfigLoader().load();
+                Assert.fail("Expected strict policy to reject forbidden system property: protocol.mode");
+            } catch (IllegalArgumentException expected) {
+                Assert.assertTrue(expected.getMessage().contains("protocol.mode"));
+            }
+        } finally {
+            if (oldPolicy == null) {
+                System.clearProperty("sleuth.config.forbidden.keys.policy");
+            } else {
+                System.setProperty("sleuth.config.forbidden.keys.policy", oldPolicy);
+            }
+            if (oldProtocol == null) {
+                System.clearProperty("sleuth.protocol.mode");
+            } else {
+                System.setProperty("sleuth.protocol.mode", oldProtocol);
             }
         }
     }

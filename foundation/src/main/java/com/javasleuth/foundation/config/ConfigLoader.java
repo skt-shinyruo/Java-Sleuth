@@ -5,8 +5,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
@@ -72,26 +74,54 @@ public final class ConfigLoader {
         effective.putAll(defaults);
         effective.putAll(fileProps);
 
-        // Load system properties overrides for known keys (still checked dynamically in ConfigView).
+        // Capture system property overrides once at load/reload time.
+        Map<String, String> systemProps = captureSystemProperties();
         for (String key : effective.stringPropertyNames()) {
-            String sysProp = System.getProperty("sleuth." + key);
+            String sysProp = systemProps.get(key);
             if (sysProp != null) {
                 effective.setProperty(key, sysProp);
             }
         }
 
-        validateForbiddenKeys(fileProps, ForbiddenKeyPolicy.fromSystemProperty());
+        validateForbiddenKeys(fileProps, systemProps, ForbiddenKeyPolicy.fromSystemProperty());
 
-        return new ConfigLoadResult(defaults, fileProps, effective, configFile, loadedFromFile);
+        return new ConfigLoadResult(defaults, fileProps, effective, systemProps, configFile, loadedFromFile);
     }
 
-    private static void validateForbiddenKeys(Properties fileProps, ForbiddenKeyPolicy policy) {
+    private static Map<String, String> captureSystemProperties() {
+        Map<String, String> out = new HashMap<>();
+        Properties sys;
+        try {
+            sys = System.getProperties();
+        } catch (SecurityException e) {
+            return out;
+        }
+        if (sys == null) {
+            return out;
+        }
+        for (String name : sys.stringPropertyNames()) {
+            if (name == null || !name.startsWith("sleuth.")) {
+                continue;
+            }
+            String key = name.substring("sleuth.".length());
+            if (key.trim().isEmpty()) {
+                continue;
+            }
+            String value = sys.getProperty(name);
+            if (value != null) {
+                out.put(key, value);
+            }
+        }
+        return out;
+    }
+
+    private static void validateForbiddenKeys(Properties fileProps, Map<String, String> systemProps, ForbiddenKeyPolicy policy) {
         if (policy == null || policy == ForbiddenKeyPolicy.OFF) {
             return;
         }
         for (String key : FORBIDDEN_KEYS) {
             boolean inFile = fileProps != null && fileProps.getProperty(key) != null;
-            boolean inSys = System.getProperty("sleuth." + key) != null;
+            boolean inSys = systemProps != null && systemProps.containsKey(key);
             if (!inFile && !inSys) {
                 continue;
             }

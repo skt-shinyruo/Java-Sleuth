@@ -1,5 +1,7 @@
 package com.javasleuth.bootstrap.agent;
 
+import com.javasleuth.foundation.config.ConfigOrigin;
+import com.javasleuth.foundation.config.ProductionConfig;
 import java.io.Closeable;
 import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -120,6 +122,40 @@ public class AgentLifecycleTest {
                 System.clearProperty(TEST_KEY);
             } else {
                 System.setProperty(TEST_KEY, original);
+            }
+        }
+    }
+
+    @Test
+    public void configCreatedDuringAttachKeepsCapturedAgentArgsAfterSyspropRollback() {
+        String oldPort = System.getProperty("sleuth.server.port");
+        long sessionId = 0;
+        FakeCloseableLoader loader = new FakeCloseableLoader();
+        try {
+            System.clearProperty("sleuth.server.port");
+            sessionId = AgentLifecycle.tryBeginAttach();
+            Assert.assertTrue("Expected a non-zero session id", sessionId > 0);
+            Assert.assertTrue(AgentLifecycle.applyAgentArgsIfAbsent(sessionId, "server.port=4567"));
+            Assert.assertTrue(AgentLifecycle.commitIsolatedClassLoader(sessionId, loader));
+
+            ProductionConfig config = ProductionConfig.createDefault();
+            Assert.assertEquals("4567", config.getString("server.port", "x"));
+            Assert.assertEquals(ConfigOrigin.SYSTEM_PROPERTY, config.getOrigin("server.port"));
+
+            AgentLifecycle.detachBestEffort(loader);
+            Assert.assertNull(System.getProperty("sleuth.server.port"));
+            Assert.assertEquals("4567", config.getString("server.port", "x"));
+            Assert.assertEquals(ConfigOrigin.SYSTEM_PROPERTY, config.getOrigin("server.port"));
+            Assert.assertEquals("4567", config.snapshot().getString("server.port", "x"));
+            Assert.assertEquals(ConfigOrigin.SYSTEM_PROPERTY, config.snapshot().getOrigin("server.port"));
+        } finally {
+            if (sessionId > 0) {
+                AgentLifecycle.failBestEffort(sessionId, loader);
+            }
+            if (oldPort == null) {
+                System.clearProperty("sleuth.server.port");
+            } else {
+                System.setProperty("sleuth.server.port", oldPort);
             }
         }
     }

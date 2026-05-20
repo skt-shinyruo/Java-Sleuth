@@ -1,6 +1,7 @@
 package com.javasleuth.bootstrap.monitor;
 
 import com.javasleuth.core.command.impl.SysPropCommand;
+import com.javasleuth.core.command.impl.ConfigCommand;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.test.SleuthTestState;
 import org.junit.After;
@@ -19,7 +20,21 @@ public class SysPropMonitoringStoreSyncTest {
     }
 
     @Test
-    public void syspropSetMonitoringKeysShouldSyncBootstrapMonitorConfigStore() throws Exception {
+    public void runtimeConfigSetMonitoringKeysShouldSyncBootstrapMonitorConfigStore() throws Exception {
+        SleuthTestState.resetAll("SysPropMonitoringStoreSyncTest_before");
+        BootstrapMonitorConfigStore.clear();
+
+        ProductionConfig config = ProductionConfig.createDefault();
+        ConfigCommand cmd = new ConfigCommand(config);
+        cmd.execute(new String[] {"config", "set", "monitoring.watch.drop.on.full", "false"});
+        cmd.execute(new String[] {"config", "set", "monitoring.trace.drop.on.full", "false"});
+
+        Assert.assertEquals(Boolean.FALSE, BootstrapMonitorConfigStore.getWatchDropOnFull());
+        Assert.assertEquals(Boolean.FALSE, BootstrapMonitorConfigStore.getTraceDropOnFull());
+    }
+
+    @Test
+    public void syspropSetMonitoringKeysShouldNotMutateRuntimeConfigView() throws Exception {
         SleuthTestState.resetAll("SysPropMonitoringStoreSyncTest_before");
         BootstrapMonitorConfigStore.clear();
 
@@ -28,8 +43,10 @@ public class SysPropMonitoringStoreSyncTest {
         cmd.execute(new String[] {"sysprop", "set", "sleuth.monitoring.watch.drop.on.full", "false"});
         cmd.execute(new String[] {"sysprop", "set", "sleuth.monitoring.trace.drop.on.full", "false"});
 
-        Assert.assertEquals(Boolean.FALSE, BootstrapMonitorConfigStore.getWatchDropOnFull());
-        Assert.assertEquals(Boolean.FALSE, BootstrapMonitorConfigStore.getTraceDropOnFull());
+        Assert.assertEquals(true, config.getBoolean("monitoring.watch.drop.on.full", true));
+        Assert.assertEquals(true, config.getBoolean("monitoring.trace.drop.on.full", true));
+        Assert.assertNull(BootstrapMonitorConfigStore.getWatchDropOnFull());
+        Assert.assertNull(BootstrapMonitorConfigStore.getTraceDropOnFull());
     }
 
     private static void restoreSysProp(String key, String oldValue) {

@@ -11,8 +11,6 @@ import java.util.Map;
 import java.util.Properties;
 
 public class ProductionConfig implements ConfigView, MutableConfig {
-    private static final String SYS_PROP_PREFIX = "sleuth.";
-
     private volatile LoadedConfigState state;
 
     private final SensitiveKeyMasker masker;
@@ -24,6 +22,7 @@ public class ProductionConfig implements ConfigView, MutableConfig {
         private final Properties properties;
         private final Properties defaultProperties;
         private final Properties fileProperties;
+        private final Map<String, String> systemProperties;
         private final File configFile;
         private final boolean loadedFromFile;
 
@@ -35,6 +34,7 @@ public class ProductionConfig implements ConfigView, MutableConfig {
             this.defaultProperties = defaults != null ? defaults : new Properties();
             this.fileProperties = file != null ? file : new Properties();
             this.properties = effective != null ? effective : new Properties();
+            this.systemProperties = loaded != null ? loaded.getSystemProperties() : java.util.Collections.emptyMap();
             this.configFile = loaded != null ? loaded.getConfigFile() : null;
             this.loadedFromFile = loaded != null && loaded.isLoadedFromFile();
         }
@@ -100,12 +100,12 @@ public class ProductionConfig implements ConfigView, MutableConfig {
         if (runtimeValue != null) {
             return runtimeValue;
         }
-        String sysProp = System.getProperty(SYS_PROP_PREFIX + key);
-        if (sysProp != null) {
-            return sysProp;
-        }
         if (s == null) {
             return defaultValue;
+        }
+        String systemValue = s.systemProperties.get(key);
+        if (systemValue != null) {
+            return systemValue;
         }
         return s.properties.getProperty(key, defaultValue);
     }
@@ -190,7 +190,7 @@ public class ProductionConfig implements ConfigView, MutableConfig {
         if (runtimeStore.get(key) != null) {
             return ConfigOrigin.RUNTIME_OVERRIDE;
         }
-        if (System.getProperty(SYS_PROP_PREFIX + key) != null) {
+        if (s != null && s.systemProperties.containsKey(key)) {
             return ConfigOrigin.SYSTEM_PROPERTY;
         }
         if (s != null && s.fileProperties.getProperty(key) != null) {
@@ -220,7 +220,8 @@ public class ProductionConfig implements ConfigView, MutableConfig {
         Properties effective = s != null ? s.properties : new Properties();
         Properties defaults = s != null ? s.defaultProperties : new Properties();
         Properties file = s != null ? s.fileProperties : new Properties();
-        return new ConfigSnapshot(effective, defaults, file, runtimeStore.snapshot(), null);
+        Map<String, String> system = s != null ? s.systemProperties : java.util.Collections.emptyMap();
+        return new ConfigSnapshot(effective, defaults, file, runtimeStore.snapshot(), system);
     }
 
     public <T> T read(ConfigKey<T> key) {
