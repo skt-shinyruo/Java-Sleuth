@@ -157,7 +157,6 @@ public class CommandProcessorTest {
 
     @Test
     public void testAuthorizationManagerDynamicPermissionRegistration() {
-        String oldAnon = System.getProperty("sleuth.security.anonymous.viewer");
         ProductionConfig config = ProductionConfig.createDefault();
         try (
             AuditLogger auditLogger = new AuditLogger(config);
@@ -166,7 +165,7 @@ public class CommandProcessorTest {
             AuthorizationManager authorizationManager = new AuthorizationManager(config, auditLogger, authenticationManager);
 
             try {
-                System.setProperty("sleuth.security.anonymous.viewer", "true");
+                config.setRuntimeConfig("security.anonymous.viewer", "true");
 
                 AuthenticationManager.AuthenticationResult session =
                     authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test-client");
@@ -177,15 +176,13 @@ public class CommandProcessorTest {
                     authorizationManager.authorize(session.getSessionId(), "plugin_cmd", new String[]{"plugin_cmd"}, meta);
                 assertTrue(result.isAllowed());
             } finally {
-                setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
+                config.clearRuntimeConfig();
             }
         }
     }
 
     @Test
     public void testAuthorizationManagerDangerousCommandUpgradesToAdmin() {
-        String oldAnon = System.getProperty("sleuth.security.anonymous.viewer");
-        String oldAuthz = System.getProperty("sleuth.security.authorization.enabled");
         ProductionConfig config = ProductionConfig.createDefault();
         try (
             AuditLogger auditLogger = new AuditLogger(config);
@@ -194,8 +191,8 @@ public class CommandProcessorTest {
             AuthorizationManager authorizationManager = new AuthorizationManager(config, auditLogger, authenticationManager);
 
             try {
-                System.setProperty("sleuth.security.anonymous.viewer", "true");
-                System.setProperty("sleuth.security.authorization.enabled", "true");
+                config.setRuntimeConfig("security.anonymous.viewer", "true");
+                config.setRuntimeConfig("security.authorization.enabled", "true");
 
                 AuthenticationManager.AuthenticationResult session =
                     authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test-client");
@@ -206,8 +203,7 @@ public class CommandProcessorTest {
                     authorizationManager.authorize(session.getSessionId(), "dangerous_plugin_cmd", new String[]{"dangerous_plugin_cmd"}, meta);
                 assertFalse(result.isAllowed());
             } finally {
-                setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
-                setOrClearProperty("sleuth.security.authorization.enabled", oldAuthz);
+                config.clearRuntimeConfig();
             }
         }
     }
