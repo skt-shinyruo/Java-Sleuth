@@ -115,7 +115,7 @@
 1. 先看当前会话角色：
    - `session`
    - `perm`
-2. 默认匿名连接是 viewer，只能执行只读诊断命令。若需要 operator/admin 权限，启用口令认证（`security.auth.password.enabled=true`）并设置对应密码后，用：
+2. 默认匿名 viewer 已关闭，未认证连接不会获得会话；如需本地开发只读匿名访问，显式设置 `security.anonymous.viewer=true`。若需要 operator/admin 权限，启用口令认证（`security.auth.password.enabled=true`）并设置对应密码后，用：
    - `auth <username> <password>`
    - headless/restart 可用 Launcher 参数：`--auth-user <username> --auth-pass <password>`
 

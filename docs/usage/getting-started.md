@@ -35,9 +35,9 @@
 
 - Java-Sleuth 命令服务端为 **loopback-only**：请保持默认回环绑定（`127.0.0.1` / `localhost` / `::1`）；配置为非回环地址（如 `0.0.0.0` / 局域网 IP）会拒绝启动
 - 不要通过端口转发/代理将该端口暴露到公网或局域网
-- 默认启用 RBAC：未认证本地连接会获得匿名 viewer 会话，只能执行只读诊断命令；operator/admin/危险命令需要认证
-- 如需执行高权限命令：设置 `security.auth.password.enabled=true` 和对应 `security.auth.*.password`（或环境变量 `SLEUTH_AUTH_*_PASSWORD`），交互中执行 `auth <username> <password>`；headless/重启场景可用 Launcher `--auth-user <user> --auth-pass <pass>`
-- 本地开发可显式 opt-out：`security.authorization.enabled=false`、`security.dangerous.confirm.enabled=false`、`security.impact.high.confirm.enabled=false`，不要在多人共享主机或生产环境使用
+- 默认启用 RBAC 且匿名 viewer 默认关闭：未认证本地连接不会获得会话；如需只读匿名访问，必须显式设置 `security.anonymous.viewer=true`
+- 如需认证访问：设置 `security.auth.password.enabled=true` 和对应 `security.auth.*.password`（或环境变量 `SLEUTH_AUTH_*_PASSWORD`），交互中执行 `auth <username> <password>`；headless/重启场景可用 Launcher `--auth-user <user> --auth-pass <pass>`
+- 本地开发可显式 opt-out：`security.anonymous.viewer=true`、`security.authorization.enabled=false`、`security.dangerous.confirm.enabled=false`、`security.impact.high.confirm.enabled=false`，不要在多人共享主机或生产环境使用
 - 配置分层、运行时覆盖与 `-Dsleuth.*` 迁移说明：见 `docs/usage/configuration.md`
 - 生产部署、端口、安全与运维：见 `docs/ops/production-deployment-guide.md` 与 `docs/ops/operations-runbook.md`
 

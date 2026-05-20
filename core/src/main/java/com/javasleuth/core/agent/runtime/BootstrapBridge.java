@@ -14,12 +14,6 @@ package com.javasleuth.core.agent.runtime;
 public final class BootstrapBridge {
     public static final String AGENT_LIFECYCLE = "com.javasleuth.bootstrap.agent.AgentLifecycle";
     public static final String SPY_API = "com.javasleuth.bootstrap.spy.SleuthSpyAPI";
-    public static final String TRACE_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.TraceInterceptor";
-    public static final String WATCH_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.WatchInterceptor";
-    public static final String MONITOR_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.MonitorInterceptor";
-    public static final String TT_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.TtInterceptor";
-    public static final String STACK_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.StackInterceptor";
-    public static final String VMTOOL_INTERCEPTOR = "com.javasleuth.bootstrap.monitor.VmToolInterceptor";
     public static final int MIN_CONTRACT_VERSION = 1;
     public static final int MAX_CONTRACT_VERSION = 1;
 

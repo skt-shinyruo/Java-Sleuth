@@ -68,10 +68,10 @@ public final class EnhancementSessionManager {
             session.registerClientCleanup();
             return session;
         } catch (Exception e) {
-            closeOrRollback(request, enhanced, listenerRegistered, session);
+            closeOrRollback(request, enhanced, listenerRegistered, session, e);
             throw e;
         } catch (Error e) {
-            closeOrRollback(request, enhanced, listenerRegistered, session);
+            closeOrRollback(request, enhanced, listenerRegistered, session, e);
             throw e;
         }
     }
@@ -80,10 +80,20 @@ public final class EnhancementSessionManager {
         if (sessionId == null || sessionId.trim().isEmpty()) {
             return false;
         }
-        if (registry != null && registry.close(sessionId, reason)) {
-            return true;
+        String id = sessionId.trim();
+        if (registry != null) {
+            EnhancementSessionCloseSummary summary = registry.closeOneSummary(id, reason);
+            if (summary.getFailed() > 0) {
+                List<Throwable> failures = new ArrayList<Throwable>();
+                String failure = summary.getFailureMessages().get(id);
+                failures.add(new IllegalStateException(failure != null ? failure : "registry close failed"));
+                throw closeFailure(id, failures);
+            }
+            if (summary.getClosed() > 0) {
+                return true;
+            }
         }
-        ManagedSession session = activeSessions.get(sessionId.trim());
+        ManagedSession session = activeSessions.get(id);
         return session != null && session.closeInternal(reason);
     }
 
@@ -135,7 +145,7 @@ public final class EnhancementSessionManager {
         return out;
     }
 
-    private void rollback(List<Target> enhanced) {
+    private void rollback(List<Target> enhanced, List<Throwable> failures) {
         if (enhanced == null || enhanced.isEmpty()) {
             return;
         }
@@ -143,47 +153,99 @@ public final class EnhancementSessionManager {
             if (target == null) {
                 continue;
             }
-            removeEnhancer(target);
-            retransformBestEffort(target.clazz);
+            removeEnhancer(target, failures);
+            retransformBestEffort(target.clazz, failures);
         }
     }
 
-    private void removeEnhancer(Target target) {
+    private void removeEnhancer(Target target, List<Throwable> failures) {
         try {
             transformer.removeEnhancer(target.clazz, target.enhancer);
-        } catch (Exception ignore) {
-            // best-effort rollback
+        } catch (Exception e) {
+            recordCleanupFailure(failures, "remove enhancer", e);
         }
     }
 
-    private void retransformBestEffort(Class<?> clazz) {
+    private void retransformBestEffort(Class<?> clazz, List<Throwable> failures) {
         if (clazz == null) {
             return;
         }
         try {
             instrumentation.retransformClasses(clazz);
-        } catch (Exception ignore) {
-            // best-effort rollback
+        } catch (Exception e) {
+            recordCleanupFailure(failures, "retransform class", e);
         }
     }
 
-    private void unregisterListener(String sessionId) {
+    private void unregisterListener(String sessionId, List<Throwable> failures) {
         try {
             spyDispatcher.unregister(sessionId);
-        } catch (Exception ignore) {
-            // best-effort cleanup
+        } catch (Exception e) {
+            recordCleanupFailure(failures, "unregister listener", e);
         }
     }
 
-    private void closeOrRollback(Request request, List<Target> enhanced, boolean listenerRegistered, ManagedSession session) {
+    private void closeOrRollback(
+        Request request,
+        List<Target> enhanced,
+        boolean listenerRegistered,
+        ManagedSession session,
+        Throwable originalFailure
+    ) {
+        List<Throwable> failures = new ArrayList<Throwable>();
         if (session != null) {
-            session.closeInternal("open_failed");
+            try {
+                session.closeInternal("open_failed");
+            } catch (RuntimeException e) {
+                failures.add(e);
+            }
+            addSuppressed(originalFailure, failures);
             return;
         }
-        rollback(enhanced);
+        rollback(enhanced, failures);
         if (listenerRegistered) {
-            unregisterListener(request.sessionId);
+            unregisterListener(request.sessionId, failures);
         }
+        addSuppressed(originalFailure, failures);
+    }
+
+    private static void recordCleanupFailure(List<Throwable> failures, String step, Exception failure) {
+        if (failure == null) {
+            return;
+        }
+        if (failures != null) {
+            failures.add(new IllegalStateException(step + " failed: " + failure.getMessage(), failure));
+        }
+        SleuthLogger.warn("Enhancement session cleanup " + step + " failed: " + failure.getMessage(), failure);
+    }
+
+    private static void addSuppressed(Throwable target, List<Throwable> failures) {
+        if (target == null || failures == null || failures.isEmpty()) {
+            return;
+        }
+        for (Throwable failure : failures) {
+            if (failure != null && failure != target) {
+                target.addSuppressed(failure);
+            }
+        }
+    }
+
+    private static RuntimeException closeFailure(String sessionId, List<Throwable> failures) {
+        StringBuilder message = new StringBuilder("enhancement session ");
+        message.append(sessionId).append(" cleanup failed");
+        if (failures != null && !failures.isEmpty()) {
+            message.append(": ");
+            for (int i = 0; i < failures.size(); i++) {
+                if (i > 0) {
+                    message.append("; ");
+                }
+                Throwable failure = failures.get(i);
+                message.append(failure.getMessage());
+            }
+        }
+        IllegalStateException out = new IllegalStateException(message.toString());
+        addSuppressed(out, failures);
+        return out;
     }
 
     public final class ManagedSession implements AutoCloseable {
@@ -236,25 +298,29 @@ public final class EnhancementSessionManager {
                 return false;
             }
             activeSessions.remove(request.sessionId, this);
-            runOnClose(reason);
+            List<Throwable> failures = new ArrayList<Throwable>();
+            runOnClose(reason, failures);
             for (Target target : enhanced) {
-                removeEnhancer(target);
-                retransformBestEffort(target.clazz);
+                removeEnhancer(target, failures);
+                retransformBestEffort(target.clazz, failures);
             }
-            unregisterListener(request.sessionId);
+            unregisterListener(request.sessionId, failures);
             ClientSession current = clientSession;
             String key = cleanupKey;
             if (current != null && key != null) {
                 try {
                     current.removeCleanup(key);
-                } catch (Exception ignore) {
-                    // best-effort cleanup
+                } catch (Exception e) {
+                    recordCleanupFailure(failures, "remove client cleanup", e);
                 }
+            }
+            if (!failures.isEmpty()) {
+                throw closeFailure(request.sessionId, failures);
             }
             return true;
         }
 
-        private void runOnClose(String reason) {
+        private void runOnClose(String reason, List<Throwable> failures) {
             if (request.onClose == null) {
                 return;
             }
@@ -262,6 +328,7 @@ public final class EnhancementSessionManager {
                 request.onClose.close(reason);
             } catch (Exception e) {
                 SleuthLogger.warn("Error closing enhancement session " + request.sessionId + ": " + e.getMessage(), e);
+                recordCleanupFailure(failures, "close hook", e);
             }
         }
     }

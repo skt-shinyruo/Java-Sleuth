@@ -24,6 +24,7 @@ public class ProtocolClientIntegrationTest {
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", String.valueOf(allocatePort()));
             config.setRuntimeConfig("protocol.streaming.enabled", "true");
+            config.setRuntimeConfig("security.anonymous.viewer", "true");
 
             Thread serverThread = new Thread(processor::start, "test-cp-start");
             serverThread.setDaemon(true);
@@ -54,7 +55,7 @@ public class ProtocolClientIntegrationTest {
     }
 
     @Test
-    public void testDefaultAnonymousViewerCannotRunOperatorCommandOverBinary() throws Exception {
+    public void testDefaultAnonymousViewerCannotRunAnyCommandOverBinary() throws Exception {
         CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(ProductionConfig.createDefault()));
         ProductionConfig config = processor.getConfig();
         try {
@@ -79,7 +80,48 @@ public class ProtocolClientIntegrationTest {
                 8192
             )) {
                 CommandResult version = client.execute("version", false, output);
-                Assert.assertTrue("Expected default viewer session to run version", version.isOk());
+                Assert.assertFalse("Expected unauthenticated default client to be denied", version.isOk());
+                Assert.assertTrue(
+                    "Expected auth-required error, got: " + output.getStderr(),
+                    output.getStderr().toLowerCase().contains("authentication required")
+                );
+            } finally {
+                processor.shutdownGracefully(3);
+                serverThread.join(2000);
+            }
+        } finally {
+            config.clearRuntimeConfig();
+        }
+    }
+
+    @Test
+    public void testExplicitAnonymousViewerCanRunViewerButNotOperatorCommandOverBinary() throws Exception {
+        CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(ProductionConfig.createDefault()));
+        ProductionConfig config = processor.getConfig();
+        try {
+            config.clearRuntimeConfig();
+            config.setRuntimeConfig("server.bind.address", "127.0.0.1");
+            config.setRuntimeConfig("server.port", String.valueOf(allocatePort()));
+            config.setRuntimeConfig("protocol.streaming.enabled", "true");
+            config.setRuntimeConfig("security.anonymous.viewer", "true");
+
+            Thread serverThread = new Thread(processor::start, "test-cp-start-authz-anonymous-viewer");
+            serverThread.setDaemon(true);
+            serverThread.start();
+
+            int port = waitForBoundPort(processor, 3, TimeUnit.SECONDS);
+
+            CapturingOutput output = new CapturingOutput();
+            try (ProtocolClient client = ProtocolClient.connectWithRetry(
+                "127.0.0.1",
+                port,
+                "binary",
+                true,
+                1024 * 1024,
+                8192
+            )) {
+                CommandResult version = client.execute("version", false, output);
+                Assert.assertTrue("Expected explicit anonymous viewer session to run version", version.isOk());
 
                 CapturingOutput denied = new CapturingOutput();
                 CommandResult getstatic = client.execute("getstatic java.lang.System out", false, denied);
@@ -151,6 +193,7 @@ public class ProtocolClientIntegrationTest {
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", String.valueOf(allocatePort()));
             config.setRuntimeConfig("protocol.streaming.enabled", "false");
+            config.setRuntimeConfig("security.anonymous.viewer", "true");
 
             Thread serverThread = new Thread(processor::start, "test-cp-start-streaming-disabled");
             serverThread.setDaemon(true);
@@ -194,6 +237,7 @@ public class ProtocolClientIntegrationTest {
             config.setRuntimeConfig("server.bind.address", "127.0.0.1");
             config.setRuntimeConfig("server.port", String.valueOf(allocatePort()));
             config.setRuntimeConfig("protocol.streaming.enabled", "true");
+            config.setRuntimeConfig("security.anonymous.viewer", "true");
 
             Thread serverThread = new Thread(() -> {
                 try {

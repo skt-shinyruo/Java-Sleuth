@@ -158,16 +158,15 @@ public class CommandProcessorTest {
     @Test
     public void testAuthorizationManagerDynamicPermissionRegistration() {
         String oldAnon = System.getProperty("sleuth.security.anonymous.viewer");
-        ProductionConfig config = ProductionConfig.createDefault();
-        try (
-            AuditLogger auditLogger = new AuditLogger(config);
-            AuthenticationManager authenticationManager = new AuthenticationManager(config, auditLogger)
-        ) {
-            AuthorizationManager authorizationManager = new AuthorizationManager(config, auditLogger, authenticationManager);
+        try {
+            System.setProperty("sleuth.security.anonymous.viewer", "true");
 
-            try {
-                System.setProperty("sleuth.security.anonymous.viewer", "true");
-
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (
+                AuditLogger auditLogger = new AuditLogger(config);
+                AuthenticationManager authenticationManager = new AuthenticationManager(config, auditLogger)
+            ) {
+                AuthorizationManager authorizationManager = new AuthorizationManager(config, auditLogger, authenticationManager);
                 AuthenticationManager.AuthenticationResult session =
                     authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test-client");
                 assertTrue(session.isSuccess());
@@ -176,9 +175,9 @@ public class CommandProcessorTest {
                 AuthorizationManager.AuthorizationResult result =
                     authorizationManager.authorize(session.getSessionId(), "plugin_cmd", new String[]{"plugin_cmd"}, meta);
                 assertTrue(result.isAllowed());
-            } finally {
-                setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
             }
+        } finally {
+            setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
         }
     }
 
@@ -186,17 +185,16 @@ public class CommandProcessorTest {
     public void testAuthorizationManagerDangerousCommandUpgradesToAdmin() {
         String oldAnon = System.getProperty("sleuth.security.anonymous.viewer");
         String oldAuthz = System.getProperty("sleuth.security.authorization.enabled");
-        ProductionConfig config = ProductionConfig.createDefault();
-        try (
-            AuditLogger auditLogger = new AuditLogger(config);
-            AuthenticationManager authenticationManager = new AuthenticationManager(config, auditLogger)
-        ) {
-            AuthorizationManager authorizationManager = new AuthorizationManager(config, auditLogger, authenticationManager);
+        try {
+            System.setProperty("sleuth.security.anonymous.viewer", "true");
+            System.setProperty("sleuth.security.authorization.enabled", "true");
 
-            try {
-                System.setProperty("sleuth.security.anonymous.viewer", "true");
-                System.setProperty("sleuth.security.authorization.enabled", "true");
-
+            ProductionConfig config = ProductionConfig.createDefault();
+            try (
+                AuditLogger auditLogger = new AuditLogger(config);
+                AuthenticationManager authenticationManager = new AuthenticationManager(config, auditLogger)
+            ) {
+                AuthorizationManager authorizationManager = new AuthorizationManager(config, auditLogger, authenticationManager);
                 AuthenticationManager.AuthenticationResult session =
                     authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test-client");
                 assertTrue(session.isSuccess());
@@ -205,10 +203,10 @@ public class CommandProcessorTest {
                 AuthorizationManager.AuthorizationResult result =
                     authorizationManager.authorize(session.getSessionId(), "dangerous_plugin_cmd", new String[]{"dangerous_plugin_cmd"}, meta);
                 assertFalse(result.isAllowed());
-            } finally {
-                setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
-                setOrClearProperty("sleuth.security.authorization.enabled", oldAuthz);
             }
+        } finally {
+            setOrClearProperty("sleuth.security.anonymous.viewer", oldAnon);
+            setOrClearProperty("sleuth.security.authorization.enabled", oldAuthz);
         }
     }
 

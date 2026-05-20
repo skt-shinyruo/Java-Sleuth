@@ -40,10 +40,10 @@ public final class AgentGlobalState {
     public static void resetBootstrapAttachStateBestEffort() {
         clearBootstrapMonitorConfigStoreBestEffort();
         clearVmToolInterceptorBestEffort();
-        resetInterceptorsBestEffort();
+        resetLegacyInterceptorsBestEffort();
     }
 
-    public static void resetInterceptorsBestEffort() {
+    public static void resetLegacyInterceptorsBestEffort() {
         try {
             WatchInterceptor.resetForDetach();
         } catch (Exception ignore) {

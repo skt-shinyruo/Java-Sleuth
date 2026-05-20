@@ -16,7 +16,7 @@ import java.util.Set;
  *
  * <p>Simplified behavior:
  * - Stop all background jobs (best-effort)
- * - Clear all interceptors
+ * - Clear compatibility-only bootstrap interceptor state
  * - Remove all enhancers from transformer
  * - Retransform previously enhanced classes to restore original bytecode
  */
@@ -83,8 +83,8 @@ public class ResetCommand implements Command {
             // best-effort
         }
 
-        // Clear interceptor sessions first to reduce further event publishing.
-        AgentGlobalState.resetInterceptorsBestEffort();
+        // Compatibility cleanup only; active listener sessions are closed through the unified registry above.
+        AgentGlobalState.resetLegacyInterceptorsBestEffort();
 
         transformer.removeAllEnhancers();
 

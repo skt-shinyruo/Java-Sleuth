@@ -107,7 +107,7 @@ quit         - Exit the Java-Sleuth session
 
 > 重要提示：命令服务端为 **loopback-only**（仅允许 `127.0.0.1` / `localhost` / `::1`），配置为非回环地址会拒绝启动。
 > 不要通过端口转发/代理将该端口暴露到不受信任网络。
-> 默认启用 RBAC（`security.authorization.enabled=true`）：未认证本地连接仅获得匿名 viewer 会话，可执行只读诊断命令；operator/admin/危险命令需要显式认证。需要管理员/操作员权限时，启用 `security.auth.password.enabled=true` 并设置 `security.auth.*.password`（或环境变量 `SLEUTH_AUTH_*_PASSWORD`），再用 `auth <user> <password>` 或 Launcher `--auth-user/--auth-pass` 认证。
+> 默认启用 RBAC（`security.authorization.enabled=true`）且匿名 viewer 默认关闭（`security.anonymous.viewer=false`）：未认证本地连接不会获得会话。如需本地开发只读匿名访问，必须显式设置 `security.anonymous.viewer=true`；operator/admin/危险命令需要显式认证。需要管理员/操作员权限时，启用 `security.auth.password.enabled=true` 并设置 `security.auth.*.password`（或环境变量 `SLEUTH_AUTH_*_PASSWORD`），再用 `auth <user> <password>` 或 Launcher `--auth-user/--auth-pass` 认证。
 
 ## 安全与协议说明（2026-03-05 更新）
 
@@ -118,7 +118,7 @@ quit         - Exit the Java-Sleuth session
 - HMAC 模式已移除：`security.mode`、`security.hmac.*`、`security.bootstrap.hmac.*` 为不支持 key（加载配置时会 fail-fast）
 - 默认权限边界：
   - RBAC 默认开启：`security.authorization.enabled=true`
-  - 匿名 viewer 默认开启：`security.anonymous.viewer=true`，用于保持本地只读 attach 可用
+  - 匿名 viewer 默认关闭：`security.anonymous.viewer=false`；如需本地开发只读匿名访问，必须显式开启
   - 口令认证默认关闭：`security.auth.password.enabled=false`；如需执行 operator/admin 命令，显式开启并配置密码
 - 危险命令二次确认：默认开启（`security.dangerous.confirm.enabled=true`），首次执行会返回一次性 `--confirm <token>`
 - 高影响（impact=HIGH）治理：默认开启二次确认（`security.impact.high.confirm.enabled=true`）并限制并发（`security.impact.high.concurrent.limit=1`）

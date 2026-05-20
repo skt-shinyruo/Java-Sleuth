@@ -127,6 +127,109 @@ public class EnhancementSessionManagerTest {
         Assert.assertEquals(2, instrumentation.retransformCalls.size());
     }
 
+    @Test
+    public void closeAllReportsSessionCleanupFailuresAndContinuesCleanup() throws Exception {
+        RecordingInstrumentation instrumentation = new RecordingInstrumentation();
+        instrumentation.failOnSecondRetransform = true;
+        EnhancementSessionRegistry registry = new EnhancementSessionRegistry();
+        FailingUnregisterDispatcher dispatcher = new FailingUnregisterDispatcher();
+        FailingRemoveTransformer transformer = new FailingRemoveTransformer();
+        EnhancementSessionManager manager = new EnhancementSessionManager(instrumentation.proxy(), transformer, dispatcher, registry);
+
+        manager.open(
+            EnhancementSessionManager.Request.builder("watch-failing-close", EnhancementSessionKind.WATCH)
+                .withListenerKind(SleuthSpyDispatcher.ListenerKind.WATCH)
+                .withListener(new NoopListener())
+                .withClassPattern(ManagerTarget.class.getName())
+                .withMethodPattern("work")
+                .withTarget(ManagerTarget.class, new NoopEnhancer("watch"))
+                .build()
+        );
+
+        EnhancementSessionCloseSummary summary = registry.closeAll("shutdown");
+
+        Assert.assertEquals(1, summary.getTotal());
+        Assert.assertEquals(0, summary.getClosed());
+        Assert.assertEquals(1, summary.getFailed());
+        String failure = summary.getFailureMessages().get("watch-failing-close");
+        Assert.assertTrue(failure, failure.contains("remove enhancer boom"));
+        Assert.assertTrue(failure, failure.contains("retransform cleanup boom"));
+        Assert.assertTrue(failure, failure.contains("unregister boom"));
+        Assert.assertEquals(0, manager.activeCount());
+        Assert.assertEquals(2, instrumentation.retransformCalls.size());
+        Assert.assertEquals(1, transformer.removeAttempts);
+        Assert.assertEquals(1, dispatcher.unregisterAttempts);
+    }
+
+    @Test
+    public void directCloseReportsCleanupFailuresAndRemovesRegistryEntry() throws Exception {
+        RecordingInstrumentation instrumentation = new RecordingInstrumentation();
+        instrumentation.failOnSecondRetransform = true;
+        EnhancementSessionRegistry registry = new EnhancementSessionRegistry();
+        FailingUnregisterDispatcher dispatcher = new FailingUnregisterDispatcher();
+        FailingRemoveTransformer transformer = new FailingRemoveTransformer();
+        EnhancementSessionManager manager = new EnhancementSessionManager(instrumentation.proxy(), transformer, dispatcher, registry);
+
+        EnhancementSessionManager.ManagedSession session = manager.open(
+            EnhancementSessionManager.Request.builder("trace-direct-close-failure", EnhancementSessionKind.TRACE)
+                .withListenerKind(SleuthSpyDispatcher.ListenerKind.TRACE)
+                .withListener(new NoopListener())
+                .withClassPattern(ManagerTarget.class.getName())
+                .withMethodPattern("work")
+                .withTarget(ManagerTarget.class, new NoopEnhancer("trace"))
+                .build()
+        );
+
+        try {
+            session.close("completed");
+            Assert.fail("Expected direct close cleanup failure");
+        } catch (IllegalStateException expected) {
+            Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("remove enhancer boom"));
+            Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("retransform cleanup boom"));
+            Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("unregister boom"));
+        }
+
+        Assert.assertEquals(0, manager.activeCount());
+        Assert.assertEquals(0, registry.size());
+        Assert.assertEquals(2, instrumentation.retransformCalls.size());
+        Assert.assertEquals(1, transformer.removeAttempts);
+        Assert.assertEquals(1, dispatcher.unregisterAttempts);
+    }
+
+    @Test
+    public void openFailureAddsRollbackFailuresAsSuppressedOnOriginalFailure() throws Exception {
+        RecordingInstrumentation instrumentation = new RecordingInstrumentation();
+        instrumentation.failOnRetransform = true;
+        EnhancementSessionRegistry registry = new EnhancementSessionRegistry();
+        FailingUnregisterDispatcher dispatcher = new FailingUnregisterDispatcher();
+        FailingRemoveTransformer transformer = new FailingRemoveTransformer();
+        EnhancementSessionManager manager = new EnhancementSessionManager(instrumentation.proxy(), transformer, dispatcher, registry);
+
+        try {
+            manager.open(
+                EnhancementSessionManager.Request.builder("stack-failing-open", EnhancementSessionKind.STACK)
+                    .withListenerKind(SleuthSpyDispatcher.ListenerKind.STACK)
+                    .withListener(new NoopListener())
+                    .withClassPattern(ManagerTarget.class.getName())
+                    .withMethodPattern("work")
+                    .withTarget(ManagerTarget.class, new NoopEnhancer("stack"))
+                    .build()
+            );
+            Assert.fail("Expected retransform failure");
+        } catch (IllegalStateException expected) {
+            Assert.assertTrue(expected.getMessage().contains("boom"));
+            Assert.assertTrue(containsSuppressed(expected, "remove enhancer boom"));
+            Assert.assertTrue(containsSuppressed(expected, "retransform cleanup boom"));
+            Assert.assertTrue(containsSuppressed(expected, "unregister boom"));
+        }
+
+        Assert.assertEquals(0, manager.activeCount());
+        Assert.assertEquals(0, registry.size());
+        Assert.assertEquals(2, instrumentation.retransformCalls.size());
+        Assert.assertEquals(1, transformer.removeAttempts);
+        Assert.assertEquals(1, dispatcher.unregisterAttempts);
+    }
+
     public static class ManagerTarget {
         public void work() {
         }
@@ -153,9 +256,45 @@ public class EnhancementSessionManagerTest {
         }
     }
 
+    private static boolean containsSuppressed(Throwable throwable, String messagePart) {
+        for (Throwable suppressed : throwable.getSuppressed()) {
+            if (suppressed != null && suppressed.getMessage() != null && suppressed.getMessage().contains(messagePart)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final class FailingRemoveTransformer extends SleuthClassFileTransformer {
+        private int removeAttempts;
+
+        private FailingRemoveTransformer() {
+            super(ProductionConfig.createDefault());
+        }
+
+        @Override
+        public void removeEnhancer(Class<?> targetClass, ClassEnhancer enhancer) {
+            removeAttempts++;
+            super.removeEnhancer(targetClass, enhancer);
+            throw new IllegalStateException("remove enhancer boom");
+        }
+    }
+
+    private static final class FailingUnregisterDispatcher extends SleuthSpyDispatcher {
+        private int unregisterAttempts;
+
+        @Override
+        public void unregister(String listenerId) {
+            unregisterAttempts++;
+            super.unregister(listenerId);
+            throw new IllegalStateException("unregister boom");
+        }
+    }
+
     private static final class RecordingInstrumentation {
         private final List<Class<?>> retransformCalls = new ArrayList<>();
         private boolean failOnRetransform;
+        private boolean failOnSecondRetransform;
 
         private Instrumentation proxy() {
             return (Instrumentation) Proxy.newProxyInstance(
@@ -171,7 +310,13 @@ public class EnhancementSessionManagerTest {
                             }
                         }
                         if (failOnRetransform) {
+                            if (retransformCalls.size() >= 2) {
+                                throw new IllegalStateException("retransform cleanup boom");
+                            }
                             throw new IllegalStateException("boom");
+                        }
+                        if (failOnSecondRetransform && retransformCalls.size() >= 2) {
+                            throw new IllegalStateException("retransform cleanup boom");
                         }
                         return null;
                     }

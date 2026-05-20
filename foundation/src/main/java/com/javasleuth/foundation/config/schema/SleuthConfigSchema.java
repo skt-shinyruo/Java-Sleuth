@@ -350,7 +350,7 @@ public final class SleuthConfigSchema {
 
     public static final ConfigKey<Boolean> SECURITY_ANONYMOUS_VIEWER = register(
         ConfigKey.booleanKey("security.anonymous.viewer")
-            .defaultValue(Boolean.TRUE)
+            .defaultValue(Boolean.FALSE)
             .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
             .build()
     );
