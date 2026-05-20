@@ -1,7 +1,5 @@
 package com.javasleuth.core.command.impl;
 
-import com.javasleuth.bootstrap.data.TraceResult;
-import com.javasleuth.bootstrap.data.WatchResult;
 import com.javasleuth.bootstrap.monitor.TraceInterceptor;
 import com.javasleuth.bootstrap.monitor.WatchInterceptor;
 import com.javasleuth.core.monitoring.MetricsCollector;
@@ -9,7 +7,6 @@ import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.util.PerformanceOptimizer;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Proxy;
-import java.util.concurrent.LinkedBlockingQueue;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -82,16 +79,13 @@ public class StatusCommandListenerModeTest {
     }
 
     @Test
-    public void statusDoesNotPromoteLegacyRegistriesToPrimaryListenerCounts_whenDispatcherIsUnavailable() throws Exception {
+    public void statusDoesNotExposeLegacyRegistryCounts_whenDispatcherIsUnavailable() throws Exception {
         WatchInterceptor.unregisterAllWatches();
         TraceInterceptor.unregisterAllTraces();
 
         ProductionConfig config = ProductionConfig.createDefault();
         MetricsCollector metricsCollector = new MetricsCollector(config);
         try (PerformanceOptimizer performanceOptimizer = new PerformanceOptimizer(config)) {
-            WatchInterceptor.registerWatch("legacy-watch", new LinkedBlockingQueue<WatchResult>(4));
-            TraceInterceptor.registerTrace("legacy-trace", new LinkedBlockingQueue<TraceResult>(4));
-
             StatusCommand command = new StatusCommand(
                 fakeInstrumentation(),
                 metricsCollector,
@@ -104,10 +98,13 @@ public class StatusCommandListenerModeTest {
             String status = command.execute(new String[]{"status"});
 
             Assert.assertTrue(status.contains("Listener Runtime Installed: false"));
-            Assert.assertTrue(status.contains("Active Watches: unavailable"));
-            Assert.assertTrue(status.contains("Active Traces: unavailable"));
-            Assert.assertTrue(status.contains("Legacy Active Watches: 1"));
-            Assert.assertTrue(status.contains("Legacy Active Traces: 1"));
+            Assert.assertTrue(status.contains("Watch Listeners: unavailable"));
+            Assert.assertTrue(status.contains("Trace Listeners: unavailable"));
+            Assert.assertFalse(status.contains("Active Watches:"));
+            Assert.assertFalse(status.contains("Active Traces:"));
+            Assert.assertFalse(status.contains("Legacy Active Watches:"));
+            Assert.assertFalse(status.contains("Legacy Active Traces:"));
+            Assert.assertFalse(status.contains("Legacy Watch Published:"));
         } finally {
             WatchInterceptor.unregisterAllWatches();
             TraceInterceptor.unregisterAllTraces();

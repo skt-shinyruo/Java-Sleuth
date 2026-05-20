@@ -1,7 +1,9 @@
 package com.javasleuth.core.enhancement;
 
 import com.javasleuth.bootstrap.data.WatchResult;
-import com.javasleuth.bootstrap.monitor.WatchInterceptor;
+import com.javasleuth.bootstrap.spy.SleuthSpyAPI;
+import com.javasleuth.core.spy.SleuthSpyDispatcher;
+import com.javasleuth.core.spy.listener.WatchAdviceListener;
 import com.javasleuth.core.compiler.MemoryJavaCompiler;
 import java.lang.reflect.Method;
 import java.util.Map;
@@ -25,7 +27,10 @@ public class WatchEnhancerCaptureFlagsTest {
     public void watchEnhancer_emitsEntryEvenWhenNoParamsCapture() throws Exception {
         String watchId = "watch-test-no-params";
         BlockingQueue<WatchResult> q = new LinkedBlockingQueue<>(10);
-        WatchInterceptor.registerWatch(watchId, q);
+        SleuthSpyDispatcher dispatcher = new SleuthSpyDispatcher();
+        dispatcher.register(watchId, SleuthSpyDispatcher.ListenerKind.WATCH, new WatchAdviceListener(watchId, q, false));
+        SleuthSpyAPI.setSpy(dispatcher);
+        SleuthSpyAPI.init();
         try {
             String className = "test.SampleWatchNoParams";
             String src =
@@ -60,7 +65,8 @@ public class WatchEnhancerCaptureFlagsTest {
 
             Assert.assertNull("expected only 2 events", q.poll(200, TimeUnit.MILLISECONDS));
         } finally {
-            WatchInterceptor.unregisterWatch(watchId);
+            dispatcher.clear();
+            SleuthSpyAPI.destroy();
         }
     }
 
@@ -68,7 +74,10 @@ public class WatchEnhancerCaptureFlagsTest {
     public void watchEnhancer_emitsExitEvenWhenNoReturnCapture() throws Exception {
         String watchId = "watch-test-no-return";
         BlockingQueue<WatchResult> q = new LinkedBlockingQueue<>(10);
-        WatchInterceptor.registerWatch(watchId, q);
+        SleuthSpyDispatcher dispatcher = new SleuthSpyDispatcher();
+        dispatcher.register(watchId, SleuthSpyDispatcher.ListenerKind.WATCH, new WatchAdviceListener(watchId, q, false));
+        SleuthSpyAPI.setSpy(dispatcher);
+        SleuthSpyAPI.init();
         try {
             String className = "test.SampleWatchNoReturn";
             String src =
@@ -102,7 +111,8 @@ public class WatchEnhancerCaptureFlagsTest {
 
             Assert.assertNull("expected only 2 events", q.poll(200, TimeUnit.MILLISECONDS));
         } finally {
-            WatchInterceptor.unregisterWatch(watchId);
+            dispatcher.clear();
+            SleuthSpyAPI.destroy();
         }
     }
 

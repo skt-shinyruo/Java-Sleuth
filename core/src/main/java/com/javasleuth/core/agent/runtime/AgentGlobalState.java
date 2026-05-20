@@ -9,9 +9,10 @@ import com.javasleuth.bootstrap.monitor.VmToolInterceptor;
 import com.javasleuth.bootstrap.monitor.WatchInterceptor;
 
 /**
- * 全局静态状态收口点（bridge-only）。
+ * 全局静态状态收口点（bootstrap compatibility only）。
  *
- * <p>该类用于集中管理 bootstrap 侧 interceptor 的静态注册表清理逻辑，避免在多处散落调用，降低
+ * <p>核心 watch/trace/monitor/stack/tt/vmtool track 状态由 {@code SleuthSpyDispatcher} 及
+ * core 侧 session registry 持有。这里仅清理仍保留在 bootstrap 层的兼容性状态，避免
  * detach→re-attach/stop→restart/测试场景的隐性泄漏风险。</p>
  *
  * <p>注意：此处清理是 best-effort，不应影响 shutdown/reset 主流程。</p>
