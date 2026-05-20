@@ -4,27 +4,22 @@ import com.javasleuth.core.command.CancellationToken;
 import com.javasleuth.core.command.CommandContext;
 import com.javasleuth.core.command.CommandContextHolder;
 import com.javasleuth.core.command.StreamSink;
-import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.model.MonitoringConfig;
 import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.bootstrap.data.TtRecord;
-import com.javasleuth.core.enhancement.ClassEnhancer;
-import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
+import com.javasleuth.core.enhancement.session.EnhancementSessionManager;
 import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.TtEnhancer;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.TtAdviceListener;
-import com.javasleuth.foundation.util.LoadedClassResolver;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
-import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -34,8 +29,7 @@ public final class TtRecordEngine {
     private final ConfigView config;
     private final TtRecordStore recordStore;
     private final SleuthSpyDispatcher spyDispatcher;
-    private final EnhancementSessionRegistry sessionRegistry;
-    private final ConcurrentHashMap<String, TtSession> activeSessions = new ConcurrentHashMap<>();
+    private final EnhancementSessionManager sessionManager;
 
     public TtRecordEngine(
         Instrumentation instrumentation,
@@ -63,7 +57,7 @@ public final class TtRecordEngine {
         }
         this.recordStore = recordStore;
         this.spyDispatcher = spyDispatcher;
-        this.sessionRegistry = sessionRegistry;
+        this.sessionManager = new EnhancementSessionManager(instrumentation, transformer, spyDispatcher, sessionRegistry);
     }
 
     public String record(
@@ -93,59 +87,19 @@ public final class TtRecordEngine {
         MonitoringConfig monitoring = SleuthConfigParser.parse(configSnapshot()).monitoring();
         BlockingQueue<TtRecord> q = new LinkedBlockingQueue<>(monitoring.getWatchQueueCapacity());
 
-        ClassEnhancer enhancer = new TtEnhancer(target.getName(), methodPattern, null, ttId);
-        boolean enhancerAdded = false;
-        try {
-            boolean dropOnFull = monitoring.isWatchDropOnFull();
-            spyDispatcher.register(
-                ttId,
-                SleuthSpyDispatcher.ListenerKind.TT,
-                new TtAdviceListener(ttId, q, recordStore, dropOnFull)
-            );
-
-            transformer.addEnhancer(target, enhancer);
-            enhancerAdded = true;
-
-            instrumentation.retransformClasses(target);
-
-            TtSession session = new TtSession(ttId, target, methodPattern, q, enhancer);
-            activeSessions.put(ttId, session);
-            registerEnhancementSession(ttId, classPattern, methodPattern, target, maxCount, timeoutSeconds);
-        } catch (Exception e) {
-            // Rollback partial state best-effort.
-            activeSessions.remove(ttId);
-            if (enhancerAdded) {
-                try {
-                    transformer.removeEnhancer(target, enhancer);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-                try {
-                    instrumentation.retransformClasses(target);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-            }
-            try {
-                spyDispatcher.unregister(ttId);
-            } catch (Exception ignore) {
-                // ignore
-            }
-            throw e;
-        }
-
-        ClientSession clientSession = null;
-        String cleanupKey = null;
-        try {
-            CommandContext ctx = CommandContextHolder.get();
-            clientSession = ctx != null ? ctx.getClientSession() : null;
-            if (clientSession != null) {
-                cleanupKey = "tt:" + ttId;
-                clientSession.registerCleanup(cleanupKey, () -> closeTtSession(ttId, "client_cleanup"));
-            }
-        } catch (Exception ignore) {
-            // ignore
-        }
+        TtEnhancer enhancer = new TtEnhancer(target.getName(), methodPattern, null, ttId);
+        boolean dropOnFull = monitoring.isWatchDropOnFull();
+        EnhancementSessionManager.ManagedSession session = sessionManager.open(
+            EnhancementSessionManager.Request.builder(ttId, EnhancementSessionKind.TT)
+                .withCommandName("tt")
+                .withListenerKind(SleuthSpyDispatcher.ListenerKind.TT)
+                .withListener(new TtAdviceListener(ttId, q, recordStore, dropOnFull))
+                .withClassPattern(classPattern)
+                .withMethodPattern(methodPattern)
+                .withTarget(target, enhancer)
+                .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds)
+                .build()
+        );
 
         StringBuilder banner = new StringBuilder();
         banner.append("Started tt record ").append(target.getName()).append(".").append(methodPattern).append("\n");
@@ -163,7 +117,7 @@ public final class TtRecordEngine {
         CancellationToken token = currentCancellationToken();
 
         try {
-            while (recorded < maxCount && !token.isCancelled()) {
+            while (recorded < maxCount && !token.isCancelled() && !session.isClosed()) {
                 long remaining = timeoutMs - (System.currentTimeMillis() - startMs);
                 if (remaining <= 0) {
                     appendOrSend(out, sink, "\nTT timeout reached");
@@ -182,20 +136,16 @@ public final class TtRecordEngine {
                 if (token.isCancelled()) {
                     break;
                 }
+                if (session.isClosed()) {
+                    break;
+                }
                 if (r != null) {
                     recorded++;
                     appendOrSend(out, sink, TtFormatter.formatRecordLine(r, recorded));
                 }
             }
         } finally {
-            closeTtSession(ttId, "completed");
-            if (clientSession != null && cleanupKey != null) {
-                try {
-                    clientSession.removeCleanup(cleanupKey);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-            }
+            session.close("completed");
         }
 
         String summary = "TT completed. totalRecords=" + recorded;
@@ -212,64 +162,7 @@ public final class TtRecordEngine {
     }
 
     public boolean stop(String ttId) {
-        return closeTtSession(ttId, "stop");
-    }
-
-    private boolean closeTtSession(String ttId, String reason) {
-        if (sessionRegistry != null && sessionRegistry.close(ttId, reason)) {
-            return true;
-        }
-        return stopInternal(ttId);
-    }
-
-    private boolean stopInternal(String ttId) {
-        TtSession session = activeSessions.remove(ttId);
-        if (session == null) {
-            try {
-                spyDispatcher.unregister(ttId);
-            } catch (Exception ignore) {
-                // ignore
-            }
-            return false;
-        }
-        try {
-            transformer.removeEnhancer(session.target, session.enhancer);
-            instrumentation.retransformClasses(session.target);
-        } catch (Exception ignored) {
-            // best-effort
-        } finally {
-            try {
-                spyDispatcher.unregister(ttId);
-            } catch (Exception ignore) {
-                // ignore
-            }
-        }
-        return true;
-    }
-
-    private void registerEnhancementSession(String ttId,
-                                            String classPattern,
-                                            String methodPattern,
-                                            Class<?> target,
-                                            int maxCount,
-                                            long timeoutSeconds) {
-        if (sessionRegistry == null) {
-            return;
-        }
-        CommandContext ctx = CommandContextHolder.get();
-        EnhancementSessionDescriptor.Builder builder = EnhancementSessionDescriptor
-            .builder(ttId, EnhancementSessionKind.TT)
-            .withCommandName("tt")
-            .withClassPattern(classPattern)
-            .withMethodPattern(methodPattern)
-            .withTargetClassNames(Collections.singletonList(target.getName()))
-            .withLoaderIds(Collections.singletonList(Integer.valueOf(LoadedClassResolver.loaderId(target.getClassLoader()))))
-            .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds);
-        if (ctx != null) {
-            builder.withClientId(ctx.getClientId())
-                .withClientSessionId(ctx.getSessionId());
-        }
-        sessionRegistry.register(builder.build(), reason -> stopInternal(ttId));
+        return sessionManager.close(ttId, "stop");
     }
 
     private void appendOrSend(StringBuilder buf, StreamSink sink, String text) {
@@ -285,25 +178,4 @@ public final class TtRecordEngine {
         return ctx != null ? ctx.getCancellationToken() : CancellationToken.NONE;
     }
 
-    private static final class TtSession {
-        private final String ttId;
-        private final Class<?> target;
-        private final String methodPattern;
-        private final BlockingQueue<TtRecord> queue;
-        private final ClassEnhancer enhancer;
-
-        private TtSession(
-            String ttId,
-            Class<?> target,
-            String methodPattern,
-            BlockingQueue<TtRecord> queue,
-            ClassEnhancer enhancer
-        ) {
-            this.ttId = ttId;
-            this.target = target;
-            this.methodPattern = methodPattern;
-            this.queue = queue;
-            this.enhancer = enhancer;
-        }
-    }
 }

@@ -407,6 +407,30 @@ public final class ProtocolClient implements AutoCloseable {
         }
     }
 
+    public CommandResult authenticate(String username, String password, ProtocolOutput output) {
+        if (username == null || username.trim().isEmpty()) {
+            return CommandResult.error("Auth username is empty");
+        }
+        if (password == null || password.trim().isEmpty()) {
+            return CommandResult.error("Auth password is empty");
+        }
+
+        CapturingOutput capture = new CapturingOutput(output);
+        CommandResult result = execute(
+            "auth " + quoteCommandArg(username) + " " + quoteCommandArg(password),
+            false,
+            capture
+        );
+        if (result == null || !result.isOk()) {
+            return result != null ? result : CommandResult.error("Authentication command failed");
+        }
+        if (capture.getStdout().toLowerCase(java.util.Locale.ROOT).contains("authenticated as")) {
+            return CommandResult.ok(false);
+        }
+        String message = firstNonBlank(capture.getStderr(), capture.getStdout(), "authentication failed");
+        return CommandResult.error(message);
+    }
+
     @Override
     public void close() {
         closeQuietly(socket);
@@ -427,5 +451,92 @@ public final class ProtocolClient implements AutoCloseable {
         byte[] bytes = new byte[12];
         NONCE_RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private static String quoteCommandArg(String value) {
+        if (value == null) {
+            return "\"\"";
+        }
+        String v = value.trim();
+        if (v.isEmpty()) {
+            return "\"\"";
+        }
+        if (isBareCommandArg(v)) {
+            return v;
+        }
+        return "\"" + v.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    private static boolean isBareCommandArg(String value) {
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isWhitespace(c) || c == '"' || c == '\\') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String firstNonBlank(String a, String b, String fallback) {
+        if (a != null && !a.trim().isEmpty()) {
+            return a.trim();
+        }
+        if (b != null && !b.trim().isEmpty()) {
+            return b.trim();
+        }
+        return fallback;
+    }
+
+    private static final class CapturingOutput implements ProtocolOutput {
+        private final ProtocolOutput delegate;
+        private final StringBuilder stdout = new StringBuilder();
+        private final StringBuilder stderr = new StringBuilder();
+
+        private CapturingOutput(ProtocolOutput delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void onStdoutLine(String line) {
+            stdout.append(line).append('\n');
+            if (delegate != null) {
+                delegate.onStdoutLine(line);
+            }
+        }
+
+        @Override
+        public void onStderrLine(String line) {
+            stderr.append(line).append('\n');
+            if (delegate != null) {
+                delegate.onStderrLine(line);
+            }
+        }
+
+        @Override
+        public void onStdoutChunk(String chunk) {
+            stdout.append(chunk);
+            if (delegate != null) {
+                delegate.onStdoutChunk(chunk);
+            }
+        }
+
+        @Override
+        public void onStderrChunk(String chunk) {
+            stderr.append(chunk);
+            if (delegate != null) {
+                delegate.onStderrChunk(chunk);
+            }
+        }
+
+        private String getStdout() {
+            return stdout.toString();
+        }
+
+        private String getStderr() {
+            return stderr.toString();
+        }
     }
 }

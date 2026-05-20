@@ -82,7 +82,7 @@ public final class SleuthAgent {
                 return;
             }
 
-            CrossClassLoaderFacade.BootstrapContractCheck contract = CrossClassLoaderFacade.verifyBootstrapContract();
+            CrossClassLoaderFacade.ContractCheck contract = CrossClassLoaderFacade.verifyBootstrapContract();
             if (contract == null || !contract.isOk()) {
                 String message = contract != null ? contract.userMessage() : "Bootstrap bridge contract check failed";
                 System.err.println(message);

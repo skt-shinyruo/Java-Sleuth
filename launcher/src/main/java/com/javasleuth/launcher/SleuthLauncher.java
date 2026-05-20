@@ -17,6 +17,7 @@ import com.javasleuth.launcher.cli.LaunchMode;
 import com.javasleuth.launcher.cli.LauncherArgs;
 import com.javasleuth.launcher.client.ConnectHostResolver;
 import com.javasleuth.launcher.client.ConsoleProtocolOutput;
+import com.javasleuth.launcher.client.CommandResult;
 import com.javasleuth.launcher.client.ProtocolClient;
 import com.javasleuth.launcher.client.ProtocolOutput;
 import com.javasleuth.launcher.jvm.AttachJvmDiscovery;
@@ -162,7 +163,8 @@ public class SleuthLauncher {
                 return null;
             }
             try {
-                return connectWithRetry(cfg, CONNECT_OVERALL_TIMEOUT_MS);
+                ProtocolClient client = connectWithRetry(cfg, CONNECT_OVERALL_TIMEOUT_MS);
+                return authenticateIfConfigured(client, parsed, output) ? client : null;
             } catch (IOException e) {
                 if (output != null) {
                     output.onStderrLine("Failed to connect to agent: " + e.getMessage());
@@ -185,7 +187,8 @@ public class SleuthLauncher {
             int remaining = (int) Math.min(Integer.MAX_VALUE, Math.max(0, deadline - System.currentTimeMillis()));
             int connectBudget = Math.max(1000, Math.min(5000, remaining));
             try {
-                return connectWithRetry(cfg, connectBudget);
+                ProtocolClient client = connectWithRetry(cfg, connectBudget);
+                return authenticateIfConfigured(client, parsed, output) ? client : null;
             } catch (IOException ignored) {
                 // Possibly still shutting down / lifecycle gate not released yet.
             }
@@ -223,6 +226,41 @@ public class SleuthLauncher {
             5000,
             15000
         );
+    }
+
+    private static boolean authenticateIfConfigured(ProtocolClient client, LauncherArgs parsed, ProtocolOutput output) {
+        if (client == null || parsed == null || parsed.getAuthUser() == null || parsed.getAuthPass() == null) {
+            return true;
+        }
+
+        CapturingProtocolOutput capture = new CapturingProtocolOutput(null);
+        CommandResult result = client.authenticate(parsed.getAuthUser(), parsed.getAuthPass(), capture);
+        if (result != null && result.isOk()) {
+            return true;
+        }
+
+        if (output != null) {
+            String message = result != null && result.getErrorMessage() != null
+                ? result.getErrorMessage()
+                : firstNonBlank(capture.getStderr(), capture.getStdout(), "authentication failed");
+            output.onStderrLine("Authentication failed: " + message);
+        }
+        try {
+            client.close();
+        } catch (Exception ignore) {
+            // ignore
+        }
+        return false;
+    }
+
+    private static String firstNonBlank(String a, String b, String fallback) {
+        if (a != null && !a.trim().isEmpty()) {
+            return a.trim();
+        }
+        if (b != null && !b.trim().isEmpty()) {
+            return b.trim();
+        }
+        return fallback;
     }
 
     private static int runHeadless(LauncherArgs parsed, ProtocolClient client, ProtocolOutput output) {

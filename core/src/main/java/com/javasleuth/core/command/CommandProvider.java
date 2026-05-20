@@ -7,22 +7,23 @@ import java.util.Collections;
 import java.util.Map;
 
 /**
- * 命令提供者（用于内建命令与插件命令扩展）。
+ * 命令提供者（core 内部 provider 与历史插件兼容接口）。
  *
- * <p>兼容性约束（对插件作者）：</p>
+ * <p>外部插件应优先实现 {@link com.javasleuth.core.command.spi.RestrictedCommandProvider}。
+ * 该历史接口会继续用于内置命令和 unsafe legacy bridge，但外部插件不会再通过它获得
+ * Instrumentation、transformer、auth manager 等 core 内部对象。</p>
+ *
+ * <p>兼容性约束（对历史插件作者）：</p>
  * <ul>
- *   <li>该接口属于 Java-Sleuth 的“插件 API 面”，应尽量保持向后兼容。</li>
+ *   <li>该接口仍保持二进制兼容，但不再是推荐的 public extension API。</li>
  *   <li>新增能力优先通过 {@code default} 方法扩展，避免破坏既有实现。</li>
- *   <li>插件建议以固定版本的 Java-Sleuth 进行编译与发布，并在升级时做兼容性验证。</li>
+ *   <li>插件迁移到 restricted SPI 后，只能注册命令，不能直接操作 core 内部服务。</li>
  * </ul>
  */
 public interface CommandProvider {
     String getName();
 
     default CommandProviderInfo getInfo() {
-        if ("builtin".equalsIgnoreCase(getName())) {
-            return CommandProviderInfo.builtin(getName(), Collections.<String>emptySet());
-        }
         return CommandProviderInfo.legacy(getName());
     }
 

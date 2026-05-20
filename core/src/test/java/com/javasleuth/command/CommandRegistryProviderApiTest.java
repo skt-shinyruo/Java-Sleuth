@@ -1,8 +1,12 @@
 package com.javasleuth.core.command;
 
 import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.foundation.security.AuditLogger;
 import com.javasleuth.foundation.security.CommandMeta;
+import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -53,10 +57,10 @@ public class CommandRegistryProviderApiTest {
     }
 
     @Test
-    public void descriptorProvider_receivesAttachScopeContext() throws Exception {
+    public void externalDescriptorProvider_receivesRestrictedContext() throws Exception {
         ProductionConfig config = ProductionConfig.createDefault();
         try (AuditLogger auditLogger = new AuditLogger(config)) {
-            final CommandProviderContext context = minimalContext(config, auditLogger);
+            final CommandProviderContext context = privilegedContext(config, auditLogger);
             final AtomicReference<CommandProviderContext> seen = new AtomicReference<>();
 
             CommandProvider provider = new CommandProvider() {
@@ -83,8 +87,61 @@ public class CommandRegistryProviderApiTest {
                 context
             );
 
-            Assert.assertSame(context, seen.get());
+            Assert.assertNotSame(context, seen.get());
+            Assert.assertSame(config, seen.get().getConfig());
+            Assert.assertSame(auditLogger, seen.get().getAuditLogger());
+            Assert.assertNull(seen.get().getInstrumentation());
+            Assert.assertNull(seen.get().getTransformer());
+            Assert.assertNull(seen.get().getSpyDispatcher());
+            Assert.assertNull(seen.get().getAuthenticationManager());
+            Assert.assertNull(seen.get().getDangerousConfirm());
+            Assert.assertNull(seen.get().getJobManager());
+            Assert.assertNull(seen.get().getVmToolSessionRegistry());
+            Assert.assertNull(seen.get().getEnhancementSessionRegistry());
             Assert.assertNotNull(registry.getEntry("descriptor"));
+        }
+    }
+
+    @Test
+    public void builtinDescriptorProvider_receivesAttachScopeContext() throws Exception {
+        ProductionConfig config = ProductionConfig.createDefault();
+        try (AuditLogger auditLogger = new AuditLogger(config)) {
+            final CommandProviderContext context = privilegedContext(config, auditLogger);
+            final AtomicReference<CommandProviderContext> seen = new AtomicReference<>();
+
+            CommandProvider provider = new TestBuiltinProvider() {
+                @Override
+                public String getName() {
+                    return "builtin";
+                }
+
+                @Override
+                public CommandProviderInfo getInfo() {
+                    return CommandProviderInfo.builtin("builtin", Collections.singletonList("core"));
+                }
+
+                @Override
+                public Collection<CommandDescriptor> getCommandDescriptors(CommandProviderContext providerContext) {
+                    seen.set(providerContext);
+                    return Collections.singletonList(
+                        CommandDescriptor.of("builtin-descriptor", fixedCommand("builtin-output"), CommandMeta.viewer(true, false))
+                    );
+                }
+            };
+
+            new CommandRegistry(
+                config,
+                null,
+                auditLogger,
+                Collections.singletonList(provider),
+                null,
+                context
+            );
+
+            Assert.assertSame(context, seen.get());
+            Assert.assertNotNull(seen.get().getInstrumentation());
+            Assert.assertNotNull(seen.get().getTransformer());
+            Assert.assertNotNull(seen.get().getSpyDispatcher());
         }
     }
 
@@ -92,7 +149,7 @@ public class CommandRegistryProviderApiTest {
     public void builtinDescriptorWithoutMeta_isRejected() throws Exception {
         ProductionConfig config = ProductionConfig.createDefault();
         try (AuditLogger auditLogger = new AuditLogger(config)) {
-            CommandProvider provider = new CommandProvider() {
+            CommandProvider provider = new TestBuiltinProvider() {
                 @Override
                 public String getName() {
                     return "builtin";
@@ -215,6 +272,81 @@ public class CommandRegistryProviderApiTest {
         }
     }
 
+    @Test
+    public void externalProviderCannotClaimBuiltinNamespace() throws Exception {
+        ProductionConfig config = ProductionConfig.createDefault();
+        try (AuditLogger auditLogger = new AuditLogger(config)) {
+            CommandProvider provider = pluginProvider(
+                "reserved-provider",
+                CommandProviderInfo.plugin(
+                    "reserved-provider",
+                    "builtin",
+                    "1",
+                    Collections.singletonList("commands"),
+                    true
+                ),
+                "reserved",
+                "reserved-output"
+            );
+
+            CommandRegistry registry = new CommandRegistry(
+                config,
+                null,
+                auditLogger,
+                Collections.singletonList(provider),
+                null,
+                minimalContext(config, auditLogger)
+            );
+
+            Assert.assertNull(registry.getEntry("builtin:reserved"));
+            Assert.assertNotNull(registry.getEntry("reserved-provider:reserved"));
+            Assert.assertEquals("reserved-provider", registry.getEntry("reserved").getNamespace());
+        }
+    }
+
+    @Test
+    public void conflictStrategy_defaultsToBuiltinForUnqualifiedCommandNames() throws Exception {
+        ProductionConfig config = ProductionConfig.createDefault();
+        try (AuditLogger auditLogger = new AuditLogger(config)) {
+            CommandRegistry registry = new CommandRegistry(
+                config,
+                null,
+                auditLogger,
+                Arrays.asList(
+                    builtinProvider("builtin-provider", "dup", "builtin-output"),
+                    pluginProvider("plugin-provider", CommandProviderInfo.plugin("plugin-provider", "plugin", "1", Collections.singletonList("commands"), true), "dup", "plugin-output")
+                ),
+                null,
+                minimalContext(config, auditLogger)
+            );
+
+            Assert.assertEquals("builtin-output", registry.getEntry("dup").getCommand().execute(new String[]{"dup"}));
+            Assert.assertEquals("plugin-output", registry.getEntry("plugin:dup").getCommand().execute(new String[]{"dup"}));
+        }
+    }
+
+    @Test
+    public void conflictStrategy_preferPluginKeepsExternalUnqualifiedCommandName() throws Exception {
+        ProductionConfig config = ProductionConfig.createDefault();
+        config.setRuntimeConfig("plugins.conflict.strategy", "prefer-plugin");
+        try (AuditLogger auditLogger = new AuditLogger(config)) {
+            CommandRegistry registry = new CommandRegistry(
+                config,
+                null,
+                auditLogger,
+                Arrays.asList(
+                    builtinProvider("builtin-provider", "dup", "builtin-output"),
+                    pluginProvider("plugin-provider", CommandProviderInfo.plugin("plugin-provider", "plugin", "1", Collections.singletonList("commands"), true), "dup", "plugin-output")
+                ),
+                null,
+                minimalContext(config, auditLogger)
+            );
+
+            Assert.assertEquals("plugin-output", registry.getEntry("dup").getCommand().execute(new String[]{"dup"}));
+            Assert.assertEquals("plugin-output", registry.getEntry("plugin:dup").getCommand().execute(new String[]{"dup"}));
+        }
+    }
+
     private static CommandProviderContext minimalContext(ProductionConfig config, AuditLogger auditLogger) {
         return new CommandProviderContext(
             null,
@@ -232,6 +364,72 @@ public class CommandRegistryProviderApiTest {
         );
     }
 
+    private static CommandProviderContext privilegedContext(ProductionConfig config, AuditLogger auditLogger) {
+        return new CommandProviderContext(
+            fakeInstrumentation(),
+            new SleuthClassFileTransformer(config),
+            null,
+            config,
+            auditLogger,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            new SleuthSpyDispatcher()
+        );
+    }
+
+    private static CommandProvider builtinProvider(final String name, final String commandName, final String output) {
+        return new TestBuiltinProvider() {
+            @Override
+            public String getName() {
+                return name;
+            }
+
+            @Override
+            public Collection<CommandDescriptor> getCommandDescriptors(CommandProviderContext providerContext) {
+                return Collections.singletonList(
+                    CommandDescriptor.of(commandName, fixedCommand(output), CommandMeta.viewer(true, false))
+                );
+            }
+        };
+    }
+
+    private static CommandProvider pluginProvider(
+        final String name,
+        final CommandProviderInfo info,
+        final String commandName,
+        final String output
+    ) {
+        return new CommandProvider() {
+            @Override
+            public String getName() {
+                return name;
+            }
+
+            @Override
+            public CommandProviderInfo getInfo() {
+                return info;
+            }
+
+            @Override
+            public Collection<CommandDescriptor> getCommandDescriptors(CommandProviderContext providerContext) {
+                return Collections.singletonList(
+                    CommandDescriptor.of(commandName, fixedCommand(output), CommandMeta.viewer(true, false))
+                );
+            }
+        };
+    }
+
+    private abstract static class TestBuiltinProvider implements CommandProvider, InternalCommandProvider {
+        @Override
+        public CommandProviderInfo getInfo() {
+            return CommandProviderInfo.builtin(getName(), Collections.singletonList("test"));
+        }
+    }
+
     private static Command fixedCommand(final String output) {
         return new Command() {
             @Override
@@ -244,5 +442,31 @@ public class CommandRegistryProviderApiTest {
                 return output;
             }
         };
+    }
+
+    private static Instrumentation fakeInstrumentation() {
+        return (Instrumentation) Proxy.newProxyInstance(
+            Instrumentation.class.getClassLoader(),
+            new Class<?>[] {Instrumentation.class},
+            (proxy, method, args) -> {
+                Class<?> returnType = method.getReturnType();
+                if (returnType == Void.TYPE) {
+                    return null;
+                }
+                if (returnType == Boolean.TYPE) {
+                    return false;
+                }
+                if (returnType == Integer.TYPE) {
+                    return 0;
+                }
+                if (returnType == Long.TYPE) {
+                    return 0L;
+                }
+                if (returnType.isArray()) {
+                    return java.lang.reflect.Array.newInstance(returnType.getComponentType(), 0);
+                }
+                return null;
+            }
+        );
     }
 }

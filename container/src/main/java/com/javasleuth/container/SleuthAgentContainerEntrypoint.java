@@ -20,6 +20,10 @@ public final class SleuthAgentContainerEntrypoint {
 
     private SleuthAgentContainerEntrypoint() {}
 
+    public static int contractVersion() {
+        return 1;
+    }
+
     public static void agentmain(String agentArgs, Instrumentation inst) {
         SleuthAgentEntrypointSupport.agentmain(
             agentArgs,

@@ -297,7 +297,7 @@ public final class SleuthConfigSchema {
 
     public static final ConfigKey<Boolean> SECURITY_DANGEROUS_CONFIRM_ENABLED = register(
         ConfigKey.booleanKey("security.dangerous.confirm.enabled")
-            .defaultValue(Boolean.FALSE)
+            .defaultValue(Boolean.TRUE)
             .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
             .build()
     );
@@ -328,7 +328,7 @@ public final class SleuthConfigSchema {
 
     public static final ConfigKey<Boolean> SECURITY_IMPACT_HIGH_CONFIRM_ENABLED = register(
         ConfigKey.booleanKey("security.impact.high.confirm.enabled")
-            .defaultValue(Boolean.FALSE)
+            .defaultValue(Boolean.TRUE)
             .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
             .build()
     );
@@ -343,7 +343,7 @@ public final class SleuthConfigSchema {
 
     public static final ConfigKey<Boolean> SECURITY_AUTHORIZATION_ENABLED = register(
         ConfigKey.booleanKey("security.authorization.enabled")
-            .defaultValue(Boolean.FALSE)
+            .defaultValue(Boolean.TRUE)
             .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
             .build()
     );
@@ -574,6 +574,20 @@ public final class SleuthConfigSchema {
     public static final ConfigKey<String> PLUGINS_ALLOWLIST_SHA256 = register(
         ConfigKey.stringKey("plugins.allowlist.sha256")
             .defaultValue("")
+            .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
+            .build()
+    );
+
+    public static final ConfigKey<Boolean> PLUGINS_UNSAFE_ALLOW_ALL_JARS = register(
+        ConfigKey.booleanKey("plugins.unsafe.allow-all-jars")
+            .defaultValue(Boolean.FALSE)
+            .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
+            .build()
+    );
+
+    public static final ConfigKey<Boolean> PLUGINS_UNSAFE_LEGACY_PROVIDER_BRIDGE_ENABLED = register(
+        ConfigKey.booleanKey("plugins.unsafe.legacy-provider-bridge.enabled")
+            .defaultValue(Boolean.FALSE)
             .failurePolicy(ConfigKey.FailurePolicy.WARN_AND_FALLBACK)
             .build()
     );

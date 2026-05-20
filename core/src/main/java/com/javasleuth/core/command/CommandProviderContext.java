@@ -1,6 +1,7 @@
 package com.javasleuth.core.command;
 
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.command.spi.RestrictedCommandProviderContext;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.monitoring.MetricsCollector;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
@@ -192,6 +193,28 @@ public final class CommandProviderContext {
 
     public EnhancementSessionRegistry requireEnhancementSessionRegistry() {
         return requireNonNull(enhancementSessionRegistry, "enhancementSessionRegistry");
+    }
+
+    CommandProviderContext restrictedCopy() {
+        return new CommandProviderContext(
+            null,
+            null,
+            null,
+            config,
+            auditLogger,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+    }
+
+    public RestrictedCommandProviderContext toRestrictedContext() {
+        return new RestrictedCommandProviderContext(config, auditLogger);
     }
 
     private static <T> T requireNonNull(T value, String name) {

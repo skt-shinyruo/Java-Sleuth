@@ -13,13 +13,19 @@ public class SessionCommandTest {
 
     @Test
     public void sessionMasksTokenByDefault_andCanShowFullTokenWithFlag() {
+        String oldAuthEnabled = System.getProperty("sleuth.security.auth.password.enabled");
+        String oldOperatorPassword = System.getProperty("sleuth.security.auth.operator.password");
+        try {
+            System.setProperty("sleuth.security.auth.password.enabled", "true");
+            System.setProperty("sleuth.security.auth.operator.password", "secret");
+
         ProductionConfig config = ProductionConfig.createDefault();
         try (
             AuditLogger auditLogger = new AuditLogger(config);
             AuthenticationManager auth = new AuthenticationManager(config, auditLogger)
         ) {
             AuthenticationManager.AuthenticationResult session =
-                auth.createSession(AuthenticationManager.UserRole.OPERATOR, "test-client");
+                auth.authenticate("operator", "secret", "test-client");
             assertTrue(session.isSuccess());
 
             String sessionId = session.getSessionId();
@@ -38,6 +44,18 @@ public class SessionCommandTest {
             } finally {
                 CommandContextHolder.clear();
             }
+        }
+        } finally {
+            setOrClearProperty("sleuth.security.auth.password.enabled", oldAuthEnabled);
+            setOrClearProperty("sleuth.security.auth.operator.password", oldOperatorPassword);
+        }
+    }
+
+    private static void setOrClearProperty(String key, String value) {
+        if (value == null) {
+            System.clearProperty(key);
+        } else {
+            System.setProperty(key, value);
         }
     }
 }

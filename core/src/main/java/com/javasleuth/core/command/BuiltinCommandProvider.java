@@ -5,7 +5,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
-public class BuiltinCommandProvider implements CommandProvider {
+public class BuiltinCommandProvider implements CommandProvider, InternalCommandProvider {
     @Override
     public String getName() {
         return "builtin";

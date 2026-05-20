@@ -2,6 +2,82 @@
 
 Command providers must publish command behavior through `CommandMeta`. The metadata is the single source used by authorization, confirmation, caching, streaming, rate limiting, and precheck gates.
 
+## External Plugin SPI
+
+External jars should implement the restricted plugin API:
+
+```java
+package com.example.sleuth;
+
+import com.javasleuth.core.command.Command;
+import com.javasleuth.core.command.CommandDescriptor;
+import com.javasleuth.core.command.spi.RestrictedCommandProvider;
+import com.javasleuth.core.command.spi.RestrictedCommandProviderContext;
+import com.javasleuth.foundation.security.CommandMeta;
+import java.util.Collection;
+import java.util.Collections;
+
+public final class ExampleProvider implements RestrictedCommandProvider {
+    public String getName() {
+        return "example";
+    }
+
+    public String getNamespace() {
+        return "example";
+    }
+
+    public Collection<CommandDescriptor> getCommandDescriptors(RestrictedCommandProviderContext context) {
+        return Collections.singletonList(
+            CommandDescriptor.of("hello", new Command() {
+                public String execute(String[] args) {
+                    return "hello";
+                }
+
+                public String getDescription() {
+                    return "Example plugin command";
+                }
+            }, CommandMeta.viewer(true, false))
+        );
+    }
+}
+```
+
+Publish the provider with:
+
+```text
+META-INF/services/com.javasleuth.core.command.spi.RestrictedCommandProvider
+```
+
+The service file contains the provider class name, for example:
+
+```text
+com.example.sleuth.ExampleProvider
+```
+
+`RestrictedCommandProviderContext` only exposes stable support services such as read-only config and audit logging. It does not expose `Instrumentation`, class transformers, spy dispatchers, auth managers, job/session registries, or other core-owned internals.
+
+Directory plugins require supply-chain opt-in:
+
+```properties
+plugins.enabled=true
+plugins.directory=/opt/java-sleuth/plugins
+plugins.allowlist.sha256=example-plugin.jar:<sha256hex>
+```
+
+`plugins.unsafe.allow-all-jars=true` restores the old "load every jar in the directory" behavior and should only be used in controlled development environments.
+
+## Legacy Provider Bridge
+
+The old `com.javasleuth.core.command.CommandProvider` service remains for core internals and deprecated plugin compatibility, but external jars are not loaded through it by default. To run an old plugin temporarily:
+
+```properties
+plugins.enabled=true
+plugins.allowlist.sha256=old-plugin.jar:<sha256hex>
+plugins.unsafe.legacy-provider-bridge.enabled=true
+```
+
+Even through the bridge, external providers receive a restricted compatibility context. Migrate old plugins to `RestrictedCommandProvider` instead of depending on core internals.
+
 ## Required Bootstrap Classes
 
 Commands that install bytecode enhancers whose injected code calls bootstrap-side APIs must declare the required bootstrap-visible classes:

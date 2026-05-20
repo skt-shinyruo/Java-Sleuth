@@ -1,6 +1,5 @@
 package com.javasleuth.core.command.impl;
 
-import com.javasleuth.core.command.Command;
 import com.javasleuth.core.command.CancellationToken;
 import com.javasleuth.core.command.CommandContext;
 import com.javasleuth.core.command.CommandContextHolder;
@@ -20,27 +19,22 @@ import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.model.MonitoringConfig;
 import com.javasleuth.foundation.config.model.SleuthConfigParser;
-import com.javasleuth.core.enhancement.ClassEnhancer;
-import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
+import com.javasleuth.core.enhancement.session.EnhancementSessionManager;
 import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.TraceEnhancer;
 import com.javasleuth.bootstrap.monitor.TraceAggregator;
 import com.javasleuth.bootstrap.data.TraceResult;
-import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.TraceAdviceListener;
 import com.javasleuth.foundation.security.CommandCapability;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.util.LoadedClassResolver;
 import com.javasleuth.core.command.util.SleuthConditionEvaluator;
-import com.javasleuth.foundation.util.SleuthLogger;
-import com.javasleuth.foundation.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
 import java.time.LocalTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -48,7 +42,6 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
 
 public class TraceCommand implements StreamCommand, SpecBackedCommand {
@@ -57,8 +50,7 @@ public class TraceCommand implements StreamCommand, SpecBackedCommand {
     private final ConfigView config;
     private final JobManager jobManager;
     private final SleuthSpyDispatcher spyDispatcher;
-    private final EnhancementSessionRegistry sessionRegistry;
-    private final ConcurrentHashMap<String, TraceSession> activeSessions = new ConcurrentHashMap<>();
+    private final EnhancementSessionManager sessionManager;
 
     public TraceCommand(
         Instrumentation instrumentation,
@@ -95,7 +87,7 @@ public class TraceCommand implements StreamCommand, SpecBackedCommand {
         }
         this.jobManager = jobManager;
         this.spyDispatcher = spyDispatcher;
-        this.sessionRegistry = sessionRegistry;
+        this.sessionManager = new EnhancementSessionManager(instrumentation, transformer, spyDispatcher, sessionRegistry);
     }
 
     @Override
@@ -265,70 +257,18 @@ public class TraceCommand implements StreamCommand, SpecBackedCommand {
         }
 
         TraceEnhancer enhancer = new TraceEnhancer(targetClassName, methodPattern, null, traceId);
-        boolean enhancerAdded = false;
-        try {
-            boolean dropOnFull = monitoring.isTraceDropOnFull();
-            spyDispatcher.register(
-                traceId,
-                SleuthSpyDispatcher.ListenerKind.TRACE,
-                new TraceAdviceListener(traceId, resultQueue, dropOnFull)
-            );
-
-            // Create and register enhancer
-            transformer.addEnhancer(targetClass, enhancer);
-            enhancerAdded = true;
-
-            // Retransform the class
-            instrumentation.retransformClasses(targetClass);
-
-            // Create trace session
-            TraceSession session = new TraceSession(traceId, targetClass, targetClassName, methodPattern, resultQueue, enhancer);
-            activeSessions.put(traceId, session);
-            registerEnhancementSession(
-                traceId,
-                classPattern,
-                methodPattern,
-                targetClassName,
-                resolved.getLoaderId(),
-                maxDepth,
-                maxCount,
-                timeoutSeconds
-            );
-        } catch (Exception e) {
-            // Rollback partial state best-effort.
-            activeSessions.remove(traceId);
-            if (enhancerAdded) {
-                try {
-                    transformer.removeEnhancer(targetClass, enhancer);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-                try {
-                    instrumentation.retransformClasses(targetClass);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-            }
-            try {
-                spyDispatcher.unregister(traceId);
-            } catch (Exception ignore) {
-                // ignore
-            }
-            throw e;
-        }
-
-        ClientSession clientSession = null;
-        String cleanupKey = null;
-        try {
-            CommandContext ctx = CommandContextHolder.get();
-            clientSession = ctx != null ? ctx.getClientSession() : null;
-            if (clientSession != null) {
-                cleanupKey = "trace:" + traceId;
-                clientSession.registerCleanup(cleanupKey, () -> closeTraceSession(traceId, "client_cleanup"));
-            }
-        } catch (Exception ignore) {
-            // ignore
-        }
+        boolean dropOnFull = monitoring.isTraceDropOnFull();
+        EnhancementSessionManager.ManagedSession session = sessionManager.open(
+            EnhancementSessionManager.Request.builder(traceId, EnhancementSessionKind.TRACE)
+                .withCommandName("trace")
+                .withListenerKind(SleuthSpyDispatcher.ListenerKind.TRACE)
+                .withListener(new TraceAdviceListener(traceId, resultQueue, dropOnFull))
+                .withClassPattern(classPattern)
+                .withMethodPattern(methodPattern)
+                .withTarget(targetClass, enhancer)
+                .withDetails("maxDepth=" + maxDepth + ", maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds)
+                .build()
+        );
 
         StringBuilder result = new StringBuilder();
         result.append("Started tracing ").append(targetClassName)
@@ -355,7 +295,7 @@ public class TraceCommand implements StreamCommand, SpecBackedCommand {
         CancellationToken token = currentCancellationToken();
 
         try {
-            while (invocationCount < maxCount && !token.isCancelled()) {
+            while (invocationCount < maxCount && !token.isCancelled() && !session.isClosed()) {
                 long remainingTime = timeoutMs - (System.currentTimeMillis() - startTime);
                 if (remainingTime <= 0) {
                     appendOrSend(result, sink, "\nTrace timeout reached");
@@ -373,6 +313,9 @@ public class TraceCommand implements StreamCommand, SpecBackedCommand {
                     throw e;
                 }
                 if (token.isCancelled()) {
+                    break;
+                }
+                if (session.isClosed()) {
                     break;
                 }
                 if (traceResult != null) {
@@ -401,11 +344,7 @@ public class TraceCommand implements StreamCommand, SpecBackedCommand {
             }
 
         } finally {
-            // Cleanup
-            closeTraceSession(traceId, "completed");
-            if (clientSession != null && cleanupKey != null) {
-                clientSession.removeCleanup(cleanupKey);
-            }
+            session.close("completed");
         }
 
         String summary = "Trace completed. Total invocations: " + invocationCount;
@@ -419,67 +358,6 @@ public class TraceCommand implements StreamCommand, SpecBackedCommand {
 
     private ConfigView configSnapshot() {
         return config instanceof ProductionConfig ? ((ProductionConfig) config).snapshot() : config;
-    }
-
-    private void closeTraceSession(String traceId, String reason) {
-        if (sessionRegistry != null && sessionRegistry.close(traceId, reason)) {
-            return;
-        }
-        stopTraceInternal(traceId);
-    }
-
-    private void stopTraceInternal(String traceId) {
-        TraceSession session = activeSessions.remove(traceId);
-        if (session != null) {
-            try {
-                // Remove enhancer
-                if (session.getTargetClass() != null) {
-                    transformer.removeEnhancer(session.getTargetClass(), session.getEnhancer());
-                }
-
-                // Retransform class back to original (best-effort using loaded instance)
-                if (session.getTargetClass() != null) {
-                    instrumentation.retransformClasses(session.getTargetClass());
-                }
-
-                // Unregister trace
-                try {
-                    spyDispatcher.unregister(traceId);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-
-            } catch (Exception e) {
-                SleuthLogger.warn("Error stopping trace: " + e.getMessage(), e);
-            }
-        }
-    }
-
-    private void registerEnhancementSession(String traceId,
-                                            String classPattern,
-                                            String methodPattern,
-                                            String targetClassName,
-                                            int loaderId,
-                                            int maxDepth,
-                                            int maxCount,
-                                            long timeoutSeconds) {
-        if (sessionRegistry == null) {
-            return;
-        }
-        CommandContext ctx = CommandContextHolder.get();
-        EnhancementSessionDescriptor.Builder builder = EnhancementSessionDescriptor
-            .builder(traceId, EnhancementSessionKind.TRACE)
-            .withCommandName("trace")
-            .withClassPattern(classPattern)
-            .withMethodPattern(methodPattern)
-            .withTargetClassNames(Collections.singletonList(targetClassName))
-            .withLoaderIds(Collections.singletonList(Integer.valueOf(loaderId)))
-            .withDetails("maxDepth=" + maxDepth + ", maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds);
-        if (ctx != null) {
-            builder.withClientId(ctx.getClientId())
-                .withClientSessionId(ctx.getSessionId());
-        }
-        sessionRegistry.register(builder.build(), reason -> stopTraceInternal(traceId));
     }
 
     private String formatTraceResult(TraceResult result, int eventNumber) {
@@ -592,26 +470,6 @@ public class TraceCommand implements StreamCommand, SpecBackedCommand {
         return ctx != null ? ctx.getCancellationToken() : CancellationToken.NONE;
     }
 
-    private boolean matchesPattern(String className, String pattern) {
-        return WildcardMatcher.matches(className, pattern);
-    }
-
-    private Class<?> findLoadedClass(String className) {
-        if (className == null || className.isEmpty()) {
-            return null;
-        }
-        try {
-            for (Class<?> c : instrumentation.getAllLoadedClasses()) {
-                if (c != null && className.equals(c.getName())) {
-                    return c;
-                }
-            }
-        } catch (Exception ignore) {
-            // best-effort
-        }
-        return null;
-    }
-
     private static List<String> parseExpr(String raw) {
         if (raw == null || raw.trim().isEmpty()) {
             return new ArrayList<>();
@@ -633,31 +491,5 @@ public class TraceCommand implements StreamCommand, SpecBackedCommand {
     @Override
     public String getDescription() {
         return "Trace method execution call chains with timing";
-    }
-
-    private static class TraceSession {
-        private final String traceId;
-        private final Class<?> targetClass;
-        private final String className;
-        private final String methodPattern;
-        private final BlockingQueue<TraceResult> resultQueue;
-        private final ClassEnhancer enhancer;
-
-        public TraceSession(String traceId, Class<?> targetClass, String className, String methodPattern,
-                            BlockingQueue<TraceResult> resultQueue, ClassEnhancer enhancer) {
-            this.traceId = traceId;
-            this.targetClass = targetClass;
-            this.className = className;
-            this.methodPattern = methodPattern;
-            this.resultQueue = resultQueue;
-            this.enhancer = enhancer;
-        }
-
-        public String getTraceId() { return traceId; }
-        public Class<?> getTargetClass() { return targetClass; }
-        public String getClassName() { return className; }
-        public String getMethodPattern() { return methodPattern; }
-        public BlockingQueue<TraceResult> getResultQueue() { return resultQueue; }
-        public ClassEnhancer getEnhancer() { return enhancer; }
     }
 }

@@ -232,6 +232,13 @@ public class ConfigCommand implements Command, SpecBackedCommand {
                 show.append("\n-- Plugin Settings --\n");
                 show.append("plugins.enabled = ").append(typed.plugins().isEnabled()).append("\n");
                 show.append("plugins.serviceloader.enabled = ").append(typed.plugins().isServiceLoaderEnabled()).append("\n");
+                show.append("plugins.allowlist.sha256.configured = ")
+                    .append(typed.plugins().getAllowlistSha256() != null && !typed.plugins().getAllowlistSha256().trim().isEmpty())
+                    .append("\n");
+                show.append("plugins.unsafe.allow-all-jars = ").append(typed.plugins().isUnsafeAllowAllJars()).append("\n");
+                show.append("plugins.unsafe.legacy-provider-bridge.enabled = ")
+                    .append(typed.plugins().isUnsafeLegacyProviderBridgeEnabled())
+                    .append("\n");
                 show.append("plugins.directory = ").append(typed.plugins().getDirectory()).append("\n");
 
                 show.append("\n-- Monitoring Settings --\n");

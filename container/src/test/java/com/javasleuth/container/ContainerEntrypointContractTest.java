@@ -16,6 +16,10 @@ public class ContainerEntrypointContractTest {
     public void contract_entrypoint_hasStableAgentmainAndPremainSignatures() throws Exception {
         Class<?> entry = Class.forName("com.javasleuth.container.SleuthAgentContainerEntrypoint");
 
+        Method contractVersion = entry.getMethod("contractVersion");
+        Assert.assertEquals(int.class, contractVersion.getReturnType());
+        Assert.assertEquals(Integer.valueOf(1), contractVersion.invoke(null));
+
         Method agentmain = entry.getMethod("agentmain", String.class, Instrumentation.class);
         Assert.assertEquals(void.class, agentmain.getReturnType());
 
@@ -23,4 +27,3 @@ public class ContainerEntrypointContractTest {
         Assert.assertEquals(void.class, premain.getReturnType());
     }
 }
-

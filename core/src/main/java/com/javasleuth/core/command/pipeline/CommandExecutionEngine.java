@@ -12,17 +12,16 @@ import com.javasleuth.foundation.config.model.PerformanceConfig;
 import com.javasleuth.foundation.config.model.SleuthConfig;
 import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
-import com.javasleuth.foundation.util.SleuthExecutors;
 import com.javasleuth.foundation.util.SleuthLogContext;
 import com.javasleuth.foundation.util.SleuthThreadFactory;
 import com.javasleuth.foundation.security.CommandMeta;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -38,13 +37,11 @@ public final class CommandExecutionEngine {
     private final ProductionConfig config;
     private final ThreadPoolExecutor shortCommandExecutor;
     private final ThreadPoolExecutor streamCommandExecutor;
-
-    private static final Object HIGH_IMPACT_LOCK = new Object();
-    private static volatile Semaphore HIGH_IMPACT_SEMAPHORE;
-    private static volatile int HIGH_IMPACT_LIMIT = -1;
+    private final RuntimeCommandLimiter commandLimiter;
 
     public CommandExecutionEngine(ProductionConfig config) {
         this.config = config;
+        this.commandLimiter = new RuntimeCommandLimiter(config);
         SleuthConfig typed = SleuthConfigParser.parse(config.snapshot());
         PerformanceConfig perf = typed.performance();
         this.shortCommandExecutor = newExecutor(
@@ -77,46 +74,29 @@ public final class CommandExecutionEngine {
     }
 
     public void shutdown() {
-        SleuthExecutors.shutdownAndAwait(shortCommandExecutor, "short-command-exec", 5, TimeUnit.SECONDS);
-        SleuthExecutors.shutdownAndAwait(streamCommandExecutor, "stream-command-exec", 5, TimeUnit.SECONDS);
+        commandLimiter.close();
+        shutdownExecutor(shortCommandExecutor);
+        shutdownExecutor(streamCommandExecutor);
     }
 
     public String executeSync(Command command, String[] args, CommandMeta meta, long timeoutMs, CommandContext context) throws Exception {
-        ImpactPermit permit = acquireImpactPermit(meta);
+        RuntimeCommandLimiter.Permit permit = commandLimiter.acquire(meta);
         return executeWithTimeout(command, args, timeoutMs, permit, context);
     }
 
     public StreamExecutionHandle executeStream(StreamCommand command, String[] args, CommandMeta meta, long timeoutMs, StreamSink sink, CommandContext context) throws Exception {
-        ImpactPermit permit = acquireImpactPermit(meta);
+        RuntimeCommandLimiter.Permit permit = commandLimiter.acquire(meta);
         return executeStreamWithTimeout(command, args, timeoutMs, permit, sink, context);
     }
 
-    private static final class ImpactPermit {
-        private final Semaphore semaphore;
-        private final AtomicBoolean released = new AtomicBoolean(false);
-
-        private ImpactPermit(Semaphore semaphore) {
-            this.semaphore = semaphore;
-        }
-
-        static ImpactPermit none() {
-            return new ImpactPermit(null);
-        }
-
-        void release() {
-            if (semaphore == null) {
-                return;
-            }
-            if (released.compareAndSet(false, true)) {
-                semaphore.release();
-            }
-        }
+    private interface PermitReleasable {
+        void releasePermit();
     }
 
-    private static final class PermitFutureTask extends FutureTask<String> {
-        private final ImpactPermit permit;
+    private static final class PermitFutureTask extends FutureTask<String> implements PermitReleasable {
+        private final RuntimeCommandLimiter.Permit permit;
 
-        private PermitFutureTask(ImpactPermit permit, java.util.concurrent.Callable<String> callable) {
+        private PermitFutureTask(RuntimeCommandLimiter.Permit permit, java.util.concurrent.Callable<String> callable) {
             super(callable);
             this.permit = permit;
         }
@@ -126,17 +106,22 @@ public final class CommandExecutionEngine {
             try {
                 super.run();
             } finally {
-                if (permit != null) {
-                    permit.release();
-                }
+                releasePermit();
+            }
+        }
+
+        @Override
+        public void releasePermit() {
+            if (permit != null) {
+                permit.release();
             }
         }
     }
 
-    private static final class PermitFutureTaskVoid extends FutureTask<Void> {
-        private final ImpactPermit permit;
+    private static final class PermitFutureTaskVoid extends FutureTask<Void> implements PermitReleasable {
+        private final RuntimeCommandLimiter.Permit permit;
 
-        private PermitFutureTaskVoid(ImpactPermit permit, java.util.concurrent.Callable<Void> callable) {
+        private PermitFutureTaskVoid(RuntimeCommandLimiter.Permit permit, java.util.concurrent.Callable<Void> callable) {
             super(callable);
             this.permit = permit;
         }
@@ -146,53 +131,52 @@ public final class CommandExecutionEngine {
             try {
                 super.run();
             } finally {
-                if (permit != null) {
-                    permit.release();
-                }
+                releasePermit();
+            }
+        }
+
+        @Override
+        public void releasePermit() {
+            if (permit != null) {
+                permit.release();
             }
         }
     }
 
-    private ImpactPermit acquireImpactPermit(CommandMeta meta) throws Exception {
-        if (meta == null || meta.getImpactLevel() != CommandMeta.ImpactLevel.HIGH) {
-            return ImpactPermit.none();
+    private static void shutdownExecutor(ThreadPoolExecutor executor) {
+        if (executor == null) {
+            return;
         }
-
-        int limit = SleuthConfigSchema.SECURITY_IMPACT_HIGH_CONCURRENT_LIMIT.read(config);
-        if (limit <= 0) {
-            return ImpactPermit.none();
+        try {
+            executor.shutdown();
+        } catch (Exception ignore) {
+            return;
         }
-
-        Semaphore sem = getOrCreateHighImpactSemaphore(limit);
-        if (sem == null) {
-            return ImpactPermit.none();
-        }
-
-        if (!sem.tryAcquire()) {
-            throw new Exception("High impact command is already running; please retry later");
-        }
-
-        return new ImpactPermit(sem);
-    }
-
-    private Semaphore getOrCreateHighImpactSemaphore(int limit) {
-        if (limit <= 0) {
-            return null;
-        }
-        Semaphore existing = HIGH_IMPACT_SEMAPHORE;
-        if (existing != null && HIGH_IMPACT_LIMIT == limit) {
-            return existing;
-        }
-        synchronized (HIGH_IMPACT_LOCK) {
-            if (HIGH_IMPACT_SEMAPHORE == null || HIGH_IMPACT_LIMIT != limit) {
-                HIGH_IMPACT_SEMAPHORE = new Semaphore(limit, true);
-                HIGH_IMPACT_LIMIT = limit;
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                releaseDroppedTasks(executor.shutdownNow());
+                executor.awaitTermination(5, TimeUnit.SECONDS);
             }
-            return HIGH_IMPACT_SEMAPHORE;
+        } catch (InterruptedException e) {
+            releaseDroppedTasks(executor.shutdownNow());
+            Thread.currentThread().interrupt();
+        } catch (Exception ignore) {
+            // best-effort shutdown
         }
     }
 
-    private String executeWithTimeout(Command command, String[] args, long timeoutMs, ImpactPermit permit, CommandContext context) throws Exception {
+    private static void releaseDroppedTasks(List<Runnable> dropped) {
+        if (dropped == null || dropped.isEmpty()) {
+            return;
+        }
+        for (Runnable task : dropped) {
+            if (task instanceof PermitReleasable) {
+                ((PermitReleasable) task).releasePermit();
+            }
+        }
+    }
+
+    private String executeWithTimeout(Command command, String[] args, long timeoutMs, RuntimeCommandLimiter.Permit permit, CommandContext context) throws Exception {
         if (timeoutMs <= 0) {
             try {
                 applyContext(context);
@@ -262,7 +246,7 @@ public final class CommandExecutionEngine {
         }
     }
 
-    private StreamExecutionHandle executeStreamWithTimeout(StreamCommand command, String[] args, long timeoutMs, ImpactPermit permit, StreamSink sink, CommandContext context) throws Exception {
+    private StreamExecutionHandle executeStreamWithTimeout(StreamCommand command, String[] args, long timeoutMs, RuntimeCommandLimiter.Permit permit, StreamSink sink, CommandContext context) throws Exception {
         CancellationTokenSource source = new CancellationTokenSource();
         StreamStartup startup = new StreamStartup();
         CountDownLatch completionLatch = new CountDownLatch(1);

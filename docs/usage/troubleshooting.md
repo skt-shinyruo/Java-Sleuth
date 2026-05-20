@@ -115,10 +115,11 @@
 1. 先看当前会话角色：
    - `session`
    - `perm`
-2. 若启用了口令认证（`security.auth.password.enabled=true`），用：
+2. 默认匿名连接是 viewer，只能执行只读诊断命令。若需要 operator/admin 权限，启用口令认证（`security.auth.password.enabled=true`）并设置对应密码后，用：
    - `auth <username> <password>`
+   - headless/restart 可用 Launcher 参数：`--auth-user <username> --auth-pass <password>`
 
-> 注意：在启用 `security.authorization.enabled=true` 的同时，建议开启口令认证（`security.auth.password.enabled=true`）并设置强口令，避免多人共享主机时权限边界不清晰。
+> 注意：`security.authorization.enabled=true` 是默认值。多人共享主机上建议保持默认授权、开启口令认证并设置强口令；不要通过关闭授权来绕过权限问题。
 
 ---
 

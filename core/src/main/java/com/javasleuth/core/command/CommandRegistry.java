@@ -208,7 +208,20 @@ public class CommandRegistry {
                 metricsCollector.recordPluginProviderLoaded();
             }
 
-            Collection<CommandDescriptor> descriptors = provider.getCommandDescriptors(providerContext);
+            Collection<CommandDescriptor> descriptors;
+            try {
+                descriptors = provider.getCommandDescriptors(contextForProvider(providerInfo));
+            } catch (RuntimeException e) {
+                if (providerInfo.isBuiltin()) {
+                    throw e;
+                }
+                logPluginRejected(
+                    "PLUGIN_PROVIDER_FAILED",
+                    "Rejected provider after descriptor failure: provider=" + providerInfo.getProviderName()
+                        + ", err=" + e.getMessage()
+                );
+                continue;
+            }
             if (descriptors == null || descriptors.isEmpty()) {
                 continue;
             }
@@ -228,6 +241,34 @@ public class CommandRegistry {
         }
         CommandProviderInfo rawInfo = provider != null ? provider.getInfo() : null;
         CommandProviderInfo info = rawInfo != null ? rawInfo : CommandProviderInfo.legacy(providerName);
+        if (info.isBuiltin() && !(provider instanceof InternalCommandProvider)) {
+            logPluginRejected(
+                "PLUGIN_BUILTIN_PRIVILEGE_REJECTED",
+                "Provider attempted to claim builtin privileges: provider=" + info.getProviderName()
+                    + ", namespace=" + info.getNamespace()
+            );
+            info = CommandProviderInfo.plugin(
+                providerName,
+                providerName,
+                info.getApiVersion(),
+                info.getCapabilities(),
+                info.isExposeUnqualifiedCommands()
+            );
+        }
+        if (!info.isBuiltin() && "builtin".equalsIgnoreCase(info.getNamespace())) {
+            logPluginRejected(
+                "PLUGIN_RESERVED_NAMESPACE_REJECTED",
+                "Provider attempted to claim reserved namespace: provider=" + info.getProviderName()
+                    + ", namespace=" + info.getNamespace()
+            );
+            info = CommandProviderInfo.plugin(
+                providerName,
+                providerName,
+                info.getApiVersion(),
+                info.getCapabilities(),
+                info.isExposeUnqualifiedCommands()
+            );
+        }
         if (!info.isApiVersionSupported()) {
             if (info.isBuiltin()) {
                 throw new IllegalStateException("Builtin provider API version is not supported: " + info.getApiVersion());
@@ -253,6 +294,13 @@ public class CommandRegistry {
             return null;
         }
         return info;
+    }
+
+    private CommandProviderContext contextForProvider(CommandProviderInfo providerInfo) {
+        if (providerInfo != null && providerInfo.isBuiltin()) {
+            return providerContext;
+        }
+        return providerContext.restrictedCopy();
     }
 
     private void registerDescriptor(CommandProviderInfo providerInfo, CommandDescriptor descriptor) {
@@ -320,7 +368,7 @@ public class CommandRegistry {
             CommandConflictStrategy.fromConfig(SleuthConfigSchema.PLUGINS_CONFLICT_STRATEGY.read(config));
 
         boolean incomingIsBuiltin = "builtin".equalsIgnoreCase(newEntry.getNamespace()) || "builtin".equalsIgnoreCase(newEntry.getSource());
-        boolean existingIsBuiltin = "builtin".equalsIgnoreCase(existing.getSource());
+        boolean existingIsBuiltin = "builtin".equalsIgnoreCase(existing.getNamespace()) || "builtin".equalsIgnoreCase(existing.getSource());
 
         if (strategy == CommandConflictStrategy.FAIL) {
             return;

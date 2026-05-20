@@ -1,6 +1,5 @@
 package com.javasleuth.core.command.impl;
 
-import com.javasleuth.core.command.Command;
 import com.javasleuth.core.command.CancellationToken;
 import com.javasleuth.core.command.CommandContext;
 import com.javasleuth.core.command.CommandContextHolder;
@@ -19,28 +18,23 @@ import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.model.MonitoringConfig;
 import com.javasleuth.foundation.config.model.SleuthConfigParser;
-import com.javasleuth.core.enhancement.ClassEnhancer;
-import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
+import com.javasleuth.core.enhancement.session.EnhancementSessionManager;
 import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.WatchEnhancer;
 import com.javasleuth.bootstrap.data.WatchResult;
 import com.javasleuth.core.command.JobManager;
-import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.WatchAdviceListener;
 import com.javasleuth.foundation.security.CommandCapability;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.util.LoadedClassResolver;
 import com.javasleuth.core.command.util.SleuthConditionEvaluator;
-import com.javasleuth.foundation.util.SleuthLogger;
 import com.javasleuth.bootstrap.util.SleuthValueFormatter;
-import com.javasleuth.foundation.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
 import java.time.LocalTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -48,7 +42,6 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
 
 public class WatchCommand implements StreamCommand, SpecBackedCommand {
@@ -57,8 +50,7 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
     private final ConfigView config;
     private final JobManager jobManager;
     private final SleuthSpyDispatcher spyDispatcher;
-    private final EnhancementSessionRegistry sessionRegistry;
-    private final ConcurrentHashMap<String, WatchSession> activeSessions = new ConcurrentHashMap<>();
+    private final EnhancementSessionManager sessionManager;
 
     public WatchCommand(
         Instrumentation instrumentation,
@@ -95,7 +87,7 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
         }
         this.jobManager = jobManager;
         this.spyDispatcher = spyDispatcher;
-        this.sessionRegistry = sessionRegistry;
+        this.sessionManager = new EnhancementSessionManager(instrumentation, transformer, spyDispatcher, sessionRegistry);
     }
 
     @Override
@@ -259,69 +251,18 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
 
         WatchEnhancer enhancer = new WatchEnhancer(targetClassName, methodPattern, null,
             captureParams, captureReturn, captureException, watchId);
-        boolean enhancerAdded = false;
-        try {
-            boolean dropOnFull = monitoring.isWatchDropOnFull();
-            spyDispatcher.register(
-                watchId,
-                SleuthSpyDispatcher.ListenerKind.WATCH,
-                new WatchAdviceListener(watchId, resultQueue, dropOnFull)
-            );
-
-            // Create and register enhancer
-            transformer.addEnhancer(targetClass, enhancer);
-            enhancerAdded = true;
-
-            // Retransform the class
-            instrumentation.retransformClasses(targetClass);
-
-            // Create watch session
-            WatchSession session = new WatchSession(watchId, targetClass, targetClassName, methodPattern, resultQueue, enhancer);
-            activeSessions.put(watchId, session);
-            registerEnhancementSession(
-                watchId,
-                classPattern,
-                methodPattern,
-                targetClassName,
-                resolved.getLoaderId(),
-                maxCount,
-                timeoutSeconds
-            );
-        } catch (Exception e) {
-            // Rollback partial state best-effort.
-            activeSessions.remove(watchId);
-            if (enhancerAdded) {
-                try {
-                    transformer.removeEnhancer(targetClass, enhancer);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-                try {
-                    instrumentation.retransformClasses(targetClass);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-            }
-            try {
-                spyDispatcher.unregister(watchId);
-            } catch (Exception ignore) {
-                // ignore
-            }
-            throw e;
-        }
-
-        ClientSession clientSession = null;
-        String cleanupKey = null;
-        try {
-            CommandContext ctx = CommandContextHolder.get();
-            clientSession = ctx != null ? ctx.getClientSession() : null;
-            if (clientSession != null) {
-                cleanupKey = "watch:" + watchId;
-                clientSession.registerCleanup(cleanupKey, () -> closeWatchSession(watchId, "client_cleanup"));
-            }
-        } catch (Exception ignore) {
-            // ignore
-        }
+        boolean dropOnFull = monitoring.isWatchDropOnFull();
+        EnhancementSessionManager.ManagedSession session = sessionManager.open(
+            EnhancementSessionManager.Request.builder(watchId, EnhancementSessionKind.WATCH)
+                .withCommandName("watch")
+                .withListenerKind(SleuthSpyDispatcher.ListenerKind.WATCH)
+                .withListener(new WatchAdviceListener(watchId, resultQueue, dropOnFull))
+                .withClassPattern(classPattern)
+                .withMethodPattern(methodPattern)
+                .withTarget(targetClass, enhancer)
+                .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds)
+                .build()
+        );
 
         StringBuilder result = new StringBuilder();
         result.append("Started watching ").append(targetClassName)
@@ -348,7 +289,7 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
         CancellationToken token = currentCancellationToken();
 
         try {
-            while (eventCount < maxCount && !token.isCancelled()) {
+            while (eventCount < maxCount && !token.isCancelled() && !session.isClosed()) {
                 long remainingTime = timeoutMs - (System.currentTimeMillis() - startTime);
                 if (remainingTime <= 0) {
                     appendOrSend(result, sink, "\nWatch timeout reached");
@@ -366,6 +307,9 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
                     throw e;
                 }
                 if (token.isCancelled()) {
+                    break;
+                }
+                if (session.isClosed()) {
                     break;
                 }
                 if (watchResult != null) {
@@ -388,11 +332,7 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
             }
 
         } finally {
-            // Cleanup
-            closeWatchSession(watchId, "completed");
-            if (clientSession != null && cleanupKey != null) {
-                clientSession.removeCleanup(cleanupKey);
-            }
+            session.close("completed");
         }
 
         String summary = "Watch completed. Total events: " + eventCount;
@@ -406,66 +346,6 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
 
     private ConfigView configSnapshot() {
         return config instanceof ProductionConfig ? ((ProductionConfig) config).snapshot() : config;
-    }
-
-    private void closeWatchSession(String watchId, String reason) {
-        if (sessionRegistry != null && sessionRegistry.close(watchId, reason)) {
-            return;
-        }
-        stopWatchInternal(watchId);
-    }
-
-    private void stopWatchInternal(String watchId) {
-        WatchSession session = activeSessions.remove(watchId);
-        if (session != null) {
-            try {
-                // Remove enhancer
-                if (session.getTargetClass() != null) {
-                    transformer.removeEnhancer(session.getTargetClass(), session.getEnhancer());
-                }
-
-                // Retransform class back to original (best-effort using loaded instance)
-                if (session.getTargetClass() != null) {
-                    instrumentation.retransformClasses(session.getTargetClass());
-                }
-
-                // Unregister watch
-                try {
-                    spyDispatcher.unregister(watchId);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-
-            } catch (Exception e) {
-                SleuthLogger.warn("Error stopping watch: " + e.getMessage(), e);
-            }
-        }
-    }
-
-    private void registerEnhancementSession(String watchId,
-                                            String classPattern,
-                                            String methodPattern,
-                                            String targetClassName,
-                                            int loaderId,
-                                            int maxCount,
-                                            long timeoutSeconds) {
-        if (sessionRegistry == null) {
-            return;
-        }
-        CommandContext ctx = CommandContextHolder.get();
-        EnhancementSessionDescriptor.Builder builder = EnhancementSessionDescriptor
-            .builder(watchId, EnhancementSessionKind.WATCH)
-            .withCommandName("watch")
-            .withClassPattern(classPattern)
-            .withMethodPattern(methodPattern)
-            .withTargetClassNames(Collections.singletonList(targetClassName))
-            .withLoaderIds(Collections.singletonList(Integer.valueOf(loaderId)))
-            .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds);
-        if (ctx != null) {
-            builder.withClientId(ctx.getClientId())
-                .withClientSessionId(ctx.getSessionId());
-        }
-        sessionRegistry.register(builder.build(), reason -> stopWatchInternal(watchId));
     }
 
     private String formatWatchResult(WatchResult result, int eventNumber) {
@@ -544,26 +424,6 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
         return ctx != null ? ctx.getCancellationToken() : CancellationToken.NONE;
     }
 
-    private boolean matchesPattern(String className, String pattern) {
-        return WildcardMatcher.matches(className, pattern);
-    }
-
-    private Class<?> findLoadedClass(String className) {
-        if (className == null || className.isEmpty()) {
-            return null;
-        }
-        try {
-            for (Class<?> c : instrumentation.getAllLoadedClasses()) {
-                if (c != null && className.equals(c.getName())) {
-                    return c;
-                }
-            }
-        } catch (Exception ignore) {
-            // best-effort
-        }
-        return null;
-    }
-
     private static List<String> parseExpr(String raw) {
         if (raw == null || raw.trim().isEmpty()) {
             return new ArrayList<>();
@@ -585,31 +445,5 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
     @Override
     public String getDescription() {
         return "Watch method execution with parameters, return values, and timing";
-    }
-
-    private static class WatchSession {
-        private final String watchId;
-        private final Class<?> targetClass;
-        private final String className;
-        private final String methodPattern;
-        private final BlockingQueue<WatchResult> resultQueue;
-        private final ClassEnhancer enhancer;
-
-        public WatchSession(String watchId, Class<?> targetClass, String className, String methodPattern,
-                            BlockingQueue<WatchResult> resultQueue, ClassEnhancer enhancer) {
-            this.watchId = watchId;
-            this.targetClass = targetClass;
-            this.className = className;
-            this.methodPattern = methodPattern;
-            this.resultQueue = resultQueue;
-            this.enhancer = enhancer;
-        }
-
-        public String getWatchId() { return watchId; }
-        public Class<?> getTargetClass() { return targetClass; }
-        public String getClassName() { return className; }
-        public String getMethodPattern() { return methodPattern; }
-        public BlockingQueue<WatchResult> getResultQueue() { return resultQueue; }
-        public ClassEnhancer getEnhancer() { return enhancer; }
     }
 }

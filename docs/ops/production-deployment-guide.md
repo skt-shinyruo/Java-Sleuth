@@ -1053,6 +1053,8 @@ protocol.text.max.line.bytes=8192
 plugins.enabled=false
 plugins.serviceloader.enabled=false
 plugins.allowlist.sha256=
+plugins.unsafe.allow-all-jars=false
+plugins.unsafe.legacy-provider-bridge.enabled=false
 plugins.directory=/opt/java-sleuth/plugins
 plugins.conflict.strategy=prefer-builtin
 ```

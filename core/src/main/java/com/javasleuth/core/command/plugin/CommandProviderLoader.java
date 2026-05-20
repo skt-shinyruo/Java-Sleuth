@@ -1,6 +1,8 @@
 package com.javasleuth.core.command.plugin;
 
 import com.javasleuth.core.command.CommandProvider;
+import com.javasleuth.core.command.RestrictedCommandProviderAdapter;
+import com.javasleuth.core.command.spi.RestrictedCommandProvider;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import com.javasleuth.foundation.security.AuditLogger;
@@ -73,7 +75,7 @@ public final class CommandProviderLoader {
         }
 
         if (SleuthConfigSchema.PLUGINS_SERVICELOADER_ENABLED.read(config)) {
-            providers.addAll(loadFromServiceLoader());
+            providers.addAll(loadFromServiceLoader(parentClassLoader));
         }
 
         LoadedProviders plugins = loadFromPluginDirectory();
@@ -83,10 +85,38 @@ public final class CommandProviderLoader {
         return new LoadedProviders(providers, plugins.getPluginClassLoader());
     }
 
-    private List<CommandProvider> loadFromServiceLoader() {
+    private List<CommandProvider> loadFromServiceLoader(ClassLoader classLoader) {
+        List<CommandProvider> providers = new ArrayList<>();
+        providers.addAll(loadRestrictedFromServiceLoader(classLoader));
+        if (SleuthConfigSchema.PLUGINS_UNSAFE_LEGACY_PROVIDER_BRIDGE_ENABLED.read(config)) {
+            providers.addAll(loadLegacyFromServiceLoader(classLoader));
+        }
+        return providers;
+    }
+
+    private List<CommandProvider> loadRestrictedFromServiceLoader(ClassLoader classLoader) {
         try {
             List<CommandProvider> providers = new ArrayList<>();
-            ServiceLoader<CommandProvider> loader = ServiceLoader.load(CommandProvider.class, parentClassLoader);
+            ServiceLoader<RestrictedCommandProvider> loader = ServiceLoader.load(RestrictedCommandProvider.class, classLoader);
+            for (RestrictedCommandProvider p : loader) {
+                if (p != null) {
+                    providers.add(new RestrictedCommandProviderAdapter(p));
+                }
+            }
+            return providers;
+        } catch (ServiceConfigurationError e) {
+            SleuthLogger.warn("Restricted plugin ServiceLoader configuration error: " + e.getMessage());
+            return Collections.emptyList();
+        } catch (RuntimeException e) {
+            SleuthLogger.warn("Restricted plugin ServiceLoader failed: " + e.getMessage(), e);
+            return Collections.emptyList();
+        }
+    }
+
+    private List<CommandProvider> loadLegacyFromServiceLoader(ClassLoader classLoader) {
+        try {
+            List<CommandProvider> providers = new ArrayList<>();
+            ServiceLoader<CommandProvider> loader = ServiceLoader.load(CommandProvider.class, classLoader);
             for (CommandProvider p : loader) {
                 if (p != null) {
                     providers.add(p);
@@ -124,6 +154,15 @@ public final class CommandProviderLoader {
 
         try {
             Map<String, String> allowlist = parseSha256Allowlist(SleuthConfigSchema.PLUGINS_ALLOWLIST_SHA256.read(config));
+            boolean unsafeAllowAll = SleuthConfigSchema.PLUGINS_UNSAFE_ALLOW_ALL_JARS.read(config);
+            if (allowlist.isEmpty() && !unsafeAllowAll) {
+                logPluginRejected(
+                    "PLUGIN_ALLOWLIST_REQUIRED",
+                    "Rejected plugin directory because plugins.enabled=true requires plugins.allowlist.sha256 or plugins.unsafe.allow-all-jars=true: "
+                        + dir.getAbsolutePath()
+                );
+                return new LoadedProviders(Collections.<CommandProvider>emptyList(), null);
+            }
             List<URL> urls = new ArrayList<>();
             for (File jar : jars) {
                 if (jar == null) {
@@ -154,12 +193,10 @@ public final class CommandProviderLoader {
             URLClassLoader loader = null;
             try {
                 loader = new URLClassLoader(urls.toArray(new URL[0]), parentClassLoader);
-                ServiceLoader<CommandProvider> sl = ServiceLoader.load(CommandProvider.class, loader);
-                List<CommandProvider> providers = new ArrayList<>();
-                for (CommandProvider p : sl) {
-                    if (p != null) {
-                        providers.add(p);
-                    }
+                List<CommandProvider> providers = loadFromServiceLoader(loader);
+                if (providers == null || providers.isEmpty()) {
+                    closeLoaderQuietly(loader);
+                    return new LoadedProviders(Collections.<CommandProvider>emptyList(), null);
                 }
                 return new LoadedProviders(providers, loader);
             } catch (ServiceConfigurationError e) {

@@ -38,6 +38,8 @@ public final class PluginsConfig {
     private final boolean enabled;
     private final boolean serviceLoaderEnabled;
     private final String allowlistSha256;
+    private final boolean unsafeAllowAllJars;
+    private final boolean unsafeLegacyProviderBridgeEnabled;
     private final String directory;
     private final ConflictStrategy conflictStrategy;
 
@@ -45,12 +47,16 @@ public final class PluginsConfig {
         boolean enabled,
         boolean serviceLoaderEnabled,
         String allowlistSha256,
+        boolean unsafeAllowAllJars,
+        boolean unsafeLegacyProviderBridgeEnabled,
         String directory,
         ConflictStrategy conflictStrategy
     ) {
         this.enabled = enabled;
         this.serviceLoaderEnabled = serviceLoaderEnabled;
         this.allowlistSha256 = allowlistSha256;
+        this.unsafeAllowAllJars = unsafeAllowAllJars;
+        this.unsafeLegacyProviderBridgeEnabled = unsafeLegacyProviderBridgeEnabled;
         this.directory = directory;
         this.conflictStrategy = conflictStrategy;
     }
@@ -67,6 +73,14 @@ public final class PluginsConfig {
         return allowlistSha256;
     }
 
+    public boolean isUnsafeAllowAllJars() {
+        return unsafeAllowAllJars;
+    }
+
+    public boolean isUnsafeLegacyProviderBridgeEnabled() {
+        return unsafeLegacyProviderBridgeEnabled;
+    }
+
     public String getDirectory() {
         return directory;
     }
@@ -79,4 +93,3 @@ public final class PluginsConfig {
         return conflictStrategy != null ? conflictStrategy.getWireName() : ConflictStrategy.PREFER_BUILTIN.getWireName();
     }
 }
-

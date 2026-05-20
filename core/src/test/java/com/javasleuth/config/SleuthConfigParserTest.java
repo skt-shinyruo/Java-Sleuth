@@ -79,6 +79,18 @@ public class SleuthConfigParserTest {
         Assert.assertEquals(45, typed.vmTool().getTrackClassLimit());
     }
 
+    @Test
+    public void parsesPluginUnsafeFlags() {
+        ProductionConfig config = new ProductionConfig();
+        config.setRuntimeConfig("plugins.unsafe.allow-all-jars", "true");
+        config.setRuntimeConfig("plugins.unsafe.legacy-provider-bridge.enabled", "true");
+
+        SleuthConfig typed = SleuthConfigParser.parse(config.snapshot());
+
+        Assert.assertTrue(typed.plugins().isUnsafeAllowAllJars());
+        Assert.assertTrue(typed.plugins().isUnsafeLegacyProviderBridgeEnabled());
+    }
+
     // Note: `security.mode` was removed together with HMAC mode. Forbidden-key validation
     // is covered by ConfigSemanticsTest.
 }

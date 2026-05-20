@@ -15,9 +15,7 @@ import com.javasleuth.core.command.spec.CommandSpecParser;
 import com.javasleuth.core.command.spec.OptionSpec;
 import com.javasleuth.core.command.spec.ParsedCommand;
 import com.javasleuth.core.agent.runtime.BootstrapBridge;
-import com.javasleuth.core.command.session.ClientSession;
-import com.javasleuth.core.enhancement.ClassEnhancer;
-import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
+import com.javasleuth.core.enhancement.session.EnhancementSessionManager;
 import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.enhancement.MonitorEnhancer;
@@ -26,7 +24,6 @@ import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.MonitorAdviceListener;
 import com.javasleuth.foundation.security.CommandCapability;
 import com.javasleuth.foundation.security.CommandMeta;
-import com.javasleuth.foundation.util.LoadedClassResolver;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import com.javasleuth.foundation.util.StringUtils;
 import java.lang.instrument.Instrumentation;
@@ -36,7 +33,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Method monitor (simplified Arthas-like).
@@ -49,8 +45,7 @@ public class MonitorCommand implements StreamCommand, SpecBackedCommand {
     private final SleuthClassFileTransformer transformer;
     private final JobManager jobManager;
     private final SleuthSpyDispatcher spyDispatcher;
-    private final EnhancementSessionRegistry sessionRegistry;
-    private final ConcurrentHashMap<String, MonitorSession> activeSessions = new ConcurrentHashMap<>();
+    private final EnhancementSessionManager sessionManager;
 
     public MonitorCommand(
         Instrumentation instrumentation,
@@ -83,7 +78,7 @@ public class MonitorCommand implements StreamCommand, SpecBackedCommand {
         }
         this.jobManager = jobManager;
         this.spyDispatcher = spyDispatcher;
-        this.sessionRegistry = sessionRegistry;
+        this.sessionManager = new EnhancementSessionManager(instrumentation, transformer, spyDispatcher, sessionRegistry);
     }
 
     @Override
@@ -206,83 +201,24 @@ public class MonitorCommand implements StreamCommand, SpecBackedCommand {
         }
 
         String monitorId = UUID.randomUUID().toString();
-        MonitorAdviceListener monitorListener = null;
-        List<MonitorSession.EnhancedClass> enhanced = new ArrayList<>();
-        try {
-            monitorListener = new MonitorAdviceListener();
-            spyDispatcher.register(monitorId, SleuthSpyDispatcher.ListenerKind.MONITOR, monitorListener);
-            monitorListener.clear();
-
-            for (Class<?> c : matches) {
-                MonitorEnhancer enhancer = new MonitorEnhancer(c.getName(), methodPattern, null, monitorId);
-                transformer.addEnhancer(c, enhancer);
-                try {
-                    instrumentation.retransformClasses(c);
-                } catch (Exception e) {
-                    // Roll back this class registration and then abort.
-                    try {
-                        transformer.removeEnhancer(c, enhancer);
-                    } catch (Exception ignore) {
-                        // ignore
-                    }
-                    try {
-                        instrumentation.retransformClasses(c);
-                    } catch (Exception ignore) {
-                        // ignore
-                    }
-                    throw e;
-                }
-                enhanced.add(new MonitorSession.EnhancedClass(c, enhancer));
-            }
-        } catch (Exception e) {
-            // Rollback any partial state best-effort.
-            for (MonitorSession.EnhancedClass ec : enhanced) {
-                try {
-                    transformer.removeEnhancer(ec.clazz, ec.enhancer);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-                try {
-                    instrumentation.retransformClasses(ec.clazz);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-            }
-            try {
-                spyDispatcher.unregister(monitorId);
-            } catch (Exception ignore) {
-                // ignore
-            }
-            throw e;
+        MonitorAdviceListener monitorListener = new MonitorAdviceListener();
+        monitorListener.clear();
+        EnhancementSessionManager.Request request = EnhancementSessionManager.Request.builder(monitorId, EnhancementSessionKind.MONITOR)
+            .withCommandName("monitor")
+            .withListenerKind(SleuthSpyDispatcher.ListenerKind.MONITOR)
+            .withListener(monitorListener)
+            .withClassPattern(classPattern)
+            .withMethodPattern(methodPattern)
+            .withDetails("intervalMs=" + intervalMs + ", rounds=" + rounds);
+        for (Class<?> c : matches) {
+            request.withTarget(c, new MonitorEnhancer(c.getName(), methodPattern, null, monitorId));
         }
-
-        MonitorSession session = new MonitorSession(monitorId, classPattern, methodPattern, enhanced);
-        session.monitorListener = monitorListener;
-        activeSessions.put(monitorId, session);
-        try {
-            registerEnhancementSession(monitorId, classPattern, methodPattern, enhanced, intervalMs, rounds);
-        } catch (Exception e) {
-            stopMonitorInternal(monitorId);
-            throw e;
-        }
-
-        ClientSession clientSession = null;
-        String cleanupKey = null;
-        try {
-            CommandContext ctx = CommandContextHolder.get();
-            clientSession = ctx != null ? ctx.getClientSession() : null;
-            if (clientSession != null) {
-                cleanupKey = "monitor:" + monitorId;
-                clientSession.registerCleanup(cleanupKey, () -> closeMonitorSession(monitorId, "client_cleanup"));
-            }
-        } catch (Exception ignore) {
-            // ignore
-        }
+        EnhancementSessionManager.ManagedSession session = sessionManager.open(request.build());
 
         StringBuilder banner = new StringBuilder();
         banner.append("Started monitor ").append(classPattern).append(".").append(methodPattern).append("\n");
         banner.append("Monitor ID: ").append(monitorId).append("\n");
-        banner.append("Classes instrumented: ").append(enhanced.size()).append("\n");
+        banner.append("Classes instrumented: ").append(matches.size()).append("\n");
         banner.append("Interval: ").append(intervalMs).append("ms, Rounds: ").append(rounds).append("\n");
 
         if (sink != null) {
@@ -293,7 +229,7 @@ public class MonitorCommand implements StreamCommand, SpecBackedCommand {
         int done = 0;
         CancellationToken token = currentCancellationToken();
         try {
-            for (int i = 0; i < rounds && !token.isCancelled(); i++) {
+            for (int i = 0; i < rounds && !token.isCancelled() && !session.isClosed(); i++) {
                 try {
                     Thread.sleep(Math.max(1, intervalMs));
                     token.throwIfCancelled();
@@ -304,20 +240,15 @@ public class MonitorCommand implements StreamCommand, SpecBackedCommand {
                 }
 
                 Map<String, MonitorAdviceListener.MethodStatsSnapshot> snap;
-                MonitorSession s = activeSessions.get(monitorId);
-                MonitorAdviceListener l = s != null ? s.monitorListener : null;
-                snap = l != null ? l.snapshot() : java.util.Collections.<String, MonitorAdviceListener.MethodStatsSnapshot>emptyMap();
+                snap = !session.isClosed()
+                    ? monitorListener.snapshot()
+                    : java.util.Collections.<String, MonitorAdviceListener.MethodStatsSnapshot>emptyMap();
                 appendOrSend(out, sink, formatSnapshot(snap, i + 1, rounds));
-                if (l != null) {
-                    l.clear();
-                }
+                monitorListener.clear();
                 done++;
             }
         } finally {
-            closeMonitorSession(monitorId, "completed");
-            if (clientSession != null && cleanupKey != null) {
-                clientSession.removeCleanup(cleanupKey);
-            }
+            session.close("completed");
         }
 
         String summary = "Monitor completed. rounds=" + done;
@@ -327,78 +258,6 @@ public class MonitorCommand implements StreamCommand, SpecBackedCommand {
         }
         out.append(summary);
         return out.toString();
-    }
-
-    private void closeMonitorSession(String monitorId, String reason) {
-        if (sessionRegistry != null && sessionRegistry.close(monitorId, reason)) {
-            return;
-        }
-        stopMonitorInternal(monitorId);
-    }
-
-    private void stopMonitorInternal(String monitorId) {
-        MonitorSession session = activeSessions.remove(monitorId);
-        if (session == null) {
-            try {
-                spyDispatcher.unregister(monitorId);
-            } catch (Exception ignore) {
-                // ignore
-            }
-            return;
-        }
-
-        try {
-            for (MonitorSession.EnhancedClass ec : session.enhancedClasses) {
-                transformer.removeEnhancer(ec.clazz, ec.enhancer);
-                try {
-                    instrumentation.retransformClasses(ec.clazz);
-                } catch (Exception ignored) {
-                    // best-effort
-                }
-            }
-        } finally {
-            try {
-                spyDispatcher.unregister(monitorId);
-            } catch (Exception ignore) {
-                // ignore
-            }
-        }
-    }
-
-    private void registerEnhancementSession(String monitorId,
-                                            String classPattern,
-                                            String methodPattern,
-                                            List<MonitorSession.EnhancedClass> enhanced,
-                                            long intervalMs,
-                                            int rounds) {
-        if (sessionRegistry == null) {
-            return;
-        }
-        List<String> targetClassNames = new ArrayList<>();
-        List<Integer> loaderIds = new ArrayList<>();
-        if (enhanced != null) {
-            for (MonitorSession.EnhancedClass ec : enhanced) {
-                if (ec == null || ec.clazz == null) {
-                    continue;
-                }
-                targetClassNames.add(ec.className);
-                loaderIds.add(Integer.valueOf(LoadedClassResolver.loaderId(ec.clazz.getClassLoader())));
-            }
-        }
-        CommandContext ctx = CommandContextHolder.get();
-        EnhancementSessionDescriptor.Builder builder = EnhancementSessionDescriptor
-            .builder(monitorId, EnhancementSessionKind.MONITOR)
-            .withCommandName("monitor")
-            .withClassPattern(classPattern)
-            .withMethodPattern(methodPattern)
-            .withTargetClassNames(targetClassNames)
-            .withLoaderIds(loaderIds)
-            .withDetails("intervalMs=" + intervalMs + ", rounds=" + rounds);
-        if (ctx != null) {
-            builder.withClientId(ctx.getClientId())
-                .withClientSessionId(ctx.getSessionId());
-        }
-        sessionRegistry.register(builder.build(), reason -> stopMonitorInternal(monitorId));
     }
 
     private String formatSnapshot(Map<String, MonitorAdviceListener.MethodStatsSnapshot> snap, int round, int rounds) {
@@ -462,32 +321,5 @@ public class MonitorCommand implements StreamCommand, SpecBackedCommand {
     @Override
     public String getDescription() {
         return "Monitor method statistics periodically (simplified)";
-    }
-
-    private static final class MonitorSession {
-        private final String id;
-        private final String classPattern;
-        private final String methodPattern;
-        private final List<EnhancedClass> enhancedClasses;
-        private MonitorAdviceListener monitorListener;
-
-        private MonitorSession(String id, String classPattern, String methodPattern, List<EnhancedClass> enhancedClasses) {
-            this.id = id;
-            this.classPattern = classPattern;
-            this.methodPattern = methodPattern;
-            this.enhancedClasses = enhancedClasses;
-        }
-
-        private static final class EnhancedClass {
-            private final Class<?> clazz;
-            private final String className;
-            private final ClassEnhancer enhancer;
-
-            private EnhancedClass(Class<?> clazz, ClassEnhancer enhancer) {
-                this.clazz = clazz;
-                this.className = clazz != null ? clazz.getName() : "";
-                this.enhancer = enhancer;
-            }
-        }
     }
 }

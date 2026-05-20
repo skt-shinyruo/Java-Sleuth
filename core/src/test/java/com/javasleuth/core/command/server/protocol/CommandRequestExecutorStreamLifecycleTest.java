@@ -14,6 +14,7 @@ import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.foundation.security.AuditLogger;
 import com.javasleuth.foundation.security.AuthenticationManager;
+import com.javasleuth.foundation.security.AuthenticationManager.AuthenticationResult;
 import com.javasleuth.foundation.security.AuthorizationManager;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
@@ -38,6 +39,7 @@ public class CommandRequestExecutorStreamLifecycleTest {
             System.setProperty("sleuth.performance.command.timeout.max", "50");
 
             ProductionConfig config = ProductionConfig.createDefault();
+            Assert.assertTrue("streaming should be enabled for this test", SleuthConfigParser.parse(config.snapshot()).protocol().isStreamingEnabled());
             CountDownLatch entered = new CountDownLatch(1);
             CountDownLatch release = new CountDownLatch(1);
             CapturingReply reply = new CapturingReply();
@@ -70,11 +72,13 @@ public class CommandRequestExecutorStreamLifecycleTest {
                             pipeline,
                             new ClientSessionIndex()
                         );
-                        ClientSession session = new ClientSession("session-a", "client-a", "test");
+                        AuthenticationResult auth = authenticationManager.createSession(AuthenticationManager.UserRole.VIEWER, "test");
+                        Assert.assertTrue(auth.isSuccess());
+                        ClientSession session = new ClientSession(auth.getSessionId(), "client-a", "test");
                         FutureTask<Boolean> task = new FutureTask<Boolean>(() -> executor.execute(
                             "client-a",
                             "test",
-                            "session-a",
+                            auth.getSessionId(),
                             "conn-a",
                             session,
                             SleuthConfigParser.parse(config.snapshot()).protocol(),
@@ -91,7 +95,9 @@ public class CommandRequestExecutorStreamLifecycleTest {
 
                         Thread thread = new Thread(task, "request-stream-test");
                         thread.start();
-                        Assert.assertTrue("stream command did not start", entered.await(1, TimeUnit.SECONDS));
+                        if (!entered.await(1, TimeUnit.SECONDS)) {
+                            Assert.fail("stream command did not start; taskDone=" + task.isDone() + ", data=" + reply.data + ", errors=" + reply.errors + ", endCount=" + reply.endCount);
+                        }
                         Thread.sleep(150L);
                         Assert.assertFalse("request should wait for stream completion", task.isDone());
                         Assert.assertEquals(0, reply.endCount);

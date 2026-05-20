@@ -54,6 +54,95 @@ public class ProtocolClientIntegrationTest {
     }
 
     @Test
+    public void testDefaultAnonymousViewerCannotRunOperatorCommandOverBinary() throws Exception {
+        CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(ProductionConfig.createDefault()));
+        ProductionConfig config = processor.getConfig();
+        try {
+            config.clearRuntimeConfig();
+            config.setRuntimeConfig("server.bind.address", "127.0.0.1");
+            config.setRuntimeConfig("server.port", String.valueOf(allocatePort()));
+            config.setRuntimeConfig("protocol.streaming.enabled", "true");
+
+            Thread serverThread = new Thread(processor::start, "test-cp-start-authz-default");
+            serverThread.setDaemon(true);
+            serverThread.start();
+
+            int port = waitForBoundPort(processor, 3, TimeUnit.SECONDS);
+
+            CapturingOutput output = new CapturingOutput();
+            try (ProtocolClient client = ProtocolClient.connectWithRetry(
+                "127.0.0.1",
+                port,
+                "binary",
+                true,
+                1024 * 1024,
+                8192
+            )) {
+                CommandResult version = client.execute("version", false, output);
+                Assert.assertTrue("Expected default viewer session to run version", version.isOk());
+
+                CapturingOutput denied = new CapturingOutput();
+                CommandResult getstatic = client.execute("getstatic java.lang.System out", false, denied);
+                Assert.assertFalse("Expected operator command to be denied for anonymous viewer", getstatic.isOk());
+                Assert.assertTrue(
+                    "Expected permission error, got: " + denied.getStderr(),
+                    denied.getStderr().toLowerCase().contains("required: operator")
+                );
+            } finally {
+                processor.shutdownGracefully(3);
+                serverThread.join(2000);
+            }
+
+            Assert.assertTrue("Expected stdout contains version", output.getStdout().contains("version:"));
+        } finally {
+            config.clearRuntimeConfig();
+        }
+    }
+
+    @Test
+    public void testExplicitPasswordAuthenticationUpgradesProtocolSession() throws Exception {
+        CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(ProductionConfig.createDefault()));
+        ProductionConfig config = processor.getConfig();
+        try {
+            config.clearRuntimeConfig();
+            config.setRuntimeConfig("server.bind.address", "127.0.0.1");
+            config.setRuntimeConfig("server.port", String.valueOf(allocatePort()));
+            config.setRuntimeConfig("protocol.streaming.enabled", "true");
+            config.setRuntimeConfig("security.auth.password.enabled", "true");
+            config.setRuntimeConfig("security.auth.operator.password", "op-secret");
+
+            Thread serverThread = new Thread(processor::start, "test-cp-start-auth-upgrade");
+            serverThread.setDaemon(true);
+            serverThread.start();
+
+            int port = waitForBoundPort(processor, 3, TimeUnit.SECONDS);
+
+            CapturingOutput authOutput = new CapturingOutput();
+            try (ProtocolClient client = ProtocolClient.connectWithRetry(
+                "127.0.0.1",
+                port,
+                "binary",
+                true,
+                1024 * 1024,
+                8192
+            )) {
+                CommandResult auth = client.authenticate("operator", "op-secret", authOutput);
+                Assert.assertTrue("Expected auth to succeed: " + authOutput.getStderr(), auth.isOk());
+
+                CapturingOutput output = new CapturingOutput();
+                CommandResult getstatic = client.execute("getstatic java.lang.System out", false, output);
+                Assert.assertTrue("Expected operator command after auth, stderr=" + output.getStderr(), getstatic.isOk());
+                Assert.assertTrue(output.getStdout().contains("Static fields for java.lang.System"));
+            } finally {
+                processor.shutdownGracefully(3);
+                serverThread.join(2000);
+            }
+        } finally {
+            config.clearRuntimeConfig();
+        }
+    }
+
+    @Test
     public void testHandshakeNegotiatesStreamingDisabledOverridesClientHint() throws Exception {
         CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(ProductionConfig.createDefault()));
         ProductionConfig config = processor.getConfig();

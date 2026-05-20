@@ -190,6 +190,11 @@ public class AuthenticationManager implements AutoCloseable {
      * Create session without credential verification (for anonymous/guest access)
      */
     public AuthenticationResult createSession(UserRole role, String clientInfo) {
+        if (role != UserRole.VIEWER) {
+            auditLogger.logAuthenticationAttempt(role != null ? role.getName() : null, clientInfo, false,
+                "Credential-free session creation is limited to viewer");
+            return AuthenticationResult.failure("Credential-free session creation is limited to viewer");
+        }
         if (role == UserRole.VIEWER && !SleuthConfigSchema.SECURITY_ANONYMOUS_VIEWER.read(config)) {
             return AuthenticationResult.failure("Anonymous viewer sessions disabled");
         }

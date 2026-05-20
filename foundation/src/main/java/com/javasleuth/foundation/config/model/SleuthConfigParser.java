@@ -228,6 +228,8 @@ public final class SleuthConfigParser {
         boolean enabled = SleuthConfigSchema.PLUGINS_ENABLED.read(config);
         boolean serviceLoader = SleuthConfigSchema.PLUGINS_SERVICELOADER_ENABLED.read(config);
         String allowlist = SleuthConfigSchema.PLUGINS_ALLOWLIST_SHA256.read(config);
+        boolean unsafeAllowAllJars = SleuthConfigSchema.PLUGINS_UNSAFE_ALLOW_ALL_JARS.read(config);
+        boolean unsafeLegacyProviderBridge = SleuthConfigSchema.PLUGINS_UNSAFE_LEGACY_PROVIDER_BRIDGE_ENABLED.read(config);
         String dir = normalizeNonBlank(SleuthConfigSchema.PLUGINS_DIRECTORY.read(config), "plugins");
 
         String rawStrategy = SleuthConfigSchema.PLUGINS_CONFLICT_STRATEGY.read(config);
@@ -236,7 +238,7 @@ public final class SleuthConfigParser {
             PluginsConfig.ConflictStrategy.PREFER_BUILTIN
         );
 
-        return new PluginsConfig(enabled, serviceLoader, allowlist, dir, strategy);
+        return new PluginsConfig(enabled, serviceLoader, allowlist, unsafeAllowAllJars, unsafeLegacyProviderBridge, dir, strategy);
     }
 
     private static String normalizeNonBlank(String v, String defaultValue) {

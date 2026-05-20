@@ -4,27 +4,22 @@ import com.javasleuth.core.command.CancellationToken;
 import com.javasleuth.core.command.CommandContext;
 import com.javasleuth.core.command.CommandContextHolder;
 import com.javasleuth.core.command.StreamSink;
-import com.javasleuth.core.command.session.ClientSession;
 import com.javasleuth.foundation.config.ConfigView;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.config.model.MonitoringConfig;
 import com.javasleuth.foundation.config.model.SleuthConfigParser;
 import com.javasleuth.bootstrap.data.StackTraceResult;
-import com.javasleuth.core.enhancement.ClassEnhancer;
-import com.javasleuth.core.enhancement.session.EnhancementSessionDescriptor;
+import com.javasleuth.core.enhancement.session.EnhancementSessionManager;
 import com.javasleuth.core.enhancement.session.EnhancementSessionKind;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.StackEnhancer;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.StackAdviceListener;
-import com.javasleuth.foundation.util.LoadedClassResolver;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import java.lang.instrument.Instrumentation;
-import java.util.Collections;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -33,8 +28,7 @@ public final class StackTraceLiteEngine {
     private final SleuthClassFileTransformer transformer;
     private final ConfigView config;
     private final SleuthSpyDispatcher spyDispatcher;
-    private final EnhancementSessionRegistry sessionRegistry;
-    private final ConcurrentHashMap<String, StackSession> activeSessions = new ConcurrentHashMap<>();
+    private final EnhancementSessionManager sessionManager;
 
     public StackTraceLiteEngine(
         Instrumentation instrumentation,
@@ -56,7 +50,7 @@ public final class StackTraceLiteEngine {
         this.transformer = transformer;
         this.config = config;
         this.spyDispatcher = spyDispatcher;
-        this.sessionRegistry = sessionRegistry;
+        this.sessionManager = new EnhancementSessionManager(instrumentation, transformer, spyDispatcher, sessionRegistry);
     }
 
     public String start(
@@ -91,58 +85,19 @@ public final class StackTraceLiteEngine {
         MonitoringConfig monitoring = SleuthConfigParser.parse(configSnapshot()).monitoring();
         BlockingQueue<StackTraceResult> q = new LinkedBlockingQueue<>(monitoring.getWatchQueueCapacity());
 
-        ClassEnhancer enhancer = new StackEnhancer(target.getName(), methodPattern, null, stackId);
-        boolean enhancerAdded = false;
-        try {
-            boolean dropOnFull = monitoring.isWatchDropOnFull();
-            spyDispatcher.register(
-                stackId,
-                SleuthSpyDispatcher.ListenerKind.STACK,
-                new StackAdviceListener(stackId, q, depth, dropOnFull)
-            );
-
-            transformer.addEnhancer(target, enhancer);
-            enhancerAdded = true;
-
-            instrumentation.retransformClasses(target);
-
-            activeSessions.put(stackId, new StackSession(stackId, target, methodPattern, q, enhancer));
-            registerEnhancementSession(stackId, classPattern, methodPattern, target, maxCount, timeoutSeconds, depth);
-        } catch (Exception e) {
-            // Rollback partial state best-effort.
-            activeSessions.remove(stackId);
-            if (enhancerAdded) {
-                try {
-                    transformer.removeEnhancer(target, enhancer);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-                try {
-                    instrumentation.retransformClasses(target);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-            }
-            try {
-                spyDispatcher.unregister(stackId);
-            } catch (Exception ignore) {
-                // ignore
-            }
-            throw e;
-        }
-
-        ClientSession clientSession = null;
-        String cleanupKey = null;
-        try {
-            CommandContext ctx = CommandContextHolder.get();
-            clientSession = ctx != null ? ctx.getClientSession() : null;
-            if (clientSession != null) {
-                cleanupKey = "stack:" + stackId;
-                clientSession.registerCleanup(cleanupKey, () -> closeStackSession(stackId, "client_cleanup"));
-            }
-        } catch (Exception ignore) {
-            // ignore
-        }
+        StackEnhancer enhancer = new StackEnhancer(target.getName(), methodPattern, null, stackId);
+        boolean dropOnFull = monitoring.isWatchDropOnFull();
+        EnhancementSessionManager.ManagedSession session = sessionManager.open(
+            EnhancementSessionManager.Request.builder(stackId, EnhancementSessionKind.STACK)
+                .withCommandName("stack")
+                .withListenerKind(SleuthSpyDispatcher.ListenerKind.STACK)
+                .withListener(new StackAdviceListener(stackId, q, depth, dropOnFull))
+                .withClassPattern(classPattern)
+                .withMethodPattern(methodPattern)
+                .withTarget(target, enhancer)
+                .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds + ", depth=" + depth)
+                .build()
+        );
 
         String banner = StackTraceLiteFormatter.buildBanner(target, methodPattern, stackId, maxCount, timeoutSeconds, depth);
         if (sink != null) {
@@ -156,7 +111,7 @@ public final class StackTraceLiteEngine {
         CancellationToken token = currentCancellationToken();
 
         try {
-            while (events < maxCount && !token.isCancelled()) {
+            while (events < maxCount && !token.isCancelled() && !session.isClosed()) {
                 long remaining = timeoutMs - (System.currentTimeMillis() - startMs);
                 if (remaining <= 0) {
                     appendOrSend(out, sink, "\nStack timeout reached");
@@ -175,20 +130,16 @@ public final class StackTraceLiteEngine {
                 if (token.isCancelled()) {
                     break;
                 }
+                if (session.isClosed()) {
+                    break;
+                }
                 if (r != null) {
                     events++;
                     appendOrSend(out, sink, StackTraceLiteFormatter.formatResult(r, events));
                 }
             }
         } finally {
-            closeStackSession(stackId, "completed");
-            if (clientSession != null && cleanupKey != null) {
-                try {
-                    clientSession.removeCleanup(cleanupKey);
-                } catch (Exception ignore) {
-                    // ignore
-                }
-            }
+            session.close("completed");
         }
 
         String summary = "Stack completed. totalEvents=" + events;
@@ -205,65 +156,7 @@ public final class StackTraceLiteEngine {
     }
 
     public boolean stop(String stackId) {
-        return closeStackSession(stackId, "stop");
-    }
-
-    private boolean closeStackSession(String stackId, String reason) {
-        if (sessionRegistry != null && sessionRegistry.close(stackId, reason)) {
-            return true;
-        }
-        return stopInternal(stackId);
-    }
-
-    private boolean stopInternal(String stackId) {
-        StackSession session = activeSessions.remove(stackId);
-        if (session == null) {
-            try {
-                spyDispatcher.unregister(stackId);
-            } catch (Exception ignore) {
-                // ignore
-            }
-            return false;
-        }
-        try {
-            transformer.removeEnhancer(session.target, session.enhancer);
-            instrumentation.retransformClasses(session.target);
-        } catch (Exception ignored) {
-            // best-effort
-        } finally {
-            try {
-                spyDispatcher.unregister(stackId);
-            } catch (Exception ignore) {
-                // ignore
-            }
-        }
-        return true;
-    }
-
-    private void registerEnhancementSession(String stackId,
-                                            String classPattern,
-                                            String methodPattern,
-                                            Class<?> target,
-                                            int maxCount,
-                                            long timeoutSeconds,
-                                            int depth) {
-        if (sessionRegistry == null) {
-            return;
-        }
-        CommandContext ctx = CommandContextHolder.get();
-        EnhancementSessionDescriptor.Builder builder = EnhancementSessionDescriptor
-            .builder(stackId, EnhancementSessionKind.STACK)
-            .withCommandName("stack")
-            .withClassPattern(classPattern)
-            .withMethodPattern(methodPattern)
-            .withTargetClassNames(Collections.singletonList(target.getName()))
-            .withLoaderIds(Collections.singletonList(Integer.valueOf(LoadedClassResolver.loaderId(target.getClassLoader()))))
-            .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds + ", depth=" + depth);
-        if (ctx != null) {
-            builder.withClientId(ctx.getClientId())
-                .withClientSessionId(ctx.getSessionId());
-        }
-        sessionRegistry.register(builder.build(), reason -> stopInternal(stackId));
+        return sessionManager.close(stackId, "stop");
     }
 
     private void appendOrSend(StringBuilder buf, StreamSink sink, String text) {
@@ -279,25 +172,4 @@ public final class StackTraceLiteEngine {
         return ctx != null ? ctx.getCancellationToken() : CancellationToken.NONE;
     }
 
-    private static final class StackSession {
-        private final String stackId;
-        private final Class<?> target;
-        private final String methodPattern;
-        private final BlockingQueue<StackTraceResult> queue;
-        private final ClassEnhancer enhancer;
-
-        private StackSession(
-            String stackId,
-            Class<?> target,
-            String methodPattern,
-            BlockingQueue<StackTraceResult> queue,
-            ClassEnhancer enhancer
-        ) {
-            this.stackId = stackId;
-            this.target = target;
-            this.methodPattern = methodPattern;
-            this.queue = queue;
-            this.enhancer = enhancer;
-        }
-    }
 }
