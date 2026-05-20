@@ -1,11 +1,13 @@
 package com.javasleuth.core.agent.runtime;
 
+import com.javasleuth.bootstrap.agent.AgentLifecycle;
 import com.javasleuth.core.command.CommandProcessor;
 import com.javasleuth.core.command.CommandProcessorFactory;
 import com.javasleuth.core.command.CommandProcessorFactoryRequest;
 import com.javasleuth.core.command.JobManager;
 import com.javasleuth.core.command.session.ClientSessionRegistry;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
+import com.javasleuth.core.enhancement.session.EnhancementSessionCloseSummary;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.monitoring.MetricsCollector;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
@@ -235,16 +237,18 @@ final class AttachSessionContext implements AutoCloseable {
         }
         Instrumentation inst = instrumentation;
         SleuthClassFileTransformer tx = transformer;
-        Set<String> enhanced = snapshotEnhancedClassNames(tx);
+        CleanupResult.Builder cleanup = CleanupResult.builder("attach-session", "shutdown");
+        Set<String> enhanced = snapshotEnhancedClassNames(tx, cleanup);
 
-        shutdownCommandProcessorBestEffort(commandProcessor);
-        shutdownAttachResourcesBestEffort(inst, tx, jobManager, clientSessionRegistry, vmToolSessionRegistry, enhancementSessionRegistry);
-        destroySpyBestEffort(spyDispatcher);
-        removeEnhancersBestEffort(tx);
-        rollbackEnhancedClassesBestEffort(inst, enhanced);
-        removeTransformerBestEffort(inst, tx);
-        joinCommandThreadBestEffort(commandThread);
-        closeServicesBestEffort(services);
+        shutdownCommandProcessor(cleanup, commandProcessor);
+        shutdownAttachResources(cleanup, inst, tx, jobManager, clientSessionRegistry, vmToolSessionRegistry, enhancementSessionRegistry);
+        destroySpy(cleanup, spyDispatcher);
+        removeEnhancers(cleanup, tx);
+        rollbackEnhancedClasses(cleanup, inst, enhanced);
+        removeTransformer(cleanup, inst, tx);
+        joinCommandThread(cleanup, commandThread);
+        closeServices(cleanup, services);
+        publishCleanupResult(cleanup.build());
     }
 
     private static void cleanupStartupFailure(
@@ -259,66 +263,70 @@ final class AttachSessionContext implements AutoCloseable {
         CommandProcessor commandProcessor,
         SleuthSpyDispatcher spyDispatcher
     ) {
-        shutdownCommandProcessorBestEffort(commandProcessor);
-        shutdownEnhancementSessionsBestEffort(enhancementSessionRegistry, "startup_failed");
-        shutdownJobManagerBestEffort(jobManager, "startup_failed");
-        shutdownMetricsBestEffort(metricsCollector);
-        shutdownVmToolSessionsBestEffort(instrumentation, transformer, vmToolSessionRegistry, "startup_failed");
-        shutdownClientSessionsBestEffort(clientSessionRegistry, "startup_failed");
-        AgentGlobalState.resetBootstrapAttachStateBestEffort();
-        closeServicesBestEffort(services);
-        clearDispatcherBestEffort(spyDispatcher);
-        destroySpyApiBestEffort();
-        removeTransformerBestEffort(instrumentation, transformer);
-        removeEnhancersBestEffort(transformer);
+        CleanupResult.Builder cleanup = CleanupResult.builder("attach-session", "startup_failed");
+        shutdownCommandProcessor(cleanup, commandProcessor);
+        shutdownEnhancementSessions(cleanup, enhancementSessionRegistry, "startup_failed");
+        shutdownJobManager(cleanup, jobManager, "startup_failed");
+        shutdownMetrics(cleanup, metricsCollector);
+        shutdownVmToolSessions(cleanup, instrumentation, transformer, vmToolSessionRegistry, "startup_failed");
+        shutdownClientSessions(cleanup, clientSessionRegistry, "startup_failed");
+        resetBootstrapAttachState(cleanup);
+        closeServices(cleanup, services);
+        clearDispatcher(cleanup, spyDispatcher);
+        destroySpyApi(cleanup);
+        removeTransformer(cleanup, instrumentation, transformer);
+        removeEnhancers(cleanup, transformer);
+        publishCleanupResult(cleanup.build());
     }
 
-    private static Set<String> snapshotEnhancedClassNames(SleuthClassFileTransformer transformer) {
+    private static Set<String> snapshotEnhancedClassNames(SleuthClassFileTransformer transformer, CleanupResult.Builder cleanup) {
         if (transformer == null) {
+            cleanup.skipped("snapshot-enhanced-classes", "transformer unavailable");
             return Collections.emptySet();
         }
         try {
-            return new HashSet<>(transformer.getEnhancedClassNames());
-        } catch (Exception ignore) {
+            Set<String> names = new HashSet<>(transformer.getEnhancedClassNames());
+            cleanup.success("snapshot-enhanced-classes");
+            return names;
+        } catch (Throwable t) {
+            cleanup.failure("snapshot-enhanced-classes", t);
             return Collections.emptySet();
         }
     }
 
-    private static void destroySpyBestEffort(SleuthSpyDispatcher dispatcher) {
-        clearDispatcherBestEffort(dispatcher);
-        destroySpyApiBestEffort();
+    private static void destroySpy(CleanupResult.Builder cleanup, SleuthSpyDispatcher dispatcher) {
+        clearDispatcher(cleanup, dispatcher);
+        destroySpyApi(cleanup);
     }
 
-    private static void clearDispatcherBestEffort(SleuthSpyDispatcher dispatcher) {
-        try {
-            if (dispatcher != null) {
-                dispatcher.clear();
-            }
-        } catch (Exception ignore) {
-            // best-effort
-        }
-    }
-
-    private static void destroySpyApiBestEffort() {
-        try {
-            com.javasleuth.bootstrap.spy.SleuthSpyAPI.destroy();
-        } catch (Throwable ignore) {
-            // best-effort
-        }
-    }
-
-    private static void shutdownCommandProcessorBestEffort(CommandProcessor commandProcessor) {
-        if (commandProcessor == null) {
+    private static void clearDispatcher(CleanupResult.Builder cleanup, SleuthSpyDispatcher dispatcher) {
+        if (dispatcher == null) {
+            cleanup.skipped("clear-spy-dispatcher", "dispatcher unavailable");
             return;
         }
-        try {
-            commandProcessor.shutdownForDetach();
-        } catch (Exception ignore) {
-            // best-effort
-        }
+        recordStep(cleanup, "clear-spy-dispatcher", () -> {
+            dispatcher.clear();
+        });
     }
 
-    private static void shutdownAttachResourcesBestEffort(
+    private static void destroySpyApi(CleanupResult.Builder cleanup) {
+        recordStep(cleanup, "destroy-spy-api", () -> {
+            com.javasleuth.bootstrap.spy.SleuthSpyAPI.destroy();
+        });
+    }
+
+    private static void shutdownCommandProcessor(CleanupResult.Builder cleanup, CommandProcessor commandProcessor) {
+        if (commandProcessor == null) {
+            cleanup.skipped("shutdown-command-processor", "command processor unavailable");
+            return;
+        }
+        recordStep(cleanup, "shutdown-command-processor", () -> {
+            commandProcessor.shutdownForDetach();
+        });
+    }
+
+    private static void shutdownAttachResources(
+        CleanupResult.Builder cleanup,
         Instrumentation instrumentation,
         SleuthClassFileTransformer transformer,
         JobManager jobManager,
@@ -326,137 +334,219 @@ final class AttachSessionContext implements AutoCloseable {
         VmToolSessionRegistry vmToolSessionRegistry,
         EnhancementSessionRegistry enhancementSessionRegistry
     ) {
-        shutdownEnhancementSessionsBestEffort(enhancementSessionRegistry, "shutdown");
-        shutdownJobManagerBestEffort(jobManager, "shutdown");
-        shutdownClientSessionsBestEffort(clientSessionRegistry, "shutdown");
-        shutdownVmToolSessionsBestEffort(instrumentation, transformer, vmToolSessionRegistry, "shutdown");
-        AgentGlobalState.resetBootstrapAttachStateBestEffort();
+        shutdownEnhancementSessions(cleanup, enhancementSessionRegistry, "shutdown");
+        shutdownJobManager(cleanup, jobManager, "shutdown");
+        shutdownClientSessions(cleanup, clientSessionRegistry, "shutdown");
+        shutdownVmToolSessions(cleanup, instrumentation, transformer, vmToolSessionRegistry, "shutdown");
+        resetBootstrapAttachState(cleanup);
     }
 
-    private static void shutdownEnhancementSessionsBestEffort(EnhancementSessionRegistry enhancementSessionRegistry, String reason) {
-        try {
-            if (enhancementSessionRegistry != null) {
-                enhancementSessionRegistry.closeAll(reason);
-            }
-        } catch (Exception ignore) {
-            // best-effort
+    private static void shutdownEnhancementSessions(
+        CleanupResult.Builder cleanup,
+        EnhancementSessionRegistry enhancementSessionRegistry,
+        String reason
+    ) {
+        if (enhancementSessionRegistry == null) {
+            cleanup.skipped("shutdown-enhancement-sessions", "registry unavailable");
+            return;
         }
-    }
-
-    private static void shutdownJobManagerBestEffort(JobManager jobManager, String reason) {
-        try {
-            if (jobManager != null) {
-                jobManager.shutdown(reason);
+        recordStep(cleanup, "shutdown-enhancement-sessions", () -> {
+            EnhancementSessionCloseSummary summary = enhancementSessionRegistry.closeAll(reason);
+            if (summary != null && summary.getFailed() > 0) {
+                throw new IllegalStateException(formatEnhancementCloseSummary(summary));
             }
-        } catch (Exception ignore) {
-            // best-effort
-        }
+        });
     }
 
-    private static void shutdownClientSessionsBestEffort(ClientSessionRegistry clientSessionRegistry, String reason) {
-        try {
-            if (clientSessionRegistry != null) {
-                clientSessionRegistry.shutdown(reason);
-            }
-        } catch (Exception ignore) {
-            // best-effort
+    private static void shutdownJobManager(CleanupResult.Builder cleanup, JobManager jobManager, String reason) {
+        if (jobManager == null) {
+            cleanup.skipped("shutdown-job-manager", "job manager unavailable");
+            return;
         }
+        recordStep(cleanup, "shutdown-job-manager", () -> {
+            jobManager.shutdown(reason);
+        });
     }
 
-    private static void shutdownMetricsBestEffort(MetricsCollector metricsCollector) {
-        try {
-            if (metricsCollector != null) {
-                metricsCollector.shutdown();
-            }
-        } catch (Exception ignore) {
-            // best-effort
+    private static void shutdownClientSessions(CleanupResult.Builder cleanup, ClientSessionRegistry clientSessionRegistry, String reason) {
+        if (clientSessionRegistry == null) {
+            cleanup.skipped("shutdown-client-sessions", "client registry unavailable");
+            return;
         }
+        recordStep(cleanup, "shutdown-client-sessions", () -> {
+            clientSessionRegistry.shutdown(reason);
+        });
     }
 
-    private static void shutdownVmToolSessionsBestEffort(
+    private static void shutdownMetrics(CleanupResult.Builder cleanup, MetricsCollector metricsCollector) {
+        if (metricsCollector == null) {
+            cleanup.skipped("shutdown-metrics", "metrics collector unavailable");
+            return;
+        }
+        recordStep(cleanup, "shutdown-metrics", () -> {
+            metricsCollector.shutdown();
+        });
+    }
+
+    private static void shutdownVmToolSessions(
+        CleanupResult.Builder cleanup,
         Instrumentation instrumentation,
         SleuthClassFileTransformer transformer,
         VmToolSessionRegistry vmToolSessionRegistry,
         String reason
     ) {
-        try {
-            if (vmToolSessionRegistry != null) {
-                vmToolSessionRegistry.shutdown(instrumentation, transformer, reason);
-            }
-        } catch (Exception ignore) {
-            // best-effort
+        if (vmToolSessionRegistry == null) {
+            cleanup.skipped("shutdown-vmtool-sessions", "vmtool registry unavailable");
+            return;
         }
+        recordStep(cleanup, "shutdown-vmtool-sessions", () -> {
+            vmToolSessionRegistry.shutdown(instrumentation, transformer, reason);
+        });
     }
 
-    private static void removeEnhancersBestEffort(SleuthClassFileTransformer transformer) {
+    private static void resetBootstrapAttachState(CleanupResult.Builder cleanup) {
+        recordStep(cleanup, "reset-bootstrap-attach-state", () -> {
+            AgentGlobalState.resetBootstrapAttachStateBestEffort();
+        });
+    }
+
+    private static void removeEnhancers(CleanupResult.Builder cleanup, SleuthClassFileTransformer transformer) {
         if (transformer == null) {
+            cleanup.skipped("remove-enhancers", "transformer unavailable");
             return;
         }
-        try {
+        recordStep(cleanup, "remove-enhancers", () -> {
             transformer.removeAllEnhancers();
-        } catch (Exception ignore) {
-            // best-effort
-        }
+        });
     }
 
-    private static void rollbackEnhancedClassesBestEffort(Instrumentation instrumentation, Set<String> enhancedClassNames) {
-        if (instrumentation == null || enhancedClassNames == null || enhancedClassNames.isEmpty()) {
+    private static void rollbackEnhancedClasses(
+        CleanupResult.Builder cleanup,
+        Instrumentation instrumentation,
+        Set<String> enhancedClassNames
+    ) {
+        if (instrumentation == null) {
+            cleanup.skipped("rollback-enhanced-classes", "instrumentation unavailable");
             return;
         }
+        if (enhancedClassNames == null || enhancedClassNames.isEmpty()) {
+            cleanup.skipped("rollback-enhanced-classes", "no enhanced classes");
+            return;
+        }
+
+        Class<?>[] loaded;
         try {
-            Class<?>[] loaded = instrumentation.getAllLoadedClasses();
-            for (Class<?> c : loaded) {
-                if (c == null) {
-                    continue;
-                }
-                if (!enhancedClassNames.contains(c.getName())) {
-                    continue;
-                }
-                if (!instrumentation.isModifiableClass(c)) {
-                    continue;
-                }
-                try {
-                    instrumentation.retransformClasses(c);
-                } catch (Exception ignore) {
-                    // best-effort per-class
-                }
+            loaded = instrumentation.getAllLoadedClasses();
+            cleanup.success("snapshot-loaded-classes-for-rollback");
+        } catch (Throwable t) {
+            cleanup.failure("snapshot-loaded-classes-for-rollback", t);
+            return;
+        }
+
+        for (Class<?> c : loaded) {
+            if (c == null) {
+                continue;
             }
-        } catch (Exception ignore) {
-            // best-effort
+            String className = c.getName();
+            if (!enhancedClassNames.contains(className)) {
+                continue;
+            }
+            boolean modifiable;
+            try {
+                modifiable = instrumentation.isModifiableClass(c);
+            } catch (Throwable t) {
+                cleanup.failure("check-modifiable-class:" + className, t);
+                continue;
+            }
+            if (!modifiable) {
+                cleanup.skipped("rollback-enhanced-class:" + className, "class is not modifiable");
+                continue;
+            }
+            recordStep(cleanup, "rollback-enhanced-class:" + className, () -> {
+                instrumentation.retransformClasses(c);
+            });
         }
     }
 
-    private static void removeTransformerBestEffort(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
+    private static void removeTransformer(
+        CleanupResult.Builder cleanup,
+        Instrumentation instrumentation,
+        SleuthClassFileTransformer transformer
+    ) {
         if (instrumentation == null || transformer == null) {
+            cleanup.skipped("remove-transformer", instrumentation == null ? "instrumentation unavailable" : "transformer unavailable");
             return;
         }
-        try {
-            instrumentation.removeTransformer(transformer);
-        } catch (Exception e) {
-            SleuthLogger.warn("Java-Sleuth: Failed to remove transformer: " + e.getMessage(), e);
-        }
+        recordStep(cleanup, "remove-transformer", () -> {
+            boolean removed = instrumentation.removeTransformer(transformer);
+            if (!removed) {
+                throw new IllegalStateException("removeTransformer returned false");
+            }
+        });
     }
 
-    private static void joinCommandThreadBestEffort(Thread commandThread) {
+    private static void joinCommandThread(CleanupResult.Builder cleanup, Thread commandThread) {
         if (commandThread == null) {
+            cleanup.skipped("join-command-thread", "command thread unavailable");
             return;
         }
-        try {
+        recordStep(cleanup, "join-command-thread", () -> {
             commandThread.join(1000);
+        });
+    }
+
+    private static void closeServices(CleanupResult.Builder cleanup, SleuthAgentServices services) {
+        if (services == null) {
+            cleanup.skipped("close-services", "services unavailable");
+            return;
+        }
+        recordStep(cleanup, "close-services", () -> {
+            services.close();
+        });
+    }
+
+    private static void recordStep(CleanupResult.Builder cleanup, String name, CleanupAction action) {
+        try {
+            action.run();
+            cleanup.success(name);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-        } catch (Exception ignore) {
-            // best-effort
+            cleanup.failure(name, ie);
+        } catch (Throwable t) {
+            cleanup.failure(name, t);
         }
     }
 
-    private static void closeServicesBestEffort(SleuthAgentServices services) {
+    private static void publishCleanupResult(CleanupResult result) {
+        AgentGlobalState.recordRuntimeCleanupResult(result);
         try {
-            if (services != null) {
-                services.close();
-            }
-        } catch (Exception ignore) {
-            // best-effort
+            AgentLifecycle.recordRuntimeCleanupResult(result.getStatusName(), result.formatSummary());
+        } catch (Throwable t) {
+            SleuthLogger.warn("Java-Sleuth: Failed to publish cleanup result to bootstrap lifecycle: " + t.getMessage(), t);
         }
+        if (result.isDegraded()) {
+            String message = "Java-Sleuth: attach cleanup completed with failures: " + result.formatFailures();
+            System.err.println(message);
+            SleuthLogger.warn(message);
+        } else {
+            SleuthLogger.debug("Java-Sleuth: attach cleanup completed: " + result.formatSummary());
+        }
+    }
+
+    private static String formatEnhancementCloseSummary(EnhancementSessionCloseSummary summary) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("enhancement session cleanup failed")
+            .append(" total=").append(summary.getTotal())
+            .append(" closed=").append(summary.getClosed())
+            .append(" missing=").append(summary.getMissing())
+            .append(" failed=").append(summary.getFailed());
+        if (!summary.getFailureMessages().isEmpty()) {
+            sb.append(" failures=").append(summary.getFailureMessages());
+        }
+        return sb.toString();
+    }
+
+    private interface CleanupAction {
+        void run() throws Throwable;
     }
 }

@@ -7,6 +7,7 @@ import com.javasleuth.bootstrap.monitor.TraceInterceptor;
 import com.javasleuth.bootstrap.monitor.TtInterceptor;
 import com.javasleuth.bootstrap.monitor.VmToolInterceptor;
 import com.javasleuth.bootstrap.monitor.WatchInterceptor;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 全局静态状态收口点（bootstrap compatibility only）。
@@ -18,7 +19,23 @@ import com.javasleuth.bootstrap.monitor.WatchInterceptor;
  * <p>注意：此处清理是 best-effort，不应影响 shutdown/reset 主流程。</p>
  */
 public final class AgentGlobalState {
+    private static final AtomicReference<CleanupResult> LAST_RUNTIME_CLEANUP = new AtomicReference<CleanupResult>();
+
     private AgentGlobalState() {}
+
+    public static void recordRuntimeCleanupResult(CleanupResult result) {
+        if (result != null) {
+            LAST_RUNTIME_CLEANUP.set(result);
+        }
+    }
+
+    public static CleanupResult getLastRuntimeCleanupResult() {
+        return LAST_RUNTIME_CLEANUP.get();
+    }
+
+    public static void clearRuntimeCleanupResultForTests() {
+        LAST_RUNTIME_CLEANUP.set(null);
+    }
 
     public static void resetBootstrapAttachStateBestEffort() {
         clearBootstrapMonitorConfigStoreBestEffort();

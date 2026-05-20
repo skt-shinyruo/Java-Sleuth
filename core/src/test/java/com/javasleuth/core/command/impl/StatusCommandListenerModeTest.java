@@ -1,5 +1,6 @@
 package com.javasleuth.core.command.impl;
 
+import com.javasleuth.bootstrap.agent.AgentLifecycle;
 import com.javasleuth.bootstrap.monitor.TraceInterceptor;
 import com.javasleuth.bootstrap.monitor.WatchInterceptor;
 import com.javasleuth.core.monitoring.MetricsCollector;
@@ -108,6 +109,35 @@ public class StatusCommandListenerModeTest {
         } finally {
             WatchInterceptor.unregisterAllWatches();
             TraceInterceptor.unregisterAllTraces();
+            metricsCollector.shutdown();
+        }
+    }
+
+    @Test
+    public void statusSurfacesLifecycleCleanupDegradedState() throws Exception {
+        AgentLifecycle.clearCleanupStatusForTests();
+        AgentLifecycle.recordRuntimeCleanupResult("PARTIAL", "runtime cleanup failed: rollback boom");
+
+        ProductionConfig config = ProductionConfig.createDefault();
+        MetricsCollector metricsCollector = new MetricsCollector(config);
+        try (PerformanceOptimizer performanceOptimizer = new PerformanceOptimizer(config)) {
+            StatusCommand command = new StatusCommand(
+                fakeInstrumentation(),
+                metricsCollector,
+                null,
+                config,
+                performanceOptimizer,
+                null
+            );
+
+            String status = command.execute(new String[]{"status"});
+
+            Assert.assertTrue(status.contains("Lifecycle Cleanup: DEGRADED"));
+            Assert.assertTrue(status.contains("partial cleanup"));
+            Assert.assertTrue(status.contains("rollback boom"));
+            Assert.assertTrue(status.contains("Ready for Production: NO"));
+        } finally {
+            AgentLifecycle.clearCleanupStatusForTests();
             metricsCollector.shutdown();
         }
     }

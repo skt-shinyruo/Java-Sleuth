@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Key requirements: best-effort, detach-safe, and allocation-minimal.</p>
  */
-public final class SleuthSpyDispatcher extends SleuthSpyAPI.AbstractSpy {
+public class SleuthSpyDispatcher extends SleuthSpyAPI.AbstractSpy {
 
     public enum ListenerKind {
         WATCH,

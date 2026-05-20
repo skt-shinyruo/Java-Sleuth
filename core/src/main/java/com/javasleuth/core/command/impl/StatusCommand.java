@@ -207,16 +207,23 @@ public class StatusCommand implements Command {
         // Operational status
         status.append("\n-- Operational Status --\n");
         boolean isHealthy = metricsCollector.isHealthy();
+        boolean cleanupDegraded = BootstrapBridge.isLifecycleCleanupDegraded();
+        boolean ready = isHealthy && !cleanupDegraded;
+        status.append("Lifecycle Cleanup: ").append(BootstrapBridge.describeLifecycleCleanupStatus()).append("\n");
+        status.append("Cleanup Health: ").append(cleanupDegraded ? "DEGRADED (partial cleanup)" : "OK").append("\n");
         status.append("Health Check: ").append(isHealthy ? "PASS ✅" : "FAIL ❌").append("\n");
-        status.append("Ready for Production: ").append(isHealthy ? "YES ✅" : "NO ❌").append("\n");
+        status.append("Ready for Production: ").append(ready ? "YES ✅" : "NO ❌").append("\n");
 
-        if (!isHealthy) {
+        if (!ready) {
             status.append("\n-- Health Issues --\n");
             if (metricsCollector.getHeapUsagePercent() > 85) {
                 status.append("⚠️ High memory usage detected\n");
             }
             if (metricsCollector.getErrorRate() > 10) {
                 status.append("⚠️ High error rate detected\n");
+            }
+            if (cleanupDegraded) {
+                status.append("Lifecycle cleanup is degraded; partial cleanup failure recorded\n");
             }
         }
 

@@ -85,12 +85,61 @@ public class AgentLifecycleTest {
         }
     }
 
+    @Test
+    public void lifecycleRecordsPartialCleanupFailureAndStillClearsAttachGate() throws Exception {
+        AgentLifecycle.clearCleanupStatusForTests();
+        String original = System.getProperty(TEST_KEY);
+        System.setProperty(TEST_KEY, "orig");
+
+        long sessionId = 0;
+        ThrowingCloseableLoader loader = new ThrowingCloseableLoader();
+        try {
+            sessionId = AgentLifecycle.tryBeginAttach();
+            Assert.assertTrue("Expected a non-zero session id", sessionId > 0);
+            Assert.assertTrue(AgentLifecycle.applyAgentArgsIfAbsent(sessionId, TEST_KEY + "=v2"));
+            Assert.assertTrue(AgentLifecycle.commitIsolatedClassLoader(sessionId, loader));
+
+            AgentLifecycle.detachBestEffort(loader);
+
+            Assert.assertEquals("orig", System.getProperty(TEST_KEY));
+            Assert.assertTrue(loader.closeAttempted.get());
+            String cleanup = AgentLifecycle.describeCleanupStatus();
+            Assert.assertTrue(cleanup.contains("DEGRADED"));
+            Assert.assertTrue(cleanup.contains("close-classloader"));
+            Assert.assertTrue(cleanup.contains("close boom"));
+
+            long next = AgentLifecycle.tryBeginAttach();
+            Assert.assertTrue("Expected attach gate to clear despite partial cleanup failure", next > 0);
+            AgentLifecycle.failBestEffort(next, null);
+        } finally {
+            if (sessionId > 0) {
+                AgentLifecycle.failBestEffort(sessionId, loader);
+            }
+            AgentLifecycle.clearCleanupStatusForTests();
+            if (original == null) {
+                System.clearProperty(TEST_KEY);
+            } else {
+                System.setProperty(TEST_KEY, original);
+            }
+        }
+    }
+
     private static final class FakeCloseableLoader extends ClassLoader implements Closeable {
         private final AtomicBoolean closed = new AtomicBoolean(false);
 
         @Override
         public void close() {
             closed.set(true);
+        }
+    }
+
+    private static final class ThrowingCloseableLoader extends ClassLoader implements Closeable {
+        private final AtomicBoolean closeAttempted = new AtomicBoolean(false);
+
+        @Override
+        public void close() {
+            closeAttempted.set(true);
+            throw new RuntimeException("close boom");
         }
     }
 }

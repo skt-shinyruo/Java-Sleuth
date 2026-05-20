@@ -152,6 +152,30 @@ public final class BootstrapBridge {
         return "INCOMPATIBLE (expected " + MIN_CONTRACT_VERSION + ".." + MAX_CONTRACT_VERSION + ", found " + check.version + ")";
     }
 
+    public static String describeLifecycleCleanupStatus() {
+        try {
+            Class<?> lifecycle = loadLifecycleClass();
+            java.lang.reflect.Method method = lifecycle.getMethod("describeCleanupStatus");
+            Object result = method.invoke(null);
+            return result != null ? String.valueOf(result) : "UNKNOWN";
+        } catch (NoSuchMethodException e) {
+            return "UNAVAILABLE (missing cleanup status contract)";
+        } catch (Throwable t) {
+            return "UNAVAILABLE (cleanup status failed: " + t.getClass().getSimpleName() + ")";
+        }
+    }
+
+    public static boolean isLifecycleCleanupDegraded() {
+        try {
+            Class<?> lifecycle = loadLifecycleClass();
+            java.lang.reflect.Method method = lifecycle.getMethod("isCleanupDegraded");
+            Object result = method.invoke(null);
+            return Boolean.TRUE.equals(result);
+        } catch (Throwable ignore) {
+            return false;
+        }
+    }
+
     private static ContractCheck checkContract() {
         boolean strict = isStrictMode();
         ClassLoader loader = strict ? null : BootstrapBridge.class.getClassLoader();
@@ -181,5 +205,11 @@ public final class BootstrapBridge {
         } catch (Throwable t) {
             return ContractCheck.failed(ContractStatus.INVOCATION_FAILED, -1, t.getClass().getSimpleName());
         }
+    }
+
+    private static Class<?> loadLifecycleClass() throws ClassNotFoundException {
+        boolean strict = isStrictMode();
+        ClassLoader loader = strict ? null : BootstrapBridge.class.getClassLoader();
+        return Class.forName(AGENT_LIFECYCLE, false, loader);
     }
 }
