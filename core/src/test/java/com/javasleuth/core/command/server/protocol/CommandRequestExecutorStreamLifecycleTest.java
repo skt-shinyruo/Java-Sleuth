@@ -23,20 +23,25 @@ import com.javasleuth.foundation.util.PerformanceOptimizer;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class CommandRequestExecutorStreamLifecycleTest {
     @Test
-    public void foregroundStreamRequestWaitsForCompletionWithoutGlobalCommandTimeout() throws Exception {
+    public void foregroundStreamRequestReturnsAfterStartupAndCompletesOnStreamExecutor() throws Exception {
         String oldTimeout = System.getProperty("sleuth.performance.command.timeout");
         String oldTimeoutMax = System.getProperty("sleuth.performance.command.timeout.max");
+        String oldAnonymousViewer = System.getProperty("sleuth.security.anonymous.viewer");
         try {
             System.setProperty("sleuth.performance.command.timeout", "50");
             System.setProperty("sleuth.performance.command.timeout.max", "50");
+            System.setProperty("sleuth.security.anonymous.viewer", "true");
 
             ProductionConfig config = ProductionConfig.createDefault();
             Assert.assertTrue("streaming should be enabled for this test", SleuthConfigParser.parse(config.snapshot()).protocol().isStreamingEnabled());
@@ -96,16 +101,15 @@ public class CommandRequestExecutorStreamLifecycleTest {
                         Thread thread = new Thread(task, "request-stream-test");
                         thread.start();
                         if (!entered.await(1, TimeUnit.SECONDS)) {
-                            Assert.fail("stream command did not start; taskDone=" + task.isDone() + ", data=" + reply.data + ", errors=" + reply.errors + ", endCount=" + reply.endCount);
+                            Assert.fail("stream command did not start; taskDone=" + task.isDone() + ", data=" + reply.data + ", errors=" + reply.errors + ", endCount=" + reply.endCount.get());
                         }
-                        Thread.sleep(150L);
-                        Assert.assertFalse("request should wait for stream completion", task.isDone());
-                        Assert.assertEquals(0, reply.endCount);
+                        Assert.assertFalse("request should return after stream startup", task.get(1, TimeUnit.SECONDS));
+                        Assert.assertEquals(0, reply.endCount.get());
 
                         release.countDown();
-                        Assert.assertFalse(task.get(1, TimeUnit.SECONDS));
+                        Assert.assertTrue("stream command did not close", reply.awaitEnd(1, TimeUnit.SECONDS));
                         Assert.assertEquals(Collections.singletonList("done"), reply.data);
-                        Assert.assertEquals(1, reply.endCount);
+                        Assert.assertEquals(1, reply.endCount.get());
                         Assert.assertTrue(reply.errors.isEmpty());
                     } finally {
                         pipeline.shutdown();
@@ -118,6 +122,7 @@ public class CommandRequestExecutorStreamLifecycleTest {
         } finally {
             setOrClearProperty("sleuth.performance.command.timeout", oldTimeout);
             setOrClearProperty("sleuth.performance.command.timeout.max", oldTimeoutMax);
+            setOrClearProperty("sleuth.security.anonymous.viewer", oldAnonymousViewer);
         }
     }
 
@@ -180,9 +185,10 @@ public class CommandRequestExecutorStreamLifecycleTest {
     }
 
     private static final class CapturingReply implements CommandReplyChannel {
-        private final java.util.List<String> data = new java.util.ArrayList<String>();
-        private final java.util.List<String> errors = new java.util.ArrayList<String>();
-        private int endCount;
+        private final List<String> data = new CopyOnWriteArrayList<String>();
+        private final List<String> errors = new CopyOnWriteArrayList<String>();
+        private final AtomicInteger endCount = new AtomicInteger(0);
+        private final CountDownLatch ended = new CountDownLatch(1);
 
         @Override
         public void sendData(String data) throws IOException {
@@ -196,7 +202,12 @@ public class CommandRequestExecutorStreamLifecycleTest {
 
         @Override
         public void end() throws IOException {
-            endCount++;
+            endCount.incrementAndGet();
+            ended.countDown();
+        }
+
+        private boolean awaitEnd(long timeout, TimeUnit unit) throws InterruptedException {
+            return ended.await(timeout, unit);
         }
     }
 }

@@ -60,6 +60,10 @@ public final class SleuthAgentEntrypointSupport {
             } catch (Exception ignore) {
                 // best-effort
             }
+            if (e instanceof RuntimeException) {
+                throw (RuntimeException) e;
+            }
+            throw new IllegalStateException(prefix + e.getMessage(), e);
         }
     }
 

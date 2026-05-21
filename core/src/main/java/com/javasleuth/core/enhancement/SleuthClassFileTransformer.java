@@ -21,6 +21,77 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class SleuthClassFileTransformer implements ClassFileTransformer {
+    public static final class EnhancedClassRef {
+        private final String className;
+        private final int loaderId;
+
+        private EnhancedClassRef(String className, int loaderId) {
+            this.className = className;
+            this.loaderId = loaderId;
+        }
+
+        public String getClassName() {
+            return className;
+        }
+
+        public int getLoaderId() {
+            return loaderId;
+        }
+
+        public boolean matches(Class<?> clazz) {
+            if (clazz == null) {
+                return false;
+            }
+            return className != null
+                && className.equals(clazz.getName())
+                && loaderId == EnhancerKey.loaderId(clazz.getClassLoader());
+        }
+
+        public String formatLoaderId() {
+            return formatLoaderId(loaderId);
+        }
+
+        public String displayName() {
+            return className + "@loaderId=" + formatLoaderId();
+        }
+
+        static EnhancedClassRef of(EnhancerKey key) {
+            return key == null ? null : new EnhancedClassRef(key.className, key.loaderId);
+        }
+
+        private static String formatLoaderId(int loaderId) {
+            if (loaderId == 0) {
+                return "bootstrap(0)";
+            }
+            return "0x" + Integer.toHexString(loaderId);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            EnhancedClassRef that = (EnhancedClassRef) o;
+            if (loaderId != that.loaderId) {
+                return false;
+            }
+            if (className == null) {
+                return that.className == null;
+            }
+            return className.equals(that.className);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = className != null ? className.hashCode() : 0;
+            result = 31 * result + loaderId;
+            return result;
+        }
+    }
+
     /**
      * 以 (className + loaderId) 为维度管理 enhancer，避免多 ClassLoader 同名类互相污染。
      */
@@ -200,6 +271,17 @@ public class SleuthClassFileTransformer implements ClassFileTransformer {
         for (EnhancerKey k : enhancers.keySet()) {
             if (k != null && k.className != null) {
                 out.add(k.className);
+            }
+        }
+        return Collections.unmodifiableSet(out);
+    }
+
+    public Set<EnhancedClassRef> getEnhancedClassRefs() {
+        Set<EnhancedClassRef> out = new HashSet<EnhancedClassRef>();
+        for (EnhancerKey k : enhancers.keySet()) {
+            EnhancedClassRef ref = EnhancedClassRef.of(k);
+            if (ref != null && ref.getClassName() != null) {
+                out.add(ref);
             }
         }
         return Collections.unmodifiableSet(out);

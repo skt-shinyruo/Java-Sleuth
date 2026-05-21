@@ -111,6 +111,7 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
             .option(OptionSpec.longNumber("timeout").alias("-t").alias("--timeout").defaultValue(30L).range(1, 86400).build())
             .option(OptionSpec.string("loader").alias("--loader").alias("--loader-id").alias("--loader-hash").build())
             .option(OptionSpec.flag("first").alias("--first").alias("--unsafe-first").build())
+            .option(OptionSpec.integer("limit").alias("--limit").defaultValue(50).range(1, 10000).build())
             .option(OptionSpec.string("expr").alias("--expr").build())
             .option(OptionSpec.string("condition").alias("--condition").repeatable(true).build())
             .option(OptionSpec.flag("bg").alias("--bg").build())
@@ -151,6 +152,7 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
         String methodPattern = parsed.argument("method-pattern");
         int maxCount = parsed.intOption("count");
         long timeoutSeconds = parsed.longOption("timeout");
+        int classLimit = parsed.intOption("limit");
         Integer loaderId = null;
         String loaderRaw = parsed.stringOption("loader");
         if (loaderRaw != null) {
@@ -190,7 +192,7 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
         List<SleuthConditionEvaluator.Condition> conditions = SleuthConditionEvaluator.parseConditions(parsed.stringOptionValues("condition"));
 
         return startWatching(classPattern, methodPattern, captureParams, captureReturn,
-            captureException, maxCount, timeoutSeconds, loaderId, allowFirstWhenAmbiguous, expr, conditions, sink);
+            captureException, maxCount, timeoutSeconds, loaderId, allowFirstWhenAmbiguous, classLimit, expr, conditions, sink);
     }
 
     private ParsedCommand parsedOrFallback(String[] args) {
@@ -213,6 +215,7 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
                                int maxCount, long timeoutSeconds,
                                Integer loaderId,
                                boolean allowFirstWhenAmbiguous,
+                               int classLimit,
                                List<String> expr,
                                List<SleuthConditionEvaluator.Condition> conditions,
                                 StreamSink sink) throws Exception {
@@ -220,55 +223,45 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
             return SleuthSpyDispatcher.unavailableMessage("watch");
         }
 
-        // Find matching class (multi-ClassLoader safe)
-        LoadedClassResolver.Candidate resolved;
-        try {
-            resolved = LoadedClassResolver.resolveSingle(instrumentation, classPattern, loaderId, true, 200, allowFirstWhenAmbiguous);
-        } catch (LoadedClassResolver.ResolutionException e) {
-            String msg = e.getMessage() +
-                "\nCandidates:\n" + LoadedClassResolver.formatCandidates(e.getCandidates(), 10) +
-                "\nHint: use --loader <loaderId> (e.g. --loader 0x1234 or --loader bootstrap)";
+        List<LoadedClassResolver.Candidate> targets =
+            resolveTargets(classPattern, loaderId, true, classLimit, allowFirstWhenAmbiguous);
+        if (targets.isEmpty()) {
+            String msg = "No modifiable loaded class matches pattern: " + classPattern;
             if (sink != null) {
                 sink.error(msg);
                 return "";
             }
             return msg;
         }
-        String targetClassName = resolved.getClassName();
-        Class<?> targetClass = resolved.getClazz();
 
         String watchId = UUID.randomUUID().toString();
         MonitoringConfig monitoring = SleuthConfigParser.parse(configSnapshot()).monitoring();
         BlockingQueue<WatchResult> resultQueue = new LinkedBlockingQueue<>(monitoring.getWatchQueueCapacity());
-        if (targetClass == null) {
-            String msg = "Target class not found in loaded classes: " + targetClassName;
-            if (sink != null) {
-                sink.error(msg);
-                return "";
-            }
-            return msg;
-        }
 
-        WatchEnhancer enhancer = new WatchEnhancer(targetClassName, methodPattern, null,
-            captureParams, captureReturn, captureException, watchId);
         boolean dropOnFull = monitoring.isWatchDropOnFull();
+        EnhancementSessionManager.Request request = EnhancementSessionManager.Request.builder(watchId, EnhancementSessionKind.WATCH)
+            .withCommandName("watch")
+            .withListenerKind(SleuthSpyDispatcher.ListenerKind.WATCH)
+            .withListener(new WatchAdviceListener(watchId, resultQueue, dropOnFull))
+            .withClassPattern(classPattern)
+            .withMethodPattern(methodPattern)
+            .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds);
+        for (LoadedClassResolver.Candidate target : targets) {
+            request.withTarget(
+                target.getClazz(),
+                new WatchEnhancer(target.getClassName(), methodPattern, null,
+                    captureParams, captureReturn, captureException, watchId)
+            );
+        }
         EnhancementSessionManager.ManagedSession session = sessionManager.open(
-            EnhancementSessionManager.Request.builder(watchId, EnhancementSessionKind.WATCH)
-                .withCommandName("watch")
-                .withListenerKind(SleuthSpyDispatcher.ListenerKind.WATCH)
-                .withListener(new WatchAdviceListener(watchId, resultQueue, dropOnFull))
-                .withClassPattern(classPattern)
-                .withMethodPattern(methodPattern)
-                .withTarget(targetClass, enhancer)
-                .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds)
-                .build()
+            request.build()
         );
 
         StringBuilder result = new StringBuilder();
-        result.append("Started watching ").append(targetClassName)
-            .append(" (loaderId=").append(LoadedClassResolver.formatLoaderId(resolved.getLoaderId())).append(")")
-            .append(".").append(methodPattern).append("\n");
+        result.append("Started watching ").append(classPattern).append(".").append(methodPattern).append("\n");
         result.append("Watch ID: ").append(watchId).append("\n");
+        result.append("Classes instrumented: ").append(targets.size()).append("\n");
+        appendTargetSummary(result, targets, 5);
         result.append("Capturing: ");
         if (captureParams) result.append("params ");
         if (captureReturn) result.append("return ");
@@ -346,6 +339,40 @@ public class WatchCommand implements StreamCommand, SpecBackedCommand {
 
     private ConfigView configSnapshot() {
         return config instanceof ProductionConfig ? ((ProductionConfig) config).snapshot() : config;
+    }
+
+    private List<LoadedClassResolver.Candidate> resolveTargets(
+        String classPattern,
+        Integer loaderId,
+        boolean requireModifiable,
+        int classLimit,
+        boolean firstOnly
+    ) {
+        List<LoadedClassResolver.Candidate> candidates =
+            LoadedClassResolver.findCandidates(instrumentation, classPattern, loaderId, requireModifiable, classLimit);
+        if (!firstOnly || candidates.size() <= 1) {
+            return candidates;
+        }
+        List<LoadedClassResolver.Candidate> first = new ArrayList<LoadedClassResolver.Candidate>(1);
+        first.add(candidates.get(0));
+        return first;
+    }
+
+    private static void appendTargetSummary(StringBuilder out, List<LoadedClassResolver.Candidate> targets, int maxLines) {
+        int limit = maxLines <= 0 ? 5 : maxLines;
+        int shown = 0;
+        for (LoadedClassResolver.Candidate target : targets) {
+            if (target == null || shown >= limit) {
+                continue;
+            }
+            out.append("  - ").append(target.getClassName())
+                .append(" (loaderId=").append(LoadedClassResolver.formatLoaderId(target.getLoaderId())).append(")")
+                .append("\n");
+            shown++;
+        }
+        if (targets.size() > shown) {
+            out.append("  ... ").append(targets.size() - shown).append(" more\n");
+        }
     }
 
     private String formatWatchResult(WatchResult result, int eventNumber) {

@@ -16,8 +16,10 @@ import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.TtEnhancer;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.TtAdviceListener;
-import com.javasleuth.foundation.util.WildcardMatcher;
+import com.javasleuth.foundation.util.LoadedClassResolver;
 import java.lang.instrument.Instrumentation;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -65,45 +67,47 @@ public final class TtRecordEngine {
         String methodPattern,
         int maxCount,
         long timeoutSeconds,
+        Integer loaderId,
+        boolean firstOnly,
+        int classLimit,
         StreamSink sink
     ) throws Exception {
         if (!SleuthSpyDispatcher.isInstalled(spyDispatcher)) {
             return SleuthSpyDispatcher.unavailableMessage("tt");
         }
-        // Find one matching class (simplified).
-        Class<?>[] loaded = instrumentation.getAllLoadedClasses();
-        Class<?> target = null;
-        for (Class<?> c : loaded) {
-            if (c != null && WildcardMatcher.matches(c.getName(), classPattern)) {
-                target = c;
-                break;
-            }
-        }
-        if (target == null) {
-            return "No loaded class matches pattern: " + classPattern;
+        List<LoadedClassResolver.Candidate> targets =
+            resolveTargets(classPattern, loaderId, true, classLimit, firstOnly);
+        if (targets.isEmpty()) {
+            return "No modifiable loaded class matches pattern: " + classPattern;
         }
 
         String ttId = UUID.randomUUID().toString();
         MonitoringConfig monitoring = SleuthConfigParser.parse(configSnapshot()).monitoring();
         BlockingQueue<TtRecord> q = new LinkedBlockingQueue<>(monitoring.getWatchQueueCapacity());
 
-        TtEnhancer enhancer = new TtEnhancer(target.getName(), methodPattern, null, ttId);
         boolean dropOnFull = monitoring.isWatchDropOnFull();
+        EnhancementSessionManager.Request request = EnhancementSessionManager.Request.builder(ttId, EnhancementSessionKind.TT)
+            .withCommandName("tt")
+            .withListenerKind(SleuthSpyDispatcher.ListenerKind.TT)
+            .withListener(new TtAdviceListener(ttId, q, recordStore, dropOnFull))
+            .withClassPattern(classPattern)
+            .withMethodPattern(methodPattern)
+            .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds);
+        for (LoadedClassResolver.Candidate target : targets) {
+            request.withTarget(
+                target.getClazz(),
+                new TtEnhancer(target.getClassName(), methodPattern, null, ttId)
+            );
+        }
         EnhancementSessionManager.ManagedSession session = sessionManager.open(
-            EnhancementSessionManager.Request.builder(ttId, EnhancementSessionKind.TT)
-                .withCommandName("tt")
-                .withListenerKind(SleuthSpyDispatcher.ListenerKind.TT)
-                .withListener(new TtAdviceListener(ttId, q, recordStore, dropOnFull))
-                .withClassPattern(classPattern)
-                .withMethodPattern(methodPattern)
-                .withTarget(target, enhancer)
-                .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds)
-                .build()
+            request.build()
         );
 
         StringBuilder banner = new StringBuilder();
-        banner.append("Started tt record ").append(target.getName()).append(".").append(methodPattern).append("\n");
+        banner.append("Started tt record ").append(classPattern).append(".").append(methodPattern).append("\n");
         banner.append("TT ID: ").append(ttId).append("\n");
+        banner.append("Classes instrumented: ").append(targets.size()).append("\n");
+        appendTargetSummary(banner, targets, 5);
         banner.append("Max records: ").append(maxCount).append(", Timeout: ").append(timeoutSeconds).append("s\n");
 
         if (sink != null) {
@@ -159,6 +163,40 @@ public final class TtRecordEngine {
 
     private ConfigView configSnapshot() {
         return config instanceof ProductionConfig ? ((ProductionConfig) config).snapshot() : config;
+    }
+
+    private List<LoadedClassResolver.Candidate> resolveTargets(
+        String classPattern,
+        Integer loaderId,
+        boolean requireModifiable,
+        int classLimit,
+        boolean firstOnly
+    ) {
+        List<LoadedClassResolver.Candidate> candidates =
+            LoadedClassResolver.findCandidates(instrumentation, classPattern, loaderId, requireModifiable, classLimit);
+        if (!firstOnly || candidates.size() <= 1) {
+            return candidates;
+        }
+        List<LoadedClassResolver.Candidate> first = new ArrayList<LoadedClassResolver.Candidate>(1);
+        first.add(candidates.get(0));
+        return first;
+    }
+
+    private static void appendTargetSummary(StringBuilder out, List<LoadedClassResolver.Candidate> targets, int maxLines) {
+        int limit = maxLines <= 0 ? 5 : maxLines;
+        int shown = 0;
+        for (LoadedClassResolver.Candidate target : targets) {
+            if (target == null || shown >= limit) {
+                continue;
+            }
+            out.append("  - ").append(target.getClassName())
+                .append(" (loaderId=").append(LoadedClassResolver.formatLoaderId(target.getLoaderId())).append(")")
+                .append("\n");
+            shown++;
+        }
+        if (targets.size() > shown) {
+            out.append("  ... ").append(targets.size() - shown).append(" more\n");
+        }
     }
 
     public boolean stop(String ttId) {

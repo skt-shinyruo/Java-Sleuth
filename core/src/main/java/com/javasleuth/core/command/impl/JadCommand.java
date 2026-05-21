@@ -7,14 +7,12 @@ import com.javasleuth.core.command.spec.CommandHelpRenderer;
 import com.javasleuth.core.command.spec.CommandSpec;
 import com.javasleuth.core.command.spec.OptionSpec;
 import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.util.ClassBytecodeResolver;
 import com.javasleuth.core.util.CfrDecompiler;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.util.StringUtils;
 import com.javasleuth.foundation.util.WildcardMatcher;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.lang.instrument.Instrumentation;
 import java.util.*;
 
@@ -83,10 +81,18 @@ public class JadCommand implements Command, SpecBackedCommand {
             sb.append("ClassLoader: ").append(targetClass.getClassLoader()).append("\n\n");
 
             // Get bytecode
-            byte[] bytecode = getClassBytecode(targetClass);
+            ClassBytecodeResolver.Result bytecodeResult = ClassBytecodeResolver.resolve(instrumentation, targetClass);
+            byte[] bytecode = bytecodeResult.getBytes();
             if (bytecode == null) {
                 return "Unable to retrieve bytecode for class: " + className;
             }
+            sb.append("Bytecode source: ").append(bytecodeResult.sourceLabel()).append("\n");
+            if (!bytecodeResult.isCurrentJvmBytecode() && bytecodeResult.getCurrentFailure() != null && verbose) {
+                sb.append("Current bytecode capture failed: ")
+                    .append(bytecodeResult.getCurrentFailure().getMessage())
+                    .append("\n");
+            }
+            sb.append("\n");
 
             // Decompile using CFR
             String decompiled = decompileWithCfr(targetClass.getName(), bytecode, showLineNumbers, verbose);
@@ -188,37 +194,6 @@ public class JadCommand implements Command, SpecBackedCommand {
                 }
             }
 
-            return null;
-        }
-    }
-
-    private byte[] getClassBytecode(Class<?> clazz) {
-        try {
-            String className = clazz.getName();
-            String classFile = className.replace('.', '/') + ".class";
-
-            ClassLoader classLoader = clazz.getClassLoader();
-            if (classLoader == null) {
-                classLoader = ClassLoader.getSystemClassLoader();
-            }
-
-            InputStream is = classLoader.getResourceAsStream(classFile);
-            if (is == null) {
-                return null;
-            }
-
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            byte[] buffer = new byte[4096];
-            int bytesRead;
-
-            while ((bytesRead = is.read(buffer)) != -1) {
-                baos.write(buffer, 0, bytesRead);
-            }
-
-            is.close();
-            return baos.toByteArray();
-
-        } catch (IOException e) {
             return null;
         }
     }

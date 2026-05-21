@@ -7,13 +7,13 @@ import com.javasleuth.core.command.spec.CommandHelpRenderer;
 import com.javasleuth.core.command.spec.CommandSpec;
 import com.javasleuth.core.command.spec.OptionSpec;
 import com.javasleuth.core.command.spec.ParsedCommand;
+import com.javasleuth.core.util.ClassBytecodeResolver;
 import com.javasleuth.foundation.security.CommandCapability;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.security.SecurityValidator;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.InputStream;
 import java.lang.instrument.Instrumentation;
 import java.util.ArrayList;
 import java.util.List;
@@ -81,19 +81,20 @@ public class DumpCommand implements Command, SpecBackedCommand {
 
         int dumped = 0;
         int skipped = 0;
+        int currentBytecode = 0;
+        int resourceFallback = 0;
         for (Class<?> c : matches) {
             String className = c.getName();
             String resourceName = className.replace('.', '/') + ".class";
-            ClassLoader loader = c.getClassLoader();
-            InputStream in = loader != null ? loader.getResourceAsStream(resourceName) : ClassLoader.getSystemResourceAsStream(resourceName);
-            if (in == null) {
+            ClassBytecodeResolver.Result bytecodeResult = ClassBytecodeResolver.resolve(instrumentation, c);
+            byte[] bytes = bytecodeResult.getBytes();
+            if (bytes == null) {
                 skipped++;
                 continue;
             }
 
             String outPath = outputDir + "/" + resourceName;
             if (!SecurityValidator.canWriteFile(outPath)) {
-                in.close();
                 skipped++;
                 continue;
             }
@@ -104,20 +105,21 @@ public class DumpCommand implements Command, SpecBackedCommand {
                 //noinspection ResultOfMethodCallIgnored
                 parent.mkdirs();
             }
-            try (InputStream is = in; FileOutputStream fos = new FileOutputStream(f)) {
-                byte[] buf = new byte[8192];
-                int r;
-                while ((r = is.read(buf)) != -1) {
-                    fos.write(buf, 0, r);
-                }
+            try (FileOutputStream fos = new FileOutputStream(f)) {
+                fos.write(bytes);
                 dumped++;
+                if (bytecodeResult.isCurrentJvmBytecode()) {
+                    currentBytecode++;
+                } else {
+                    resourceFallback++;
+                }
             } catch (Exception e) {
                 skipped++;
             }
         }
 
         return "Dump completed. matched=" + matches.size() + ", dumped=" + dumped + ", skipped=" + skipped +
-            ", outputDir=" + outputDir;
+            ", currentBytecode=" + currentBytecode + ", resourceFallback=" + resourceFallback + ", outputDir=" + outputDir;
     }
 
     @Override

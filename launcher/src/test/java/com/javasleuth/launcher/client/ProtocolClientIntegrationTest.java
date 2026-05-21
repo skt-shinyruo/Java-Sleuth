@@ -143,7 +143,7 @@ public class ProtocolClientIntegrationTest {
 
     @Test
     public void testExplicitPasswordAuthenticationUpgradesProtocolSession() throws Exception {
-        CommandProcessor processor = new CommandProcessor(dummyInstrumentation(), new SleuthClassFileTransformer(ProductionConfig.createDefault()));
+        CommandProcessor processor = new CommandProcessor(dummyInstrumentation(System.class), new SleuthClassFileTransformer(ProductionConfig.createDefault()));
         ProductionConfig config = processor.getConfig();
         try {
             config.clearRuntimeConfig();
@@ -312,7 +312,8 @@ public class ProtocolClientIntegrationTest {
         return (ServerSocket) f.get(processor);
     }
 
-    private static Instrumentation dummyInstrumentation() {
+    private static Instrumentation dummyInstrumentation(Class<?>... loadedClasses) {
+        final Class<?>[] loaded = loadedClasses != null ? loadedClasses.clone() : new Class<?>[0];
         return (Instrumentation)
             Proxy.newProxyInstance(
                 Instrumentation.class.getClassLoader(),
@@ -320,6 +321,12 @@ public class ProtocolClientIntegrationTest {
                 new InvocationHandler() {
                     @Override
                     public Object invoke(Object proxy, Method method, Object[] args) {
+                        if ("getAllLoadedClasses".equals(method.getName())) {
+                            return loaded;
+                        }
+                        if ("isModifiableClass".equals(method.getName())) {
+                            return true;
+                        }
                         Class<?> returnType = method.getReturnType();
                         if (returnType == void.class) {
                             return null;

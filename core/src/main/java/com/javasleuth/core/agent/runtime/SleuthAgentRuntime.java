@@ -21,8 +21,16 @@ public final class SleuthAgentRuntime implements AutoCloseable {
 
     public static SleuthAgentRuntime start(Instrumentation inst, Runnable shutdownHook) {
         SleuthAgentRuntime runtime = create(inst, shutdownHook);
-        runtime.startCommandProcessorAsync();
-        return runtime;
+        try {
+            runtime.startCommandProcessorAsync();
+            return runtime;
+        } catch (RuntimeException e) {
+            closeAfterFailedStart(runtime, e);
+            throw e;
+        } catch (Error e) {
+            closeAfterFailedStart(runtime, e);
+            throw e;
+        }
     }
 
     /**
@@ -56,5 +64,13 @@ public final class SleuthAgentRuntime implements AutoCloseable {
     @Override
     public void close() {
         sessionContext.close();
+    }
+
+    private static void closeAfterFailedStart(SleuthAgentRuntime runtime, Throwable failure) {
+        try {
+            runtime.close();
+        } catch (Throwable cleanupFailure) {
+            failure.addSuppressed(cleanupFailure);
+        }
     }
 }

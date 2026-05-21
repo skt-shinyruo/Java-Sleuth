@@ -25,8 +25,10 @@ import com.javasleuth.core.monitoring.MetricsCollector;
 import com.javasleuth.foundation.security.AuditLogger;
 import com.javasleuth.foundation.security.AuthenticationManager;
 import com.javasleuth.foundation.util.SleuthLogger;
+import com.javasleuth.foundation.util.SleuthThreadFactory;
 import java.io.IOException;
 import java.util.Locale;
+import java.util.concurrent.ThreadFactory;
 
 public final class CommandRequestExecutor {
     private final MetricsCollector metricsCollector;
@@ -36,6 +38,8 @@ public final class CommandRequestExecutor {
     private final CommandRegistry registry;
     private final CommandPipeline pipeline;
     private final ClientSessionIndex sessionIndex;
+    private final ThreadFactory streamCompletionObserverFactory =
+        SleuthThreadFactory.daemon("sleuth-stream-completion-observer");
 
     public CommandRequestExecutor(
         MetricsCollector metricsCollector,
@@ -140,15 +144,15 @@ public final class CommandRequestExecutor {
                 streamSuccess = streamResult != null && streamResult.isSuccess();
                 StreamExecutionHandle handle = streamResult != null ? streamResult.getHandle() : null;
                 if (streamSuccess && handle != null) {
-                    StreamCompletion completion;
-                    try {
-                        completion = handle.awaitCompletion();
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                        handle.cancel("request_interrupted");
-                        throw new Exception("Command interrupted");
-                    }
-                    streamSuccess = completion != null && completion.isSuccess();
+                    observeStreamCompletion(
+                        handle,
+                        clientId,
+                        clientInfo,
+                        commandName,
+                        execArgs,
+                        commandStart
+                    );
+                    return "quit".equals(commandName);
                 }
 
                 auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, streamSuccess);
@@ -257,5 +261,36 @@ public final class CommandRequestExecutor {
                 }
             }
         };
+    }
+
+    private void observeStreamCompletion(
+        StreamExecutionHandle handle,
+        String clientId,
+        String clientInfo,
+        String commandName,
+        String[] execArgs,
+        long commandStart
+    ) {
+        Thread observer = streamCompletionObserverFactory.newThread(() -> {
+            boolean streamSuccess = false;
+            try {
+                StreamCompletion completion = handle.awaitCompletion();
+                streamSuccess = completion != null && completion.isSuccess();
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                handle.cancel("completion_observer_interrupted");
+            } catch (Throwable t) {
+                SleuthLogger.warn("Stream completion observer failed for command " + commandName + ": " + t.getMessage(), t);
+            } finally {
+                auditLogger.logCommandExecution(clientId, clientInfo, commandName, execArgs, streamSuccess);
+                long duration = System.currentTimeMillis() - commandStart;
+                if (streamSuccess) {
+                    metricsCollector.recordCommandComplete(commandName, duration);
+                } else {
+                    metricsCollector.recordCommandError(commandName, duration);
+                }
+            }
+        });
+        observer.start();
     }
 }

@@ -22,7 +22,9 @@ import com.javasleuth.foundation.util.SleuthLogger;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.net.ServerSocket;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class CommandProcessor {
@@ -38,6 +40,8 @@ public class CommandProcessor {
     private final AutoCloseable ownedResources;
     private ServerSocket serverSocket;
     private final AtomicBoolean shutdownHookRegistered = new AtomicBoolean(false);
+    private final Object startupMonitor = new Object();
+    private StartupSignal startupSignal = new StartupSignal();
     private volatile Thread jvmShutdownHook;
 
     public CommandProcessor(Instrumentation instrumentation, SleuthClassFileTransformer transformer) {
@@ -101,9 +105,25 @@ public class CommandProcessor {
         this.ownedResources = components.getOwnedResources();
     }
 
+    public void prepareStartupSignal() {
+        synchronized (startupMonitor) {
+            startupSignal = new StartupSignal();
+        }
+    }
+
+    public void awaitStartupOrThrow(long timeoutMillis) {
+        StartupSignal signal;
+        synchronized (startupMonitor) {
+            signal = startupSignal;
+        }
+        signal.awaitOrThrow(timeoutMillis);
+    }
+
     public void start() {
+        StartupSignal startup = startupSignalForStart();
         if (!running.compareAndSet(false, true)) {
             SleuthLogger.warn("Command processor is already running");
+            startup.success();
             return;
         }
 
@@ -111,20 +131,40 @@ public class CommandProcessor {
             serverSocket = bootstrapper.bindAndValidate(running, config, auditLogger, metricsCollector);
             if (serverSocket == null) {
                 serverSocket = null;
+                startup.failure(new IllegalStateException("command processor bind was rejected"));
                 return;
             }
 
             // Add shutdown hook for graceful termination
             addShutdownHook();
+            startup.success();
 
             acceptor.acceptLoop(running, serverSocket, clientExecutor, clientHandler, config, auditLogger, metricsCollector);
         } catch (IOException e) {
             SleuthLogger.error("❌ Failed to start command processor: " + e.getMessage(), e);
             auditLogger.logSystemEvent("SERVER_START_FAILED", "Failed to start server: " + e.getMessage());
             running.set(false);
+            startup.failure(e);
+        } catch (RuntimeException e) {
+            running.set(false);
+            startup.failure(e);
+            throw e;
+        } catch (Error e) {
+            running.set(false);
+            startup.failure(e);
+            throw e;
         }
 
         SleuthLogger.info("ℹ️ Command processor main loop ended");
+    }
+
+    private StartupSignal startupSignalForStart() {
+        synchronized (startupMonitor) {
+            if (startupSignal == null || startupSignal.isSignaled()) {
+                startupSignal = new StartupSignal();
+            }
+            return startupSignal;
+        }
     }
 
     public void shutdown() {
@@ -235,6 +275,51 @@ public class CommandProcessor {
             closeable.close();
         } catch (Exception ignore) {
             // best-effort
+        }
+    }
+
+    private static final class StartupSignal {
+        private final CountDownLatch latch = new CountDownLatch(1);
+        private final AtomicBoolean signaled = new AtomicBoolean(false);
+        private volatile boolean success;
+        private volatile Throwable failure;
+
+        void success() {
+            if (signaled.compareAndSet(false, true)) {
+                success = true;
+                latch.countDown();
+            }
+        }
+
+        void failure(Throwable t) {
+            if (signaled.compareAndSet(false, true)) {
+                failure = t;
+                latch.countDown();
+            }
+        }
+
+        boolean isSignaled() {
+            return signaled.get();
+        }
+
+        void awaitOrThrow(long timeoutMillis) {
+            boolean completed;
+            try {
+                completed = latch.await(timeoutMillis, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("command processor startup interrupted", e);
+            }
+            if (!completed) {
+                throw new IllegalStateException("command processor startup timed out after " + timeoutMillis + "ms");
+            }
+            Throwable startupFailure = failure;
+            if (startupFailure != null) {
+                throw new IllegalStateException("command processor failed to start: " + startupFailure.getMessage(), startupFailure);
+            }
+            if (!success) {
+                throw new IllegalStateException("command processor startup did not complete successfully");
+            }
         }
     }
 

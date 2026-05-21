@@ -1,27 +1,52 @@
 package com.javasleuth.core.command.impl.stack;
 
 import com.javasleuth.bootstrap.data.StackTraceResult;
+import com.javasleuth.foundation.util.LoadedClassResolver;
 import java.time.LocalTime;
+import java.util.List;
 
 final class StackTraceLiteFormatter {
     private StackTraceLiteFormatter() {}
 
     static String buildBanner(
-        Class<?> target,
+        String classPattern,
         String methodPattern,
         String stackId,
         int maxCount,
         long timeoutSeconds,
-        int depth
+        int depth,
+        List<LoadedClassResolver.Candidate> targets
     ) {
         StringBuilder banner = new StringBuilder();
-        banner.append("Started stack trace ").append(target.getName()).append(".").append(methodPattern).append("\n");
+        banner.append("Started stack trace ").append(classPattern).append(".").append(methodPattern).append("\n");
         banner.append("Stack ID: ").append(stackId).append("\n");
+        banner.append("Classes instrumented: ").append(targets != null ? targets.size() : 0).append("\n");
+        appendTargetSummary(banner, targets, 5);
         banner.append("Max events: ").append(maxCount)
             .append(", Timeout: ").append(timeoutSeconds).append("s")
             .append(", Depth: ").append(depth)
             .append("\n");
         return banner.toString().trim();
+    }
+
+    private static void appendTargetSummary(StringBuilder out, List<LoadedClassResolver.Candidate> targets, int maxLines) {
+        if (targets == null || targets.isEmpty()) {
+            return;
+        }
+        int limit = maxLines <= 0 ? 5 : maxLines;
+        int shown = 0;
+        for (LoadedClassResolver.Candidate target : targets) {
+            if (target == null || shown >= limit) {
+                continue;
+            }
+            out.append("  - ").append(target.getClassName())
+                .append(" (loaderId=").append(LoadedClassResolver.formatLoaderId(target.getLoaderId())).append(")")
+                .append("\n");
+            shown++;
+        }
+        if (targets.size() > shown) {
+            out.append("  ... ").append(targets.size() - shown).append(" more\n");
+        }
     }
 
     static String formatResult(StackTraceResult r, int idx) {

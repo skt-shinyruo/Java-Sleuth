@@ -16,8 +16,10 @@ import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.core.enhancement.StackEnhancer;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.core.spy.listener.StackAdviceListener;
-import com.javasleuth.foundation.util.WildcardMatcher;
+import com.javasleuth.foundation.util.LoadedClassResolver;
 import java.lang.instrument.Instrumentation;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -59,6 +61,9 @@ public final class StackTraceLiteEngine {
         int maxCount,
         long timeoutSeconds,
         int depth,
+        Integer loaderId,
+        boolean firstOnly,
+        int classLimit,
         StreamSink sink
     ) throws Exception {
         if (!SleuthSpyDispatcher.isInstalled(spyDispatcher)) {
@@ -68,38 +73,35 @@ public final class StackTraceLiteEngine {
             return "Stack trace mode requires transformer, but transformer is null.";
         }
 
-        // 简化策略：只选择一个已加载的匹配类
-        Class<?>[] loaded = instrumentation.getAllLoadedClasses();
-        Class<?> target = null;
-        for (Class<?> c : loaded) {
-            if (c != null && WildcardMatcher.matches(c.getName(), classPattern)) {
-                target = c;
-                break;
-            }
-        }
-        if (target == null) {
-            return "No loaded class matches pattern: " + classPattern;
+        List<LoadedClassResolver.Candidate> targets =
+            resolveTargets(classPattern, loaderId, true, classLimit, firstOnly);
+        if (targets.isEmpty()) {
+            return "No modifiable loaded class matches pattern: " + classPattern;
         }
 
         String stackId = UUID.randomUUID().toString();
         MonitoringConfig monitoring = SleuthConfigParser.parse(configSnapshot()).monitoring();
         BlockingQueue<StackTraceResult> q = new LinkedBlockingQueue<>(monitoring.getWatchQueueCapacity());
 
-        StackEnhancer enhancer = new StackEnhancer(target.getName(), methodPattern, null, stackId);
         boolean dropOnFull = monitoring.isWatchDropOnFull();
+        EnhancementSessionManager.Request request = EnhancementSessionManager.Request.builder(stackId, EnhancementSessionKind.STACK)
+            .withCommandName("stack")
+            .withListenerKind(SleuthSpyDispatcher.ListenerKind.STACK)
+            .withListener(new StackAdviceListener(stackId, q, depth, dropOnFull))
+            .withClassPattern(classPattern)
+            .withMethodPattern(methodPattern)
+            .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds + ", depth=" + depth);
+        for (LoadedClassResolver.Candidate target : targets) {
+            request.withTarget(
+                target.getClazz(),
+                new StackEnhancer(target.getClassName(), methodPattern, null, stackId)
+            );
+        }
         EnhancementSessionManager.ManagedSession session = sessionManager.open(
-            EnhancementSessionManager.Request.builder(stackId, EnhancementSessionKind.STACK)
-                .withCommandName("stack")
-                .withListenerKind(SleuthSpyDispatcher.ListenerKind.STACK)
-                .withListener(new StackAdviceListener(stackId, q, depth, dropOnFull))
-                .withClassPattern(classPattern)
-                .withMethodPattern(methodPattern)
-                .withTarget(target, enhancer)
-                .withDetails("maxCount=" + maxCount + ", timeoutSeconds=" + timeoutSeconds + ", depth=" + depth)
-                .build()
+            request.build()
         );
 
-        String banner = StackTraceLiteFormatter.buildBanner(target, methodPattern, stackId, maxCount, timeoutSeconds, depth);
+        String banner = StackTraceLiteFormatter.buildBanner(classPattern, methodPattern, stackId, maxCount, timeoutSeconds, depth, targets);
         if (sink != null) {
             sink.send(banner);
         }
@@ -153,6 +155,23 @@ public final class StackTraceLiteEngine {
 
     private ConfigView configSnapshot() {
         return config instanceof ProductionConfig ? ((ProductionConfig) config).snapshot() : config;
+    }
+
+    private List<LoadedClassResolver.Candidate> resolveTargets(
+        String classPattern,
+        Integer loaderId,
+        boolean requireModifiable,
+        int classLimit,
+        boolean firstOnly
+    ) {
+        List<LoadedClassResolver.Candidate> candidates =
+            LoadedClassResolver.findCandidates(instrumentation, classPattern, loaderId, requireModifiable, classLimit);
+        if (!firstOnly || candidates.size() <= 1) {
+            return candidates;
+        }
+        List<LoadedClassResolver.Candidate> first = new ArrayList<LoadedClassResolver.Candidate>(1);
+        first.add(candidates.get(0));
+        return first;
     }
 
     public boolean stop(String stackId) {

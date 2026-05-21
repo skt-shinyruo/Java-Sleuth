@@ -2,6 +2,8 @@ package com.javasleuth.core.agent.core;
 
 import com.javasleuth.bootstrap.agent.AgentLifecycle;
 import java.io.Closeable;
+import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Proxy;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.Assert;
@@ -53,6 +55,78 @@ public class SleuthAgentEntrypointSupportLifecycleTest {
         }
     }
 
+    @Test
+    public void agentmain_propagatesStartupFailureAndClearsAttachedGate() {
+        String oldBind = System.getProperty("sleuth.server.bind.address");
+        AtomicBoolean attachedGate = new AtomicBoolean(false);
+        AtomicReference<com.javasleuth.core.agent.runtime.SleuthAgentRuntime> runtimeRef = new AtomicReference<>(null);
+
+        try {
+            System.setProperty("sleuth.server.bind.address", "0.0.0.0");
+
+            try {
+                SleuthAgentEntrypointSupport.agentmain(
+                    null,
+                    fakeInstrumentation(),
+                    attachedGate,
+                    runtimeRef,
+                    null,
+                    null,
+                    null,
+                    "start failed: "
+                );
+                Assert.fail("Expected startup failure to propagate");
+            } catch (IllegalStateException expected) {
+                Assert.assertTrue(String.valueOf(expected.getMessage()).contains("command processor"));
+            }
+
+            Assert.assertFalse(attachedGate.get());
+            Assert.assertNull(runtimeRef.get());
+        } finally {
+            if (oldBind == null) {
+                System.clearProperty("sleuth.server.bind.address");
+            } else {
+                System.setProperty("sleuth.server.bind.address", oldBind);
+            }
+        }
+    }
+
+    private static Instrumentation fakeInstrumentation() {
+        return (Instrumentation) Proxy.newProxyInstance(
+            Instrumentation.class.getClassLoader(),
+            new Class<?>[] {Instrumentation.class},
+            (proxy, method, args) -> {
+                String name = method.getName();
+                if ("getAllLoadedClasses".equals(name)) {
+                    return new Class<?>[0];
+                }
+                if ("isModifiableClass".equals(name)) {
+                    return true;
+                }
+                if ("removeTransformer".equals(name)) {
+                    return true;
+                }
+                Class<?> returnType = method.getReturnType();
+                if (returnType == Void.TYPE) {
+                    return null;
+                }
+                if (returnType == Boolean.TYPE) {
+                    return false;
+                }
+                if (returnType == Integer.TYPE) {
+                    return 0;
+                }
+                if (returnType == Long.TYPE) {
+                    return 0L;
+                }
+                if (returnType.isArray()) {
+                    return java.lang.reflect.Array.newInstance(returnType.getComponentType(), 0);
+                }
+                return null;
+            }
+        );
+    }
+
     private static final class FakeCloseableLoader extends ClassLoader implements Closeable {
         private final java.util.concurrent.atomic.AtomicBoolean closed = new java.util.concurrent.atomic.AtomicBoolean(false);
 
@@ -62,4 +136,3 @@ public class SleuthAgentEntrypointSupportLifecycleTest {
         }
     }
 }
-

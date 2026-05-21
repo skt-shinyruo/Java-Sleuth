@@ -21,6 +21,7 @@ import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.spy.SleuthSpyDispatcher;
 import com.javasleuth.foundation.security.CommandCapability;
 import com.javasleuth.foundation.security.CommandMeta;
+import com.javasleuth.foundation.util.LoadedClassResolver;
 import java.lang.instrument.Instrumentation;
 
 /**
@@ -74,6 +75,9 @@ public class StackCommand implements StreamCommand, SpecBackedCommand {
             .option(OptionSpec.integer("count").alias("-n").alias("--count").defaultValue(10).range(1, 100000).build())
             .option(OptionSpec.longNumber("timeout").alias("-t").alias("--timeout").defaultValue(30L).range(1, 86400).build())
             .option(OptionSpec.integer("depth").alias("--depth").defaultValue(20).range(1, 200).build())
+            .option(OptionSpec.string("loader").alias("--loader").alias("--loader-id").alias("--loader-hash").build())
+            .option(OptionSpec.flag("first").alias("--first").alias("--unsafe-first").build())
+            .option(OptionSpec.integer("limit").alias("--limit").defaultValue(50).range(1, 10000).build())
             .option(OptionSpec.flag("bg").alias("--bg").build())
             .example("stack com.example.* doWork -n 5 --depth 30")
             .example("stack *Service* *method* -t 60")
@@ -122,6 +126,10 @@ public class StackCommand implements StreamCommand, SpecBackedCommand {
             }
             return msg;
         }
+        Integer loaderId = parseLoaderId(parsed.stringOption("loader"), sink);
+        if (loaderId == INVALID_LOADER_ID) {
+            return "";
+        }
 
         return traceEngine.start(
             parsed.argument("class-pattern"),
@@ -129,8 +137,29 @@ public class StackCommand implements StreamCommand, SpecBackedCommand {
             parsed.intOption("count"),
             parsed.longOption("timeout"),
             parsed.intOption("depth"),
+            loaderId,
+            Boolean.TRUE.equals(parsed.booleanOption("first")),
+            parsed.intOption("limit"),
             sink
         );
+    }
+
+    private static final Integer INVALID_LOADER_ID = Integer.valueOf(Integer.MIN_VALUE);
+
+    private static Integer parseLoaderId(String loaderRaw, StreamSink sink) {
+        if (loaderRaw == null) {
+            return null;
+        }
+        Integer loaderId = LoadedClassResolver.parseLoaderId(loaderRaw);
+        if (loaderId != null) {
+            return loaderId;
+        }
+        String msg = "Invalid --loader value: " + loaderRaw + " (expected: bootstrap/null/0x1234/1234)";
+        if (sink != null) {
+            sink.error(msg);
+            return INVALID_LOADER_ID;
+        }
+        throw new IllegalArgumentException(msg);
     }
 
     private ParsedCommand parsedOrFallback(String[] args) {

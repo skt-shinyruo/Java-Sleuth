@@ -8,7 +8,6 @@ import com.javasleuth.core.enhancement.session.EnhancementSessionCloseSummary;
 import com.javasleuth.core.enhancement.session.EnhancementSessionRegistry;
 import com.javasleuth.core.vmtool.VmToolSessionRegistry;
 import java.lang.instrument.Instrumentation;
-import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -60,7 +59,7 @@ public class ResetCommand implements Command {
     public String execute(String[] args) {
         int stoppedJobs = jobManager.stopAll("reset");
 
-        Set<String> enhanced = new HashSet<>(transformer.getEnhancedClassNames());
+        Set<SleuthClassFileTransformer.EnhancedClassRef> enhanced = transformer.getEnhancedClassRefs();
 
         int enhancementSessions = 0;
         int enhancementClosed = 0;
@@ -96,7 +95,7 @@ public class ResetCommand implements Command {
                 if (c == null) {
                     continue;
                 }
-                if (!enhanced.contains(c.getName())) {
+                if (!matchesEnhancedRef(enhanced, c)) {
                     continue;
                 }
                 if (!instrumentation.isModifiableClass(c)) {
@@ -126,5 +125,17 @@ public class ResetCommand implements Command {
     @Override
     public String getDescription() {
         return "Reset all active enhancements (clear sessions, remove enhancers, retransform classes)";
+    }
+
+    private static boolean matchesEnhancedRef(Set<SleuthClassFileTransformer.EnhancedClassRef> enhanced, Class<?> clazz) {
+        if (enhanced == null || enhanced.isEmpty() || clazz == null) {
+            return false;
+        }
+        for (SleuthClassFileTransformer.EnhancedClassRef ref : enhanced) {
+            if (ref != null && ref.matches(clazz)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

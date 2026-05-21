@@ -31,6 +31,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>Owns the resources created for a single attach lifecycle and provides one idempotent close path.</p>
  */
 final class AttachSessionContext implements AutoCloseable {
+    private static final long COMMAND_PROCESSOR_STARTUP_TIMEOUT_MS = 5000L;
+
     private final Instrumentation instrumentation;
     private final SleuthClassFileTransformer transformer;
     private final SleuthAgentServices services;
@@ -177,11 +179,13 @@ final class AttachSessionContext implements AutoCloseable {
             return;
         }
         try {
+            commandProcessor.prepareStartupSignal();
             t.start();
+            commandProcessor.awaitStartupOrThrow(COMMAND_PROCESSOR_STARTUP_TIMEOUT_MS);
         } catch (IllegalThreadStateException ignore) {
             // already started
         } catch (Exception e) {
-            SleuthLogger.warn("Failed to start command processor thread: " + e.getMessage(), e);
+            throw new IllegalStateException("command processor thread failed to start", e);
         }
     }
 
@@ -238,7 +242,7 @@ final class AttachSessionContext implements AutoCloseable {
         Instrumentation inst = instrumentation;
         SleuthClassFileTransformer tx = transformer;
         CleanupResult.Builder cleanup = CleanupResult.builder("attach-session", "shutdown");
-        Set<String> enhanced = snapshotEnhancedClassNames(tx, cleanup);
+        Set<SleuthClassFileTransformer.EnhancedClassRef> enhanced = snapshotEnhancedClassRefs(tx, cleanup);
 
         shutdownCommandProcessor(cleanup, commandProcessor);
         shutdownAttachResources(cleanup, inst, tx, jobManager, clientSessionRegistry, vmToolSessionRegistry, enhancementSessionRegistry);
@@ -279,13 +283,17 @@ final class AttachSessionContext implements AutoCloseable {
         publishCleanupResult(cleanup.build());
     }
 
-    private static Set<String> snapshotEnhancedClassNames(SleuthClassFileTransformer transformer, CleanupResult.Builder cleanup) {
+    private static Set<SleuthClassFileTransformer.EnhancedClassRef> snapshotEnhancedClassRefs(
+        SleuthClassFileTransformer transformer,
+        CleanupResult.Builder cleanup
+    ) {
         if (transformer == null) {
             cleanup.skipped("snapshot-enhanced-classes", "transformer unavailable");
             return Collections.emptySet();
         }
         try {
-            Set<String> names = new HashSet<>(transformer.getEnhancedClassNames());
+            Set<SleuthClassFileTransformer.EnhancedClassRef> names =
+                new HashSet<SleuthClassFileTransformer.EnhancedClassRef>(transformer.getEnhancedClassRefs());
             cleanup.success("snapshot-enhanced-classes");
             return names;
         } catch (Throwable t) {
@@ -423,13 +431,13 @@ final class AttachSessionContext implements AutoCloseable {
     private static void rollbackEnhancedClasses(
         CleanupResult.Builder cleanup,
         Instrumentation instrumentation,
-        Set<String> enhancedClassNames
+        Set<SleuthClassFileTransformer.EnhancedClassRef> enhancedClassRefs
     ) {
         if (instrumentation == null) {
             cleanup.skipped("rollback-enhanced-classes", "instrumentation unavailable");
             return;
         }
-        if (enhancedClassNames == null || enhancedClassNames.isEmpty()) {
+        if (enhancedClassRefs == null || enhancedClassRefs.isEmpty()) {
             cleanup.skipped("rollback-enhanced-classes", "no enhanced classes");
             return;
         }
@@ -448,7 +456,7 @@ final class AttachSessionContext implements AutoCloseable {
                 continue;
             }
             String className = c.getName();
-            if (!enhancedClassNames.contains(className)) {
+            if (!matchesEnhancedRef(enhancedClassRefs, c)) {
                 continue;
             }
             boolean modifiable;
@@ -466,6 +474,18 @@ final class AttachSessionContext implements AutoCloseable {
                 instrumentation.retransformClasses(c);
             });
         }
+    }
+
+    private static boolean matchesEnhancedRef(Set<SleuthClassFileTransformer.EnhancedClassRef> refs, Class<?> clazz) {
+        if (refs == null || refs.isEmpty() || clazz == null) {
+            return false;
+        }
+        for (SleuthClassFileTransformer.EnhancedClassRef ref : refs) {
+            if (ref != null && ref.matches(clazz)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void removeTransformer(
