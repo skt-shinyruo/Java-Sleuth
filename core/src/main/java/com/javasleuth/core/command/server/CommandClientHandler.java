@@ -221,18 +221,19 @@ public final class CommandClientHandler {
             SleuthLogContext.clear();
             try {
                 clientSocket.close();
-                long sessionDuration = System.currentTimeMillis() - sessionStart;
-                metricsCollector.recordSessionEnd(clientId, sessionDuration);
-                auditLogger.logConnectionEvent(clientId, clientInfo, "DISCONNECT");
-                metricsCollector.recordClientDisconnection();
-                String activeSession = sessionIndex.remove(clientId);
-                if (activeSession != null) {
-                    authenticationManager.logout(activeSession);
-                }
-                clientSessionRegistry.close(clientId, "disconnect");
             } catch (IOException e) {
                 // Ignore close errors
             }
+
+            long sessionDuration = System.currentTimeMillis() - sessionStart;
+            metricsCollector.recordSessionEnd(clientId, sessionDuration);
+            auditLogger.logConnectionEvent(clientId, clientInfo, "DISCONNECT");
+            metricsCollector.recordClientDisconnection();
+            String activeSession = sessionIndex.remove(clientId);
+            if (activeSession != null) {
+                authenticationManager.logout(activeSession);
+            }
+            clientSessionRegistry.close(clientId, "disconnect");
         }
     }
 }
