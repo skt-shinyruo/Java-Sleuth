@@ -127,16 +127,25 @@ public final class ProtocolClient implements AutoCloseable {
         int rt = handshakeReadTimeoutMs > 0 ? handshakeReadTimeoutMs : DEFAULT_HANDSHAKE_READ_TIMEOUT_MS;
 
         // Like Arthas: make connect/read bounded to avoid "hang forever" under network issues.
-        socket.connect(new InetSocketAddress(host, port), ct);
-        return handshakeOnSocket(
-            socket,
-            preferredProtocol,
-            streamingEnabledHint,
-            maxPayloadBytesHint,
-            maxLineBytesHint,
-            signer,
-            rt
-        );
+        boolean connected = false;
+        try {
+            socket.connect(new InetSocketAddress(host, port), ct);
+            ProtocolClient client = handshakeOnSocket(
+                socket,
+                preferredProtocol,
+                streamingEnabledHint,
+                maxPayloadBytesHint,
+                maxLineBytesHint,
+                signer,
+                rt
+            );
+            connected = true;
+            return client;
+        } finally {
+            if (!connected) {
+                closeQuietly(socket);
+            }
+        }
     }
 
     private static ProtocolClient handshakeOnSocket(

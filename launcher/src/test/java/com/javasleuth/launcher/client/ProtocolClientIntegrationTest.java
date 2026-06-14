@@ -3,13 +3,18 @@ package com.javasleuth.launcher.client;
 import com.javasleuth.core.command.CommandProcessor;
 import com.javasleuth.core.enhancement.SleuthClassFileTransformer;
 import com.javasleuth.foundation.config.ProductionConfig;
+import com.javasleuth.foundation.security.CommandSigner;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -278,6 +283,57 @@ public class ProtocolClientIntegrationTest {
         }
     }
 
+    @Test
+    public void directConnectClosesSocketWhenHandshakeReadFails() throws Exception {
+        ServerSocket server = new ServerSocket(0);
+        CountDownLatch accepted = new CountDownLatch(1);
+        AtomicReference<Socket> serverSideSocket = new AtomicReference<>();
+        AtomicReference<Exception> acceptFailure = new AtomicReference<>();
+        Thread acceptThread = new Thread(() -> {
+            try {
+                serverSideSocket.set(server.accept());
+            } catch (Exception e) {
+                acceptFailure.set(e);
+            } finally {
+                accepted.countDown();
+            }
+        }, "test-direct-connect-handshake-stall");
+        acceptThread.setDaemon(true);
+        acceptThread.start();
+
+        try {
+            try {
+                ProtocolClient.connect(
+                    "127.0.0.1",
+                    server.getLocalPort(),
+                    "binary",
+                    true,
+                    1024 * 1024,
+                    8192,
+                    CommandSigner.noop(),
+                    1000,
+                    100
+                );
+                Assert.fail("Expected handshake read timeout");
+            } catch (SocketTimeoutException expected) {
+                // expected
+            }
+
+            Assert.assertTrue("Server did not accept client connection", accepted.await(2, TimeUnit.SECONDS));
+            if (acceptFailure.get() != null) {
+                throw acceptFailure.get();
+            }
+            Socket acceptedSocket = serverSideSocket.get();
+            Assert.assertNotNull("Expected accepted server-side socket", acceptedSocket);
+            acceptedSocket.setSoTimeout(1000);
+            Assert.assertEquals("Expected client socket to be closed after handshake failure", -1, acceptedSocket.getInputStream().read());
+        } finally {
+            closeQuietly(serverSideSocket.get());
+            closeQuietly(server);
+            acceptThread.join(2000);
+        }
+    }
+
     private static int waitForBoundPort(CommandProcessor processor, long timeout, TimeUnit unit) throws Exception {
         long deadline = System.currentTimeMillis() + unit.toMillis(timeout);
         while (System.currentTimeMillis() < deadline) {
@@ -310,6 +366,28 @@ public class ProtocolClientIntegrationTest {
         Field f = CommandProcessor.class.getDeclaredField("serverSocket");
         f.setAccessible(true);
         return (ServerSocket) f.get(processor);
+    }
+
+    private static void closeQuietly(ServerSocket socket) {
+        if (socket == null) {
+            return;
+        }
+        try {
+            socket.close();
+        } catch (Exception ignore) {
+            // ignore
+        }
+    }
+
+    private static void closeQuietly(Socket socket) {
+        if (socket == null) {
+            return;
+        }
+        try {
+            socket.close();
+        } catch (Exception ignore) {
+            // ignore
+        }
     }
 
     private static Instrumentation dummyInstrumentation(Class<?>... loadedClasses) {
