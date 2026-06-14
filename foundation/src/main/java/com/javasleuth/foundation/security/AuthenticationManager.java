@@ -6,6 +6,7 @@ import com.javasleuth.foundation.util.SleuthLogger;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -24,6 +25,8 @@ public class AuthenticationManager implements AutoCloseable {
     private final AtomicBoolean shutdown = new AtomicBoolean(false);
     private final Object lifecycleLock = new Object();
     private volatile ScheduledExecutorService sessionCleanupExecutor;
+    private final CopyOnWriteArrayList<SessionLifecycleListener> sessionLifecycleListeners =
+        new CopyOnWriteArrayList<>();
 
     // Session management
     private final Map<String, SessionInfo> activeSessions = new ConcurrentHashMap<>();
@@ -34,6 +37,10 @@ public class AuthenticationManager implements AutoCloseable {
     private static final int MAX_LOGIN_ATTEMPTS = 5;
     private static final long LOCKOUT_DURATION_MINUTES = 15;
     private static final long SESSION_TIMEOUT_MINUTES = 60;
+
+    public interface SessionLifecycleListener {
+        void onSessionClosed(String sessionId, String clientInfo, String reason);
+    }
 
     private static class SessionInfo {
         final String sessionId;
@@ -216,8 +223,10 @@ public class AuthenticationManager implements AutoCloseable {
         }
 
         if (session.isExpired()) {
-            activeSessions.remove(sessionId);
-            auditLogger.logSessionEnd(sessionId, session.clientInfo, "Session expired");
+            if (activeSessions.remove(sessionId, session)) {
+                auditLogger.logSessionEnd(sessionId, session.clientInfo, "Session expired");
+                notifySessionClosed(sessionId, session.clientInfo, "Session expired");
+            }
             return SessionValidationResult.invalid("Session expired");
         }
 
@@ -252,7 +261,22 @@ public class AuthenticationManager implements AutoCloseable {
         SessionInfo session = activeSessions.remove(sessionId);
         if (session != null) {
             auditLogger.logSessionEnd(sessionId, session.clientInfo, "User logout");
+            notifySessionClosed(sessionId, session.clientInfo, "User logout");
         }
+    }
+
+    public void addSessionLifecycleListener(SessionLifecycleListener listener) {
+        if (listener == null) {
+            return;
+        }
+        sessionLifecycleListeners.addIfAbsent(listener);
+    }
+
+    public void removeSessionLifecycleListener(SessionLifecycleListener listener) {
+        if (listener == null) {
+            return;
+        }
+        sessionLifecycleListeners.remove(listener);
     }
 
     /**
@@ -428,7 +452,7 @@ public class AuthenticationManager implements AutoCloseable {
             return;
         }
         try {
-            activeSessions.clear();
+            closeAllSessions("Session manager shutdown", false);
         } catch (Exception ignore) {
             // ignore
         }
@@ -443,6 +467,11 @@ public class AuthenticationManager implements AutoCloseable {
             sessionCleanupExecutor = null;
         }
         SleuthExecutors.shutdownAndAwait(ex, "session-cleanup", 5, TimeUnit.SECONDS);
+        try {
+            sessionLifecycleListeners.clear();
+        } catch (Exception ignore) {
+            // ignore
+        }
     }
 
     @Override
@@ -457,14 +486,16 @@ public class AuthenticationManager implements AutoCloseable {
         Instant now = Instant.now();
 
         // Remove expired sessions
-        activeSessions.entrySet().removeIf(entry -> {
+        for (Map.Entry<String, SessionInfo> entry : activeSessions.entrySet()) {
             SessionInfo session = entry.getValue();
-            if (session.isExpired()) {
-                auditLogger.logSessionEnd(session.sessionId, session.clientInfo, "Session expired");
-                return true;
+            if (session == null || !session.isExpired()) {
+                continue;
             }
-            return false;
-        });
+            if (activeSessions.remove(entry.getKey(), session)) {
+                auditLogger.logSessionEnd(session.sessionId, session.clientInfo, "Session expired");
+                notifySessionClosed(session.sessionId, session.clientInfo, "Session expired");
+            }
+        }
 
         // Cleanup old/stale attempt records (do not clear everything).
         loginAttempts.entrySet().removeIf(entry -> {
@@ -491,11 +522,34 @@ public class AuthenticationManager implements AutoCloseable {
      * Force logout all sessions (emergency)
      */
     public void forceLogoutAll() {
-        activeSessions.forEach((sessionId, session) -> {
-            auditLogger.logSessionEnd(sessionId, session.clientInfo, "Force logout - administrator action");
-        });
-        activeSessions.clear();
+        closeAllSessions("Force logout - administrator action", true);
         auditLogger.logSystemEvent("FORCE_LOGOUT_ALL", "All sessions terminated by administrator");
+    }
+
+    private void closeAllSessions(String reason, boolean auditSessionEnd) {
+        for (Map.Entry<String, SessionInfo> entry : activeSessions.entrySet()) {
+            SessionInfo session = entry.getValue();
+            if (session == null) {
+                continue;
+            }
+            if (!activeSessions.remove(entry.getKey(), session)) {
+                continue;
+            }
+            if (auditSessionEnd) {
+                auditLogger.logSessionEnd(session.sessionId, session.clientInfo, reason);
+            }
+            notifySessionClosed(session.sessionId, session.clientInfo, reason);
+        }
+    }
+
+    private void notifySessionClosed(String sessionId, String clientInfo, String reason) {
+        for (SessionLifecycleListener listener : sessionLifecycleListeners) {
+            try {
+                listener.onSessionClosed(sessionId, clientInfo, reason);
+            } catch (Exception e) {
+                SleuthLogger.debug("Session lifecycle listener failed: " + e.getMessage(), e);
+            }
+        }
     }
 
     // Result classes

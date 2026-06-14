@@ -6,6 +6,7 @@ import com.javasleuth.foundation.config.schema.SleuthConfigSchema;
 import com.javasleuth.foundation.security.AuthenticationManager.UserRole;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -18,6 +19,7 @@ public class AuthorizationManager {
     private final ConfigView config;
     private final AuditLogger auditLogger;
     private final AuthenticationManager authManager;
+    private final AuthenticationManager.SessionLifecycleListener sessionLifecycleListener;
 
     // Key: sessionId:command -> sliding window timestamps
     private final Map<String, RateLimitInfo> rateLimits = new ConcurrentHashMap<>();
@@ -70,6 +72,13 @@ public class AuthorizationManager {
         this.config = config;
         this.auditLogger = auditLogger;
         this.authManager = authManager;
+        this.sessionLifecycleListener = new AuthenticationManager.SessionLifecycleListener() {
+            @Override
+            public void onSessionClosed(String sessionId, String clientInfo, String reason) {
+                clearRateLimitsForSession(sessionId);
+            }
+        };
+        this.authManager.addSessionLifecycleListener(sessionLifecycleListener);
     }
 
     /**
@@ -88,10 +97,23 @@ public class AuthorizationManager {
 
     public void shutdown() {
         try {
+            authManager.removeSessionLifecycleListener(sessionLifecycleListener);
+        } catch (Exception ignore) {
+            // ignore
+        }
+        try {
             rateLimits.clear();
         } catch (Exception ignore) {
             // ignore
         }
+    }
+
+    public void clearRateLimitsForSession(String sessionId) {
+        if (sessionId == null || sessionId.isEmpty()) {
+            return;
+        }
+        final String prefix = sessionId + ":";
+        rateLimits.keySet().removeIf(key -> key != null && key.startsWith(prefix));
     }
 
     public AuthorizationResult authorize(String sessionId, String command, String[] args, CommandMeta meta) {
@@ -129,12 +151,14 @@ public class AuthorizationManager {
         }
 
         int maxPerMinute = meta.getMaxExecutionsPerMinute();
-        String rateLimitKey = sessionId + ":" + command.toLowerCase();
-        RateLimitInfo rateLimit = rateLimits.computeIfAbsent(rateLimitKey, k -> new RateLimitInfo());
-        RateLimitDecision decision = rateLimit.checkRateLimit(maxPerMinute);
-        if (!decision.allowed) {
-            auditLogger.logRateLimitViolation(sessionId, null, command, decision.current, maxPerMinute);
-            return AuthorizationResult.denied("Rate limit exceeded. Max " + maxPerMinute + " executions per minute");
+        if (maxPerMinute > 0) {
+            String rateLimitKey = sessionId + ":" + command.toLowerCase(Locale.ROOT);
+            RateLimitInfo rateLimit = rateLimits.computeIfAbsent(rateLimitKey, k -> new RateLimitInfo());
+            RateLimitDecision decision = rateLimit.checkRateLimit(maxPerMinute);
+            if (!decision.allowed) {
+                auditLogger.logRateLimitViolation(sessionId, null, command, decision.current, maxPerMinute);
+                return AuthorizationResult.denied("Rate limit exceeded. Max " + maxPerMinute + " executions per minute");
+            }
         }
 
         if (meta.isRequiresAudit()) {
