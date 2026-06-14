@@ -8,6 +8,7 @@ import com.javasleuth.core.command.spec.CommandSpec;
 import com.javasleuth.core.command.spec.OptionSpec;
 import com.javasleuth.core.command.spec.ParsedCommand;
 import com.javasleuth.core.command.spec.SubcommandSpec;
+import com.javasleuth.foundation.security.AuthenticationManager.UserRole;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.util.WildcardMatcher;
 import java.util.ArrayList;
@@ -22,7 +23,7 @@ public class LoggerCommand implements Command, SpecBackedCommand {
     private static final CommandSpec SPEC = CommandSpec.builder("logger")
         .description("Manage java.util.logging loggers")
         .usage("logger [list|set]")
-        .meta(CommandMeta.operator(true, false))
+        .meta(CommandMeta.operator(true, false).withSubcommandRole("set", UserRole.ADMIN))
         .subcommand(SubcommandSpec.of(
             "list",
             "List loggers",

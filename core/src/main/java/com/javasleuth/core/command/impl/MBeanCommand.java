@@ -7,6 +7,7 @@ import com.javasleuth.core.command.spec.CommandHelpRenderer;
 import com.javasleuth.core.command.spec.CommandSpec;
 import com.javasleuth.core.command.spec.ParsedCommand;
 import com.javasleuth.core.command.spec.SubcommandSpec;
+import com.javasleuth.foundation.security.AuthenticationManager.UserRole;
 import com.javasleuth.foundation.security.CommandMeta;
 import java.lang.instrument.Instrumentation;
 import java.lang.management.ManagementFactory;
@@ -26,7 +27,9 @@ public class MBeanCommand implements Command, SpecBackedCommand {
     private static final CommandSpec SPEC = CommandSpec.builder("mbean")
         .description("Inspect and interact with JMX MBeans")
         .usage("mbean [list|info|get|set|invoke|domains|search] [options]")
-        .meta(CommandMeta.operator(false, false))
+        .meta(CommandMeta.operator(false, false)
+            .withSubcommandRole("set", UserRole.ADMIN)
+            .withSubcommandRole("invoke", UserRole.ADMIN))
         .argument(ArgumentSpec.optional("pattern"))
         .unknownSubcommandAsArgument(true)
         .subcommand(SubcommandSpec.of("list", "List MBeans", LIST_SPEC))

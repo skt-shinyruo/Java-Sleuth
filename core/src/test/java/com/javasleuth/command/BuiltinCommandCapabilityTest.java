@@ -9,6 +9,7 @@ import com.javasleuth.core.vmtool.VmToolSessionRegistry;
 import com.javasleuth.foundation.config.ProductionConfig;
 import com.javasleuth.foundation.security.AuditLogger;
 import com.javasleuth.foundation.security.AuthenticationManager;
+import com.javasleuth.foundation.security.AuthenticationManager.UserRole;
 import com.javasleuth.foundation.security.CommandCapability;
 import com.javasleuth.foundation.security.CommandMeta;
 import com.javasleuth.foundation.security.DangerousCommandConfirmationManager;
@@ -53,6 +54,15 @@ public class BuiltinCommandCapabilityTest {
         });
     }
 
+    @Test
+    public void mutatingDiagnosticSubcommandsRequireAdminRole() throws Exception {
+        withBuiltinMeta((metaByName) -> {
+            assertRequiredRole(metaByName, "mbean", new String[]{"mbean", "set"}, UserRole.ADMIN);
+            assertRequiredRole(metaByName, "mbean", new String[]{"mbean", "invoke"}, UserRole.ADMIN);
+            assertRequiredRole(metaByName, "logger", new String[]{"logger", "set"}, UserRole.ADMIN);
+        });
+    }
+
     private static void assertInstrumentationCommand(Map<String, CommandMeta> metaByName, String commandName) {
         CommandMeta meta = requireMeta(metaByName, commandName);
         Assert.assertTrue(commandName + " should require bootstrap", meta.requiresBootstrap());
@@ -86,6 +96,16 @@ public class BuiltinCommandCapabilityTest {
     ) {
         CommandMeta meta = requireMeta(metaByName, commandName);
         Assert.assertTrue(commandName + " should declare " + capability, meta.hasCapability(capability));
+    }
+
+    private static void assertRequiredRole(
+        Map<String, CommandMeta> metaByName,
+        String commandName,
+        String[] args,
+        UserRole expected
+    ) {
+        CommandMeta meta = requireMeta(metaByName, commandName);
+        Assert.assertEquals(expected, meta.getRequiredRoleForArgs(args));
     }
 
     private static CommandMeta requireMeta(Map<String, CommandMeta> metaByName, String commandName) {
